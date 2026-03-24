@@ -145,7 +145,7 @@ user can submit any arbitrary values (even strings!) for future use.
 
 ## Metadata
 
-We also need to collect the following metadata about the monitored process:
+We also want to support collecting the following metadata about the monitored process:
 
 - container_image (text): The container image, including optional tag.
 - command (json): JSON array of the command and its arguments.
@@ -162,7 +162,8 @@ We also need to collect the following metadata about the monitored process:
   number -- internal to the orchestrator).
 
 Most (if not all: except for the `command`) of these fields are to be provided
-manually by the user and should be optional.
+voluntarily and manually by the user (or job orchestrator) and should be optional.
+Privacy and security concerns are addressed in the public service's legal docs.
 
 The user should be also able to provide any ad-hoc key-value pairs (tags) for
 tracking purposes.
