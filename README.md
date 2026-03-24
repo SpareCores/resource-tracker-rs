@@ -147,6 +147,7 @@ user can submit any arbitrary values (even strings!) for future use.
 
 We also want to support collecting the following metadata about the monitored process:
 
+- pid (int): The process ID.
 - container_image (text): The container image, including optional tag.
 - command (json): JSON array of the command and its arguments.
 - env (text): The environment (e.g. dev or prod).
