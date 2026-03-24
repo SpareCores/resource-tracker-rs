@@ -208,6 +208,9 @@ to upload collected metrics in batches (e.g. every 1 minute) as new objects
 under the `upload_uri_prefix` as gzipped CSV files. The Resource Tracker should
 also keep track of the uploaded URIs.
 
+When the temporary upload credentials expire, the Resource Tracker should hit the
+data ingestion endpoint to refresh the credentials.
+
 When the tracked process finishes, the Resource Tracker should hit the data
 ingestion endpoint to register the end of the run. This takes
 
