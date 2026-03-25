@@ -1,0 +1,227 @@
+use crate::metrics::{DiskMetrics, DiskMountMetrics, DiskType};
+use std::collections::HashMap;
+use std::ffi::CString;
+use std::time::Instant;
+
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
+const SECTOR_BYTES: u64 = 512;
+
+// ---------------------------------------------------------------------------
+// sysfs helpers
+// ---------------------------------------------------------------------------
+
+fn sysfs_read(path: &str) -> Option<String> {
+    std::fs::read_to_string(path)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+fn block_attr(device: &str, attr: &str) -> Option<String> {
+    sysfs_read(&format!("/sys/block/{}/{}", device, attr))
+}
+
+// ---------------------------------------------------------------------------
+// Hardware identity - read once at startup
+// ---------------------------------------------------------------------------
+
+#[derive(Clone)]
+struct DeviceInfo {
+    model:          Option<String>,
+    vendor:         Option<String>,
+    serial:         Option<String>,
+    device_type:    Option<DiskType>,
+    capacity_bytes: Option<u64>,
+}
+
+fn read_device_info(device: &str) -> DeviceInfo {
+    let model  = block_attr(device, "device/model");
+    let vendor = block_attr(device, "device/vendor");
+    let serial = block_attr(device, "device/serial")
+        .or_else(|| block_attr(device, "device/wwid"));
+
+    let device_type = if device.starts_with("nvme") {
+        Some(DiskType::Nvme)
+    } else {
+        match block_attr(device, "queue/rotational").as_deref() {
+            Some("0") => Some(DiskType::Ssd),
+            Some("1") => Some(DiskType::Hdd),
+            _         => None,
+        }
+    };
+
+    // /sys/block/<dev>/size reports 512-byte sectors regardless of physical sector size.
+    let capacity_bytes = block_attr(device, "size")
+        .and_then(|s| s.parse::<u64>().ok())
+        .map(|sectors| sectors * SECTOR_BYTES);
+
+    DeviceInfo { model, vendor, serial, device_type, capacity_bytes }
+}
+
+/// Discover all whole-disk block devices from /sys/block/ and cache their
+/// static identity. Called once in DiskCollector::new().
+fn discover_devices() -> HashMap<String, DeviceInfo> {
+    let Ok(entries) = std::fs::read_dir("/sys/block") else {
+        return HashMap::new();
+    };
+    entries
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.starts_with("loop") || name.starts_with("ram") {
+                return None;
+            }
+            let info = read_device_info(&name);
+            Some((name, info))
+        })
+        .collect()
+}
+
+// ---------------------------------------------------------------------------
+// Filesystem space - statvfs, polled each interval
+// ---------------------------------------------------------------------------
+
+fn statvfs_space(path: &str) -> Option<(u64, u64, u64)> {
+    let cpath = CString::new(path).ok()?;
+    unsafe {
+        let mut buf: libc::statvfs = std::mem::zeroed();
+        if libc::statvfs(cpath.as_ptr(), &mut buf) != 0 {
+            return None;
+        }
+        // f_frsize is the fundamental block size; fall back to f_bsize if zero.
+        let bs = if buf.f_frsize > 0 { buf.f_frsize as u64 } else { buf.f_bsize as u64 };
+        let total = buf.f_blocks * bs;
+        let avail = buf.f_bavail * bs;
+        let used  = total.saturating_sub(buf.f_bfree * bs);
+        Some((total, used, avail))
+    }
+}
+
+/// Read /proc/mounts and return filesystem space for all mount points whose
+/// source device path starts with `/dev/<device_name>` (covers partitions too).
+fn mounts_for_device(device_name: &str) -> Vec<DiskMountMetrics> {
+    let content = match std::fs::read_to_string("/proc/mounts") {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+    let prefix = format!("/dev/{}", device_name);
+    content
+        .lines()
+        .filter(|line| line.starts_with(&prefix))
+        .filter_map(|line| {
+            let mut parts = line.split_whitespace();
+            let _source      = parts.next()?;
+            let mount_point  = parts.next()?.to_string();
+            let filesystem   = parts.next()?.to_string();
+            let (total, used, avail) = statvfs_space(&mount_point)?;
+            let used_pct = if total > 0 { used as f64 / total as f64 * 100.0 } else { 0.0 };
+            Some(DiskMountMetrics {
+                mount_point,
+                filesystem,
+                total_bytes: total,
+                used_bytes: used,
+                available_bytes: avail,
+                used_pct,
+            })
+        })
+        .collect()
+}
+
+// ---------------------------------------------------------------------------
+// Delta snapshot + Collector
+// ---------------------------------------------------------------------------
+
+struct Snapshot {
+    instant:         Instant,
+    sectors_read:    HashMap<String, u64>,
+    sectors_written: HashMap<String, u64>,
+}
+
+pub struct DiskCollector {
+    /// Static hardware identity, cached once in new().
+    device_cache: HashMap<String, DeviceInfo>,
+    prev: Option<Snapshot>,
+}
+
+impl DiskCollector {
+    pub fn new() -> Self {
+        Self {
+            device_cache: discover_devices(),
+            prev: None,
+        }
+    }
+
+    pub fn collect(&mut self) -> Result<Vec<DiskMetrics>> {
+        let diskstats = procfs::diskstats()?;
+        let now       = Instant::now();
+
+        // Include every device that is a direct /sys/block entry - these are
+        // whole-disk devices (not partitions).  This matches Python's
+        // resource-tracker, which uses the same /sys/block membership check to
+        // distinguish whole disks from partitions.  Importantly, this keeps
+        // loop*, dm-*, and zram* devices which Python also includes.
+        let block_set: std::collections::HashSet<String> =
+            std::fs::read_dir("/sys/block")
+                .map(|dir| {
+                    dir.flatten()
+                        .map(|e| e.file_name().to_string_lossy().to_string())
+                        .collect()
+                })
+                .unwrap_or_default();
+
+        let devs: Vec<_> = diskstats
+            .iter()
+            .filter(|d| block_set.contains(&d.name))
+            .collect();
+
+        let sectors_read: HashMap<String, u64> = devs
+            .iter()
+            .map(|d| (d.name.clone(), d.sectors_read))
+            .collect();
+        let sectors_written: HashMap<String, u64> = devs
+            .iter()
+            .map(|d| (d.name.clone(), d.sectors_written))
+            .collect();
+
+        let mut metrics: Vec<DiskMetrics> = devs
+            .iter()
+            .map(|d| {
+                let info = self.device_cache.get(&d.name);
+
+                let (read_bps, write_bps) = match &self.prev {
+                    None => (0.0, 0.0),
+                    Some(prev) => {
+                        let secs   = (now - prev.instant).as_secs_f64().max(0.001);
+                        let sr     = sectors_read[&d.name];
+                        let sw     = sectors_written[&d.name];
+                        let psr    = prev.sectors_read.get(&d.name).copied().unwrap_or(sr);
+                        let psw    = prev.sectors_written.get(&d.name).copied().unwrap_or(sw);
+                        (
+                            sr.saturating_sub(psr) as f64 * SECTOR_BYTES as f64 / secs,
+                            sw.saturating_sub(psw) as f64 * SECTOR_BYTES as f64 / secs,
+                        )
+                    }
+                };
+
+                DiskMetrics {
+                    device:         d.name.clone(),
+                    model:          info.and_then(|i| i.model.clone()),
+                    vendor:         info.and_then(|i| i.vendor.clone()),
+                    serial:         info.and_then(|i| i.serial.clone()),
+                    device_type:    info.and_then(|i| i.device_type.clone()),
+                    capacity_bytes: info.and_then(|i| i.capacity_bytes),
+                    mounts:         mounts_for_device(&d.name),
+                    read_bytes_per_sec:  read_bps,
+                    write_bytes_per_sec: write_bps,
+                    read_bytes_total:  sectors_read[&d.name] * SECTOR_BYTES,
+                    write_bytes_total: sectors_written[&d.name] * SECTOR_BYTES,
+                }
+            })
+            .collect();
+
+        metrics.sort_by(|a, b| a.device.cmp(&b.device));
+        self.prev = Some(Snapshot { instant: now, sectors_read, sectors_written });
+        Ok(metrics)
+    }
+}

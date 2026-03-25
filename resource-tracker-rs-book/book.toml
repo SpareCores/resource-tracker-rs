@@ -1,0 +1,7 @@
+[book]
+title = "resource-tracker-rs"
+authors = ["Avram Aelony, Greneta Solutions LLC"]
+description = "This is a book to document the SpareCores resource-tracker-rs project"
+language = "en"
+
+[output.html]
