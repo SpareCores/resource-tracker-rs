@@ -192,8 +192,10 @@ environment variable. This needs to be passed as the `Authorization` header with
 the value `Bearer <token>`.
 
 At the start of the Resource Tracker, hit the data ingestion endpoint to
-register the start of a `Run`. This takes optional metadata (e.g. `project_name`
-etc.) as described above.
+register the start of a `Run` along with the following optional parameters:
+
+- metadata (e.g. `project_name` etc.)
+- server and cloud discovery information (e.g. number of CPUs and/or actual instance type)
 
 The response contains:
 
