@@ -166,6 +166,9 @@ Wishlist for future metrics:
     - Disk latency (ms)
     - Disk queue length
 
+Overall, we are looking for metrics that can help identify potential bottlenecks
+and find better cloud servers for the monitored workload.
+
 ## Metadata
 
 We also want to support collecting the following metadata about the monitored process:
