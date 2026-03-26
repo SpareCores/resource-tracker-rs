@@ -228,5 +228,5 @@ The endpoint will process the data in synchronous manner, and return statistics.
 
 ## More Details
 
-Find the data ingestion API endpoints docs at ... (TBD), including the data
+Find the data ingestion API endpoints docs at <https://api.sentinel.sparecores.net/docs>, including the data
 contracts and API references.
