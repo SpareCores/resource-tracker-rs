@@ -1,6 +1,9 @@
 # Specification
 
-Work In Progress
+Work In Progress - Once Open Source landscape review is done.
+
+https://github.com/SpareCores/resource-tracker-rs/blob/main/README.md  to be used to guide spec.
+
 
  - Assess feasibility and review open-source solutions landscape already relevant in this space with respect to the  Core and Extra Component functionality requirements below.
  - Develop rigorous Specification for Rust implementation of ResourceTracker CLI for Linux
@@ -32,3 +35,12 @@ Work In Progress
 
  7. Basic HTTP client to hit API Endpoints a) at the start of resource tracking, b) at the end, and c) every X minutes for heartbeat signal.
  8. Super lightweight (~without pkg dependency) implementation of S3 PUT object using AWS creds to a provided URI so that the package can batch "stream" resource utilization to a central place.
+
+
+
+# Considerations
+
+1. [EBPF](https://en.wikipedia.org/wiki/EBPF)
+  - e.g. how https://opentelemetry.io/docs/zero-code/obi/ does it.
+  - related rust pkg https://aya-rs.dev/index.html
+  - https://crates.io/crates/ebpf

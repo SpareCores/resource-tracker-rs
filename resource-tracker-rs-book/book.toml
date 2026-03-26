@@ -5,3 +5,4 @@ description = "This is a book to document the SpareCores resource-tracker-rs pro
 language = "en"
 
 [output.html]
+additional-css = ["theme/custom.css"]
