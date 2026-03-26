@@ -143,6 +143,29 @@ taken into consideration in the backend:
 No other metrics are officially supported by the backend at the moment, but the
 user can submit any arbitrary values (even strings!) for future use.
 
+Wishlist for future metrics:
+
+- CPU saturation and efficiency metrics:
+
+    - Load average (1m)
+    - L1/L2/L3 cache hit rate
+    - TLB miss rate
+    - Major page faults
+    - iowait
+    - IPC (Instructions Per Cycle)
+    - Context switches
+
+- GPU saturation and efficiency metrics:
+
+    - PCIe TX and RX throughput, Nvlink throughput + theoretical max throughput (e.g. `nvidia-smi nvlink -c`)
+    - Power usage (W)
+    - Temperature (C)
+
+- Disk saturation and efficiency metrics:
+
+    - Disk latency (ms)
+    - Disk queue length
+
 ## Metadata
 
 We also want to support collecting the following metadata about the monitored process:
