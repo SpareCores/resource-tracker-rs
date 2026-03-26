@@ -66,7 +66,7 @@ endpoint):
 - host_gpu_model (text): Model of the GPU (e.g. from `nvidia-smi` output).
 - host_gpu_count (int): Number of GPUs.
 - host_gpu_vram_mib (int): Amount of VRAM in MiB.
-- host_storage_gib (float): Amount of storage in GiB.
+- host_storage_gb (float): Amount of storage in GB.
 
 All these fields are optional, and only collected when available. Users should
 be able to suppress any sensitive fields, such as the host IP address.
@@ -131,9 +131,9 @@ taken into consideration in the backend:
 - memory_inactive_mib: The amount of memory used for inactive pages in MiB.
 - disk_read_bytes: The total number of bytes read from all disks.
 - disk_write_bytes: The total number of bytes written to all disks.
-- disk_space_total_gib: The total disk space in GiB.
-- disk_space_used_gib: The used disk space in GiB.
-- disk_space_free_gib: The free disk space in GiB.
+- disk_space_total_gb: The total disk space in GB.
+- disk_space_used_gb: The used disk space in GB.
+- disk_space_free_gb: The free disk space in GB.
 - net_recv_bytes: The total number of bytes received over network.
 - net_sent_bytes: The total number of bytes sent over network.
 - gpu_usage: The current GPU utilization between 0 and GPU count.
