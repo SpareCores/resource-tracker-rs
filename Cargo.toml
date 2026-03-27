@@ -4,8 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-# GPU monitoring (dynamic linking to NVML/ROCm — satisfies spec pt 4)
-all-smi = "0.17.3"
+# NVIDIA GPU monitoring via NVML — loaded at runtime with libloading.
+# No build-time system dependencies (no protoc, no libdrm-dev).
+# Gracefully returns an empty Vec on hosts without an NVIDIA GPU/driver.
+nvml-wrapper = "0.12"
+
 
 # CLI argument parsing — stripped to essentials
 clap = { version = "4", default-features = false, features = ["derive", "std", "help", "usage", "error-context"] }
@@ -30,6 +33,7 @@ hex = "0.4"
 
 # statvfs for filesystem space (no additional binary size — pure FFI bindings)
 libc = "0.2"
+libamdgpu_top = { version = "0.11.2", default-features = false, features = ["libdrm_dynamic_loading"] }
 
 [profile.release]
 opt-level = "z"      # optimize for size

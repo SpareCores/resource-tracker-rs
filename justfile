@@ -6,8 +6,15 @@ help:
 build:
     cargo build
 
-
 build_release:
+    cargo build --release
+
+# GPU machine: requires AMD driver (libdrm) + NVIDIA driver (libnvidia-ml.so) at runtime.
+# Both libraries are loaded dynamically; the binary degrades gracefully if either is absent.
+build_gpu:
+    cargo build
+
+build_release_gpu:
     cargo build --release
 
 run_only_show_key_names:
