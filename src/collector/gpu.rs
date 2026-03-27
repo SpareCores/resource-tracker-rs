@@ -113,6 +113,14 @@ impl GpuCollector {
     // -----------------------------------------------------------------------
 
     fn collect_amd(&self, out: &mut Vec<GpuMetrics>) {
+        // libamdgpu_top panics when the amdgpu kernel module is not loaded.
+        // `catch_unwind` cannot help here because the release profile uses
+        // `panic = "abort"`.  Guard by checking the module's sysfs entry
+        // before calling into the library at all.
+        if !std::path::Path::new("/sys/module/amdgpu").exists() {
+            return;
+        }
+
         for dp in DevicePath::get_device_path_list() {
             // VRAM: standard AMD GPU sysfs attributes, always available.
             let vram_total_bytes = read_sysfs_u64(dp.sysfs_path.join("mem_info_vram_total"));
