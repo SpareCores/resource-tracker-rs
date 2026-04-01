@@ -3,6 +3,7 @@ pub mod disk;
 pub mod disk_mount;
 pub mod disk_type;
 pub mod gpu;
+pub mod host;
 pub mod memory;
 pub mod network;
 
@@ -11,6 +12,7 @@ pub use disk::DiskMetrics;
 pub use disk_mount::DiskMountMetrics;
 pub use disk_type::DiskType;
 pub use gpu::GpuMetrics;
+pub use host::{CloudInfo, HostInfo};
 pub use memory::MemoryMetrics;
 pub use network::NetworkMetrics;
 

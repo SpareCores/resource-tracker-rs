@@ -132,7 +132,7 @@ tools work directly with the output.
 # Pretty-print with jq
 ./resource-tracker-rs | jq .
 
-# Extract only CPU utilisation over time
+# Extract only CPU utilization over time
 ./resource-tracker-rs | jq '{ t: .timestamp_secs, cpu: .cpu.utilization_pct }'
 
 # Watch GPU VRAM usage
@@ -187,8 +187,8 @@ Google TPUs, Intel Gaudi, Furiosa NPUs, Tenstorrent accelerators.
 | Field                 | Unit   | Description                                                      |
 |-----------------------|--------|------------------------------------------------------------------|
 | `total_cores`         | count  | Total logical CPUs visible to the OS                             |
-| `utilization_pct`     | %      | Aggregate utilisation across all cores                           |
-| `per_core_pct`        | % each | Per-logical-core utilisation array                               |
+| `utilization_pct`     | %      | Aggregate utilization across all cores                           |
+| `per_core_pct`        | % each | Per-logical-core utilization array                               |
 | `process_cores_used`  | cores  | Fractional cores used by tracked process tree (`null` if no PID) |
 | `process_child_count` | count  | Live descendant processes (`null` if no PID)                     |
 
@@ -246,7 +246,7 @@ All values in **kibibytes (KiB = 1024 bytes)**.
 | `device_type`         | —     | `GPU`, `NPU`, `TPU`, etc.                                             |
 | `host_id`             | —     | Host-level device identifier (PCIe slot or platform index)            |
 | `detail`              | —     | Driver-specific key/value map (PCI IDs, ASIC name, driver version, …) |
-| `utilization_pct`     | %     | Core utilisation                                                      |
+| `utilization_pct`     | %     | Core utilization                                                      |
 | `vram_total_bytes`    | bytes | Total VRAM                                                            |
 | `vram_used_bytes`     | bytes | Used VRAM                                                             |
 | `vram_used_pct`       | %     | Fraction of VRAM in use                                               |

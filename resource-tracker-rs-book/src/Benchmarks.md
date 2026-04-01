@@ -82,6 +82,13 @@ under-count I/O bytes by a factor of up to 8×.
 To fix: read `/sys/block/<dev>/queue/hw_sector_size` (or `logical_block_size`)
 at startup and use it in the delta calculation instead of the hard-coded 512.
 
+#### Note 2a — ZFS volumes
+
+Python's disk I/O implementation handles ZFS volumes, where disk usage is
+reported differently at `/sys/block`.  Rust does not currently account for
+this.  ZFS support is a planned enhancement (not required for MVP) and should
+be tracked in the specification and todo list.
+
 #### Note 3 — Disk space: mount set
 
 Python sums all mount points that `psutil.disk_partitions()` reports as

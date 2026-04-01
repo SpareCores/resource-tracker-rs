@@ -23,7 +23,7 @@ intended to be verifiable.
 
 `resource-tracker-rs` is a lightweight, statically self-contained Linux binary that:
 
-1. Polls system- and process-level resource utilisation at a configurable interval.
+1. Polls system- and process-level resource utilization at a configurable interval.
 2. Emits structured samples to stdout (JSON Lines or CSV).
 3. Optionally streams those samples to the <u>Sentinel API</u> (SpareCores data
    ingestion endpoint) via gzip-compressed (CVS, TSV, or JSONL) files uploaded to S3 using
@@ -59,18 +59,43 @@ On a CPU-only host `GpuCollector::collect()` SHALL return an empty `Vec` and no 
 CLI flags  >  TOML config file  >  built-in defaults
 ```
 
+> **Future enhancement:** Support `RESOURCE_TRACKER_`-prefixed environment
+> variables (e.g. `RESOURCE_TRACKER_INTERVAL`, `RESOURCE_TRACKER_FORMAT`) as
+> an additional configuration layer between CLI flags and the TOML file.
+> Environment variables are more practical than file-based config for
+> containerized and scripted workloads and are preferred for the Sentinel
+> integration use case.
+
 ### 3.2 CLI Parameters
 
 The binary MUST accept the following flags via a command line parser:
 
-| Short | Long         | Type     | Default                    | Description                                             |
-|-------|--------------|----------|----------------------------|---------------------------------------------------------|
-| `-n`  | `--job-name` | `String` | none                       | Human-readable label attached to every sample           |
-| `-p`  | `--pid`      | `i32`    | none                       | Root PID of the process tree to track (CPU attribution) |
-| `-i`  | `--interval` | `u64`    | `1`                        | Polling interval in seconds (≥ 1)                       |
-| `-c`  | `--config`   | path     | `resource-tracker-rs.toml` | Path to TOML config file                                |
-| `-f`  | `--format`   | enum     | `json`                     | Output format: `json` or `csv`                          |
-|       | `--version`  | flag     |                            | Print binary version and exit                           |
+| Short | Long               | Type     | Default                    | Description                                             |
+|-------|--------------------|----------|----------------------------|---------------------------------------------------------|
+| `-n`  | `--job-name`       | `String` | none                       | Human-readable label attached to every sample           |
+| `-p`  | `--pid`            | `i32`    | none                       | Root PID of the process tree to track (CPU attribution) |
+| `-i`  | `--interval`       | `u64`    | `1`                        | Polling interval in seconds (≥ 1)                       |
+| `-c`  | `--config`         | path     | `resource-tracker-rs.toml` | Path to TOML config file                                |
+| `-f`  | `--format`         | enum     | `json`                     | Output format: `json` or `csv`                          |
+|       | `--version`        | flag     |                            | Print binary version and exit                           |
+
+All metadata fields listed in §9.3 (job_name, project_name, stage_name, etc.)
+MUST also be accepted as CLI flags.  See §9.3 for the full flag and environment
+variable table.
+
+**Shell-wrapper mode (MVP target):** The binary SHOULD support being used as a
+transparent process wrapper, where the command to monitor is passed as trailing
+arguments after a `--` separator or as positional arguments:
+
+```shell
+resource-tracker-rs Rscript model.R
+resource-tracker-rs -- python train.py --epochs 10
+```
+
+In this mode the binary spawns the given command as a child process, sets
+`--pid` to that child's PID automatically, and exits when the child exits
+(propagating the child exit code).  This is a significant usability improvement
+over the Python implementation and is a first-class v1 goal.
 
 `--interval` MUST be > 0. Values of 0 SHALL be rejected with a non-zero exit code and a descriptive error message.
 
@@ -91,7 +116,7 @@ pid  = 12345            # i32;   optional
 interval_secs = 5       # u64;   optional; default 1
 ```
 
-Unrecognised keys MUST be silently ignored.
+Unrecognized keys MUST be silently ignored.
 
 ### 3.4 Verifiable Configuration Tests
 
@@ -126,7 +151,7 @@ The loop MUST:
 
 1. Record `timestamp_secs` = current Unix time as `u64` (seconds since UNIX epoch, UTC).
 2. Collect all metric subsystems (§6.1) in the order: CPU, Memory, Network, Disk, GPU.
-3. Serialise and emit one line to stdout per the chosen format (§6.2, §6.3).
+3. Serialize and emit one line to stdout per the chosen format (Section 6.2, Section 6.3).
 4. Sleep the configured interval.
 5. Repeat indefinitely until killed.
 
@@ -157,20 +182,28 @@ pub struct Sample {
 
 Source: `/proc/stat` tick deltas; `/proc/<pid>/stat` for process tracking.
 
-| Field                 | Type          | Unit             | Source                 | Notes                                                         |
-|-----------------------|---------------|------------------|------------------------|---------------------------------------------------------------|
-| `total_cores`         | `usize`       | count            | `/proc/stat` cpu lines | Logical CPUs (cores × HT threads)                             |
-| `utilization_pct`     | `f64`         | %                | `/proc/stat`           | Aggregate across all cores; range 0.0–100.0                   |
-| `per_core_pct`        | `Vec<f64>`    | %                | `/proc/stat`           | Per logical CPU; len == `total_cores`; range 0.0–100.0 each   |
-| `utime_secs`          | `f64`         | seconds          | `/proc/stat`           | Δ(user+nice ticks) / ticks_per_second for this interval       |
-| `stime_secs`          | `f64`         | seconds          | `/proc/stat`           | Δ(system ticks) / ticks_per_second for this interval          |
-| `process_count`       | `u32`         | count            | `/proc` numeric dirs   | Number of running processes visible to the OS                 |
-| `process_cores_used`  | `Option<f64>` | fractional cores | `/proc/<pid>/stat`     | None when no PID tracked                                      |
-| `process_child_count` | `Option<u32>` | count            | `/proc/<pid>/stat`     | Descendant count; excludes root PID; None when no PID tracked |
+> **Note:** `total_cores` (logical CPU count) is a static host property that
+> rarely changes.  It belongs in the host discovery snapshot (§8.1) rather than
+> in every per-second sample.  It is referenced here only for computing
+> `cpu_usage` in the CSV output (§7.2).
+
+| Field                 | Type          | Unit             | Source                 | Notes                                                              |
+|-----------------------|---------------|------------------|------------------------|--------------------------------------------------------------------|
+| `utilization_pct`     | `f64`         | fractional cores | `/proc/stat`           | Aggregate utilization expressed as cores-in-use (0.0..N_cores)     |
+| `per_core_pct`        | `Vec<f64>`    | %                | `/proc/stat`           | Per logical CPU percentage; len == `host_vcpus`; range 0.0–100.0  |
+| `utime_secs`          | `f64`         | seconds          | `/proc/stat`           | Δ(user+nice ticks) / ticks_per_second for this interval            |
+| `stime_secs`          | `f64`         | seconds          | `/proc/stat`           | Δ(system ticks) / ticks_per_second for this interval               |
+| `process_count`       | `u32`         | count            | `/proc` numeric dirs   | Number of running processes visible to the OS                      |
+| `process_cores_used`  | `Option<f64>` | fractional cores | `/proc/<pid>/stat`     | None when no PID tracked                                           |
+| `process_child_count` | `Option<u32>` | count            | `/proc/<pid>/stat`     | Descendant count; excludes root PID; None when no PID tracked      |
 
 **Computation rules:**
 
-- `utilization_pct` = `(Δtotal − Δidle) / Δtotal × 100`, clamped to [0, 100].
+- `utilization_pct` = `(Δtotal − Δidle) / Δtotal × N_cores` where N_cores is
+  the logical CPU count from host discovery.  The result is expressed as
+  **fractional cores in use** (e.g. 4.6 on a 16-core host means ~4.6 vCPUs
+  are fully utilized).  Do NOT clamp this value; values very slightly above
+  N_cores are valid under kernel accounting rounding.
   Δtotal = Δ(user + nice + system + idle + iowait + irq + softirq + steal).
   Δidle = Δ(idle + iowait).
 - `utime_secs` = Δ(user + nice) / `ticks_per_second`.
@@ -182,8 +215,8 @@ Source: `/proc/stat` tick deltas; `/proc/<pid>/stat` for process tracking.
 
 **Verifiable CpuMetrics Tests:**
 
-- `T-CPU-01`: `utilization_pct` is in [0.0, 100.0] for all samples.
-- `T-CPU-02`: `len(per_core_pct)` == `total_cores` for all samples.
+- `T-CPU-01`: `utilization_pct` is in [0.0, N_cores] for all samples (N_cores from host discovery).
+- `T-CPU-02`: `len(per_core_pct)` == `host_vcpus` for all samples.
 - `T-CPU-03`: When `--pid` is not set, `process_cores_used` and `process_child_count` are `None`.
 - `T-CPU-04`: When `--pid <self>` is set, `process_cores_used` ≥ 0.
 - `T-CPU-05`: `process_count` ≥ 1 on any running Linux system.
@@ -191,34 +224,44 @@ Source: `/proc/stat` tick deltas; `/proc/<pid>/stat` for process tracking.
 
 #### 6.1.2 MemoryMetrics
 
-Source: `/proc/meminfo`.  All values in **kibibytes (KiB = 1024 bytes)**.
+Source: `/proc/meminfo`.  All values in **mebibytes (MiB = 1024 × 1024 bytes)**,
+standardized to match Python `resource-tracker` PR #9 which also adopts MiB
+throughout.
 
 | Field            | Type  | Unit | `/proc/meminfo` key(s)                  | Notes                                         |
 |------------------|-------|------|-----------------------------------------|-----------------------------------------------|
-| `total_kib`      | `u64` | KiB  | `MemTotal`                              |                                               |
-| `free_kib`       | `u64` | KiB  | `MemFree`                               | Truly free RAM                                |
-| `available_kib`  | `u64` | KiB  | `MemAvailable`                          | Free + reclaimable                            |
-| `used_kib`       | `u64` | KiB  | `MemTotal − MemFree − Buffers − Cached` | Matches Python `memory_used`                  |
-| `used_pct`       | `f64` | %    | derived                                 | `used_kib / total_kib × 100`; range 0.0–100.0 |
-| `buffers_kib`    | `u64` | KiB  | `Buffers`                               | Kernel I/O buffers                            |
-| `cached_kib`     | `u64` | KiB  | `Cached + SReclaimable`                 | Page cache + slab reclaimable                 |
-| `swap_total_kib` | `u64` | KiB  | `SwapTotal`                             |                                               |
-| `swap_used_kib`  | `u64` | KiB  | `SwapTotal − SwapFree`                  |                                               |
+| `total_mib`      | `u64` | MiB  | `MemTotal`                              |                                               |
+| `free_mib`       | `u64` | MiB  | `MemFree`                               | Truly free RAM                                |
+| `available_mib`  | `u64` | MiB  | `MemAvailable`                          | Free + reclaimable                            |
+| `used_mib`       | `u64` | MiB  | `MemTotal − MemFree − Buffers − Cached` | Matches Python `memory_used`                  |
+| `used_pct`       | `f64` | %    | derived                                 | `used_mib / total_mib × 100`; range 0.0–100.0 |
+| `buffers_mib`    | `u64` | MiB  | `Buffers`                               | Kernel I/O buffers                            |
+| `cached_mib`     | `u64` | MiB  | `Cached + SReclaimable`                 | Page cache + slab reclaimable                 |
+| `swap_total_mib` | `u64` | MiB  | `SwapTotal`                             |                                               |
+| `swap_used_mib`  | `u64` | MiB  | `SwapTotal − SwapFree`                  |                                               |
 | `swap_used_pct`  | `f64` | %    | derived                                 | 0.0 when `SwapTotal` == 0                     |
-| `active_kib`     | `u64` | KiB  | `Active`                                |                                               |
-| `inactive_kib`   | `u64` | KiB  | `Inactive`                              |                                               |
+| `active_mib`     | `u64` | MiB  | `Active`                                |                                               |
+| `inactive_mib`   | `u64` | MiB  | `Inactive`                              |                                               |
 
 **Verifiable MemoryMetrics Tests:**
 
-- `T-MEM-01`: `free_kib + used_kib + buffers_kib + cached_kib ≤ total_kib` (accounting for kernel reserved memory).
+- `T-MEM-01`: `free_mib + used_mib + buffers_mib + cached_mib ≤ total_mib` (accounting for kernel reserved memory).
 - `T-MEM-02`: `used_pct` is in [0.0, 100.0].
-- `T-MEM-03`: `swap_used_pct` is 0.0 when `swap_total_kib` == 0.
-- `T-MEM-04`: `available_kib ≤ total_kib`.
+- `T-MEM-03`: `swap_used_pct` is 0.0 when `swap_total_mib` == 0.
+- `T-MEM-04`: `available_mib ≤ total_mib`.
 
 #### 6.1.3 NetworkMetrics
 
 Source: `/proc/net/dev` (throughput), `/sys/class/net/<iface>/` (identity/link state).
 One `NetworkMetrics` record per non-loopback interface.
+
+> **Architecture note:** Fields such as `mac_address`, `driver`, `operstate`,
+> `speed_mbps`, and `mtu` are static properties that do not change every
+> second.  They are candidates for promotion to a host-discovery snapshot
+> (Section 8.1) rather than being repeated in every per-second sample.  This
+> applies similarly to static fields in Section 6.1.4 (disk) and Section 6.1.5
+> (GPU).  The current spec includes them here for completeness; a future
+> revision should separate static identity fields from dynamic rate fields.
 
 | Field              | Type             | Unit    | Source                                         | Notes                         |
 |--------------------|------------------|---------|------------------------------------------------|-------------------------------|
@@ -287,7 +330,7 @@ NVIDIA GPUs; `libamdgpu_top` (runtime-loads `libdrm`) for AMD GPUs.
 | `device_type`         | `String`                 | —     | `"GPU"`, `"NPU"`, `"TPU"`                                         |
 | `host_id`             | `String`                 | —     | Host-level device identifier                                      |
 | `detail`              | `HashMap<String,String>` | —     | Vendor-specific extras (driver version, PCI bus ID, ROCm version) |
-| `utilization_pct`     | `f64`                    | %     | Core utilisation; range 0.0–100.0                                 |
+| `utilization_pct`     | `f64`                    | %     | Core utilization; range 0.0–100.0                                 |
 | `vram_total_bytes`    | `u64`                    | bytes |                                                                   |
 | `vram_used_bytes`     | `u64`                    | bytes |                                                                   |
 | `vram_used_pct`       | `f64`                    | %     | `vram_used / vram_total × 100`; 0.0 when total == 0               |
@@ -332,6 +375,16 @@ Requirements:
 - `T-OUT-04`: Consecutive samples MUST have non-decreasing `timestamp_secs`.
 
 ### 7.2 CSV Format
+
+CSV is the **primary and required** output format for Sentinel S3 streaming
+(Section 9.2.2).  It uses the same column names and units as the Python
+`resource-tracker` so the Sentinel backend can ingest both without schema
+changes.  When uploaded to S3 the CSV content MUST be gzip-compressed and the
+object key MUST carry the extension `.csv.gz`.
+
+When `--format csv` is selected for stdout output the raw (uncompressed) CSV
+bytes are written.  Gzip compression is applied only when writing the S3 batch
+upload payload (Section 9.2.2).
 
 When `--format csv` is selected:
 
@@ -433,8 +486,15 @@ the first sample emission.
 ## 9. Sentinel API Streaming (Extra Component)
 
 > **Note:** This section specifies the data-streaming layer not yet implemented
-> in the prototype.  Activation is gated on the `SENTINEL_API_TOKEN`
-> environment variable being set.
+> in the prototype.  Activation is gated on the `SENTINEL_API_TOKEN` environment variable being set.
+
+##### Open Questions
+
+ 1. Should data always be streamed by default? Yes, if a Token is set.
+ 1. Can the format be `jsonl.gz` instead of `csv`? Use `csv.gz` 
+ 1. Should it be configurable to disable/enable in the TOML file or by CLAP arguments?
+ 1. What error behavior should be exhibited if the run is in a sandbox with network unavailable?
+ 
 
 ### 9.1 Authentication
 
@@ -484,11 +544,11 @@ Response fields the binary MUST store:
 The binary MUST start a background thread that:
 
 1. Every **60 seconds** (configurable, default 60), takes all samples collected since the previous upload.
-2. Serialises them as a CSV or JSONL file (same column layout as §7.2).
+2. Serializes them as CSV (same column layout as Section 7.2) -- CSV is the only accepted format for the Sentinel S3 bucket.
 3. Gzip-compresses the CSV bytes.
 4. Generates a unique S3 object key under `upload_uri_prefix`:
-   `<upload_uri_prefix>/<run_id>/<batch_seq_number>.csv.gz` or <upload_uri_prefix>/<run_id>/<batch_seq_number>.jsonl.gz` 
-5. Uploads via AWS Signature V4 (§10).
+   `<upload_uri_prefix>/<run_id>/<batch_seq_number>.csv.gz`
+5. Uploads via AWS Signature V4 (Section 10).
 6. Appends the uploaded URI to an internal list `uploaded_uris`.
 
 If STS credentials are within **5 minutes** of expiry, the binary MUST refresh
@@ -642,7 +702,7 @@ response body included in the error message).
 
 ## 11. Error Handling
 
-| Scenario                                       | Required behaviour                                                |
+| Scenario                                       | Required behavior                                                 |
 |------------------------------------------------|-------------------------------------------------------------------|
 | `/proc` file is unreadable for a single metric | Return 0 / None for that field; do not abort                      |
 | GPU library absent                             | GPU Vec is empty; no error propagated                             |

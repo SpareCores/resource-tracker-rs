@@ -18,48 +18,48 @@ impl MemoryCollector {
         let info = Meminfo::current()?;
 
         // procfs 0.18 converts /proc/meminfo "kB" values to bytes internally.
-        // Divide by 1024 to restore the conventional kibibyte (KiB) unit that
-        // /proc/meminfo reports and that Python resource-tracker exposes.
-        let to_kib = |bytes: u64| bytes / 1024;
+        // Divide by 1_048_576 to convert to mebibytes (MiB), standardized to
+        // match Python resource-tracker PR #9.
+        let to_mib = |bytes: u64| bytes / 1_048_576;
 
-        let total_kib     = to_kib(info.mem_total);
-        let free_kib      = to_kib(info.mem_free);
-        let available_kib = to_kib(info.mem_available.unwrap_or(info.mem_free));
-        let buffers_kib   = to_kib(info.buffers);
-        let cached_kib    = to_kib(info.cached)
-            + to_kib(info.s_reclaimable.unwrap_or(0));
+        let total_mib     = to_mib(info.mem_total);
+        let free_mib      = to_mib(info.mem_free);
+        let available_mib = to_mib(info.mem_available.unwrap_or(info.mem_free));
+        let buffers_mib   = to_mib(info.buffers);
+        let cached_mib    = to_mib(info.cached)
+            + to_mib(info.s_reclaimable.unwrap_or(0));
         // Python formula: MemTotal - MemFree - Buffers - (Cached + SReclaimable)
-        let used_kib = total_kib
-            .saturating_sub(free_kib)
-            .saturating_sub(buffers_kib)
-            .saturating_sub(cached_kib);
-        let used_pct = if total_kib > 0 {
-            used_kib as f64 / total_kib as f64 * 100.0
+        let used_mib = total_mib
+            .saturating_sub(free_mib)
+            .saturating_sub(buffers_mib)
+            .saturating_sub(cached_mib);
+        let used_pct = if total_mib > 0 {
+            used_mib as f64 / total_mib as f64 * 100.0
         } else {
             0.0
         };
 
-        let swap_total_kib = to_kib(info.swap_total);
-        let swap_used_kib  = swap_total_kib.saturating_sub(to_kib(info.swap_free));
-        let swap_used_pct  = if swap_total_kib > 0 {
-            swap_used_kib as f64 / swap_total_kib as f64 * 100.0
+        let swap_total_mib = to_mib(info.swap_total);
+        let swap_used_mib  = swap_total_mib.saturating_sub(to_mib(info.swap_free));
+        let swap_used_pct  = if swap_total_mib > 0 {
+            swap_used_mib as f64 / swap_total_mib as f64 * 100.0
         } else {
             0.0
         };
 
         Ok(MemoryMetrics {
-            total_kib,
-            free_kib,
-            available_kib,
-            used_kib,
+            total_mib,
+            free_mib,
+            available_mib,
+            used_mib,
             used_pct,
-            buffers_kib,
-            cached_kib,
-            swap_total_kib,
-            swap_used_kib,
+            buffers_mib,
+            cached_mib,
+            swap_total_mib,
+            swap_used_mib,
             swap_used_pct,
-            active_kib:   to_kib(info.active),
-            inactive_kib: to_kib(info.inactive),
+            active_mib:   to_mib(info.active),
+            inactive_mib: to_mib(info.inactive),
         })
     }
 }

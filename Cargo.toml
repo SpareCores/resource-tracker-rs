@@ -1,6 +1,6 @@
 [package]
 name = "resource-tracker-rs"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 
 [dependencies]
@@ -11,7 +11,7 @@ nvml-wrapper = "0.12"
 
 
 # CLI argument parsing — stripped to essentials
-clap = { version = "4", default-features = false, features = ["derive", "std", "help", "usage", "error-context"] }
+clap = { version = "4", default-features = false, features = ["derive", "std", "help", "usage", "error-context", "env"] }
 
 # Linux /proc resource tracking
 procfs = { version = "0.18", features = ["serde"] }
@@ -33,7 +33,13 @@ hex = "0.4"
 
 # statvfs for filesystem space (no additional binary size — pure FFI bindings)
 libc = "0.2"
+# AMD GPU monitoring via libdrm — loaded at runtime. Required when an AMD GPU
+# is present; gracefully skipped on non-AMD hosts.
 libamdgpu_top = { version = "0.11.2", default-features = false, features = ["libdrm_dynamic_loading"] }
+
+[dev-dependencies]
+# Used in tests to check cpu_usage is fractional cores not a percentage
+num_cpus = "1"
 
 [profile.release]
 opt-level = "z"      # optimize for size

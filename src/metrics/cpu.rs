@@ -1,13 +1,14 @@
 use serde::{Deserialize, Serialize};
 
-/// CPU utilisation derived from /proc/stat tick deltas.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// CPU metrics derived from /proc/stat tick deltas.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CpuMetrics {
-    /// Total number of logical CPUs (cores × threads) visible to the OS.
-    pub total_cores: usize,
-    /// Aggregate utilisation across all cores (0.0–100.0).
+    /// Aggregate CPU utilization expressed as fractional cores in use (0.0..N_cores).
+    /// e.g. 4.6 on a 16-core host means ~4.6 vCPUs are fully utilized.
+    /// Not clamped; values very slightly above N_cores are valid under kernel rounding.
+    /// N_cores is available via host discovery (host_vcpus).
     pub utilization_pct: f64,
-    /// Per-core utilisation indexed by logical CPU number (0.0–100.0 each).
+    /// Per-core utilization indexed by logical CPU number (0.0–100.0 each).
     pub per_core_pct: Vec<f64>,
     /// User+nice mode CPU time consumed across all cores in this interval (seconds).
     /// Equivalent to Δ(user+nice ticks) / ticks_per_second.
