@@ -121,7 +121,7 @@ impl GpuCollector {
             return;
         }
 
-        for dp in DevicePath::get_device_path_list() {
+        DevicePath::get_device_path_list().into_iter().for_each(|dp| {
             // VRAM: standard AMD GPU sysfs attributes, always available.
             let vram_total_bytes = read_sysfs_u64(dp.sysfs_path.join("mem_info_vram_total"));
             let vram_used_bytes = read_sysfs_u64(dp.sysfs_path.join("mem_info_vram_used"));
@@ -189,7 +189,7 @@ impl GpuCollector {
                 frequency_mhz,
                 core_count: None,
             });
-        }
+        });
     }
 }
 

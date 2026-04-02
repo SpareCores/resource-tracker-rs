@@ -77,7 +77,7 @@ fn run_to_exit(args: &[&str], timeout: Duration) -> std::process::ExitStatus {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn interval_zero_exits_nonzero() {
+fn test_interval_zero_exits_nonzero() {
     let status = Command::new(BINARY)
         .args(["--interval", "0"])
         .stdout(Stdio::null())
@@ -95,7 +95,7 @@ fn interval_zero_exits_nonzero() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn json_is_valid() {
+fn test_json_is_valid() {
     let lines = collect_lines(&["--interval", "1"], 1);
     assert_eq!(lines.len(), 1, "expected exactly 1 JSON line");
     let v: serde_json::Value =
@@ -104,7 +104,7 @@ fn json_is_valid() {
 }
 
 #[test]
-fn json_version_field_present() {
+fn test_json_version_field_present() {
     let lines = collect_lines(&["--interval", "1"], 1);
     let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
     let version_key = format!("{}-version", "resource-tracker-rs");
@@ -116,7 +116,7 @@ fn json_version_field_present() {
 }
 
 #[test]
-fn json_two_samples_have_nondecreasing_timestamps() {
+fn test_json_two_samples_have_nondecreasing_timestamps() {
     let lines = collect_lines(&["--interval", "1"], 2);
     assert_eq!(lines.len(), 2, "expected 2 JSON lines");
     let a: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
@@ -131,7 +131,7 @@ fn json_two_samples_have_nondecreasing_timestamps() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn json_cpu_fields_present() {
+fn test_json_cpu_fields_present() {
     let lines = collect_lines(&["--interval", "1"], 1);
     let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
 
@@ -145,7 +145,7 @@ fn json_cpu_fields_present() {
 /// T-CPU-01: utilization_pct is fractional cores in [0, N_cores * 1.05].
 /// It must NOT be clamped to 100 on multi-core machines.
 #[test]
-fn json_utilization_pct_is_fractional_cores_not_percentage() {
+fn test_json_utilization_pct_is_fractional_cores_not_percentage() {
     let lines = collect_lines(&["--interval", "1"], 1);
     let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
 
@@ -168,7 +168,7 @@ fn json_utilization_pct_is_fractional_cores_not_percentage() {
 
 /// T-CPU-02: total_cores must NOT appear in JSON (moved to host discovery).
 #[test]
-fn json_total_cores_field_absent() {
+fn test_json_total_cores_field_absent() {
     let lines = collect_lines(&["--interval", "1"], 1);
     let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
     assert!(
@@ -178,7 +178,7 @@ fn json_total_cores_field_absent() {
 }
 
 #[test]
-fn json_process_count_at_least_one() {
+fn test_json_process_count_at_least_one() {
     let lines = collect_lines(&["--interval", "1"], 1);
     let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
     let count = v["cpu"]["process_count"].as_u64().expect("process_count missing");
@@ -191,7 +191,7 @@ fn json_process_count_at_least_one() {
 
 /// Verify all _mib fields are present with sane values.
 #[test]
-fn json_memory_fields_are_mib() {
+fn test_json_memory_fields_are_mib() {
     let lines = collect_lines(&["--interval", "1"], 1);
     let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
 
@@ -218,16 +218,16 @@ fn json_memory_fields_are_mib() {
 
 /// Old _kib fields must not appear in output.
 #[test]
-fn json_memory_kib_fields_absent() {
+fn test_json_memory_kib_fields_absent() {
     let lines = collect_lines(&["--interval", "1"], 1);
     let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
-    for field in &["total_kib", "free_kib", "available_kib", "used_kib",
-                   "buffers_kib", "cached_kib", "active_kib", "inactive_kib"] {
+    ["total_kib", "free_kib", "available_kib", "used_kib",
+     "buffers_kib", "cached_kib", "active_kib", "inactive_kib"].iter().for_each(|field| {
         assert!(
             v["memory"][field].is_null(),
             "old field '{field}' must not appear in memory JSON (renamed to _mib)"
         );
-    }
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -243,14 +243,14 @@ const EXPECTED_HEADER: &str =
      gpu_usage,gpu_vram,gpu_utilized";
 
 #[test]
-fn csv_header_matches_expected() {
+fn test_csv_header_matches_expected() {
     let lines = collect_lines(&["--interval", "1", "--format", "csv"], 2);
     assert!(lines.len() >= 2, "expected header + at least 1 data row");
     assert_eq!(lines[0], EXPECTED_HEADER, "CSV header mismatch");
 }
 
 #[test]
-fn csv_column_count_consistent() {
+fn test_csv_column_count_consistent() {
     let lines = collect_lines(&["--interval", "1", "--format", "csv"], 2);
     assert!(lines.len() >= 2);
     let header_count = lines[0].split(',').count();
@@ -261,7 +261,7 @@ fn csv_column_count_consistent() {
 /// cpu_usage must be fractional cores (>= 0, well below any percentage ceiling).
 /// Since utilization_pct is now fractional cores, cpu_usage == utilization_pct directly.
 #[test]
-fn csv_cpu_usage_is_fractional_cores() {
+fn test_csv_cpu_usage_is_fractional_cores() {
     let lines = collect_lines(&["--interval", "1", "--format", "csv"], 2);
     assert!(lines.len() >= 2);
 
@@ -283,7 +283,7 @@ fn csv_cpu_usage_is_fractional_cores() {
 }
 
 #[test]
-fn csv_values_parse_and_are_sane() {
+fn test_csv_values_parse_and_are_sane() {
     let lines = collect_lines(&["--interval", "1", "--format", "csv"], 2);
     assert!(lines.len() >= 2);
 
@@ -322,7 +322,7 @@ fn csv_values_parse_and_are_sane() {
 }
 
 #[test]
-fn csv_two_rows_have_nondecreasing_timestamps() {
+fn test_csv_two_rows_have_nondecreasing_timestamps() {
     let lines = collect_lines(&["--interval", "1", "--format", "csv"], 3);
     assert!(lines.len() >= 3, "expected header + 2 data rows");
 
@@ -351,7 +351,7 @@ fn csv_row_col<'h, 'r>(
 
 /// T-DSK-01 (CSV): disk_read_bytes and disk_write_bytes are >= 0.
 #[test]
-fn csv_disk_io_bytes_nonneg() {
+fn test_csv_disk_io_bytes_nonneg() {
     let lines = collect_lines(&["--interval", "1", "--format", "csv"], 2);
     assert!(lines.len() >= 2);
     let headers: Vec<&str> = lines[0].split(',').collect();
@@ -366,7 +366,7 @@ fn csv_disk_io_bytes_nonneg() {
 
 /// T-NET-01 (CSV): net_recv_bytes and net_sent_bytes are >= 0.
 #[test]
-fn csv_net_bytes_nonneg() {
+fn test_csv_net_bytes_nonneg() {
     let lines = collect_lines(&["--interval", "1", "--format", "csv"], 2);
     assert!(lines.len() >= 2);
     let headers: Vec<&str> = lines[0].split(',').collect();
@@ -380,7 +380,7 @@ fn csv_net_bytes_nonneg() {
 
 /// T-DSK-02 (CSV): disk_space_used_gb + disk_space_free_gb <= disk_space_total_gb.
 #[test]
-fn csv_disk_space_invariant() {
+fn test_csv_disk_space_invariant() {
     let lines = collect_lines(&["--interval", "1", "--format", "csv"], 2);
     assert!(lines.len() >= 2);
     let headers: Vec<&str> = lines[0].split(',').collect();
@@ -399,25 +399,23 @@ fn csv_disk_space_invariant() {
 
 /// T-MEM-01 (CSV): all memory columns parse as non-negative integers.
 #[test]
-fn csv_memory_fields_nonneg() {
+fn test_csv_memory_fields_nonneg() {
     let lines = collect_lines(&["--interval", "1", "--format", "csv"], 2);
     assert!(lines.len() >= 2);
     let headers: Vec<&str> = lines[0].split(',').collect();
     let row:     Vec<&str> = lines[1].split(',').collect();
     let col = csv_row_col(&headers, &row);
 
-    for name in &[
-        "memory_free", "memory_used", "memory_buffers",
-        "memory_cached", "memory_active", "memory_inactive",
-    ] {
+    ["memory_free", "memory_used", "memory_buffers",
+     "memory_cached", "memory_active", "memory_inactive"].iter().for_each(|name| {
         let v: u64 = col(name).parse().unwrap_or_else(|_| panic!("{name}: not u64"));
         let _ = v; // u64 is always >= 0; parse success is the key assertion
-    }
+    });
 }
 
 /// cpu time fields (utime, stime) must parse as non-negative floats.
 #[test]
-fn csv_cpu_time_fields_nonneg() {
+fn test_csv_cpu_time_fields_nonneg() {
     let lines = collect_lines(&["--interval", "1", "--format", "csv"], 2);
     assert!(lines.len() >= 2);
     let headers: Vec<&str> = lines[0].split(',').collect();
@@ -433,7 +431,7 @@ fn csv_cpu_time_fields_nonneg() {
 /// T-GPU-01 (CSV): gpu_usage and gpu_vram parse as non-negative floats;
 /// gpu_utilized parses as a non-negative integer.
 #[test]
-fn csv_gpu_fields_nonneg() {
+fn test_csv_gpu_fields_nonneg() {
     let lines = collect_lines(&["--interval", "1", "--format", "csv"], 2);
     assert!(lines.len() >= 2);
     let headers: Vec<&str> = lines[0].split(',').collect();
@@ -454,7 +452,7 @@ fn csv_gpu_fields_nonneg() {
 
 /// Shell-wrapper: tracker should exit with the child's exit code (0).
 #[test]
-fn shell_wrapper_propagates_exit_zero() {
+fn test_shell_wrapper_propagates_exit_zero() {
     let status = run_to_exit(&["--interval", "1", "--", "true"], Duration::from_secs(8));
     assert_eq!(
         status.code(),
@@ -465,7 +463,7 @@ fn shell_wrapper_propagates_exit_zero() {
 
 /// Shell-wrapper: tracker should exit with the child's non-zero exit code.
 #[test]
-fn shell_wrapper_propagates_exit_nonzero() {
+fn test_shell_wrapper_propagates_exit_nonzero() {
     let status = run_to_exit(&["--interval", "1", "--", "false"], Duration::from_secs(8));
     assert_ne!(
         status.code(),
@@ -476,7 +474,7 @@ fn shell_wrapper_propagates_exit_nonzero() {
 
 /// Shell-wrapper: tracker emits at least one valid JSON sample while monitoring.
 #[test]
-fn shell_wrapper_emits_json_samples() {
+fn test_shell_wrapper_emits_json_samples() {
     // sleep 5 gives enough time to collect one sample before we kill it
     let lines = collect_lines(&["--interval", "1", "--", "sleep", "5"], 1);
     assert!(!lines.is_empty(), "should emit at least one sample in wrapper mode");
@@ -494,7 +492,7 @@ fn shell_wrapper_emits_json_samples() {
 
 /// All Section 9.3 metadata flags must be accepted without error.
 #[test]
-fn all_metadata_flags_accepted() {
+fn test_all_metadata_flags_accepted() {
     let lines = collect_lines(
         &[
             "--interval",        "1",
@@ -520,7 +518,7 @@ fn all_metadata_flags_accepted() {
 
 /// TRACKER_* environment variables must be accepted without error.
 #[test]
-fn tracker_env_vars_accepted() {
+fn test_tracker_env_vars_accepted() {
     let mut child = Command::new(BINARY)
         .args(["--interval", "1"])
         .env("TRACKER_JOB_NAME",     "env-job")
@@ -543,9 +541,9 @@ fn tracker_env_vars_accepted() {
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
         let reader = BufReader::new(stdout);
-        for line in reader.lines().take(1) {
+        reader.lines().take(1).for_each(|line| {
             let _ = tx.send(line.unwrap_or_default());
-        }
+        });
     });
 
     let line = rx.recv_timeout(TIMEOUT).expect("timed out waiting for first sample");
@@ -559,7 +557,7 @@ fn tracker_env_vars_accepted() {
 
 /// --tag flag must be accepted when given multiple times.
 #[test]
-fn tag_flag_repeatable() {
+fn test_tag_flag_repeatable() {
     let lines = collect_lines(
         &[
             "--interval", "1",
@@ -580,7 +578,7 @@ fn tag_flag_repeatable() {
 
 /// T-OUT-02: timestamp_secs is a positive integer.
 #[test]
-fn json_timestamp_secs_is_positive_integer() {
+fn test_json_timestamp_secs_is_positive_integer() {
     let lines = collect_lines(&["--interval", "1"], 1);
     let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
     let ts = v["timestamp_secs"]
@@ -591,7 +589,7 @@ fn json_timestamp_secs_is_positive_integer() {
 
 /// T-OUT-03: resource-tracker-rs-version key present and is a semver string.
 #[test]
-fn json_version_key_is_semver() {
+fn test_json_version_key_is_semver() {
     let lines = collect_lines(&["--interval", "1"], 1);
     let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
     let version_key = "resource-tracker-rs-version";
@@ -611,7 +609,7 @@ fn json_version_key_is_semver() {
 
 /// T-CPU-03: Without --pid, process_cores_used and process_child_count are null.
 #[test]
-fn json_process_fields_null_without_pid() {
+fn test_json_process_fields_null_without_pid() {
     let lines = collect_lines(&["--interval", "1"], 1);
     let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
     assert!(
@@ -626,7 +624,7 @@ fn json_process_fields_null_without_pid() {
 
 /// T-CPU-04: With --pid <self>, process_cores_used is >= 0.
 #[test]
-fn json_process_cores_used_nonneg_with_pid() {
+fn test_json_process_cores_used_nonneg_with_pid() {
     // Use the current test process PID so it is guaranteed to be running.
     let pid = std::process::id().to_string();
     let lines = collect_lines(&["--interval", "1", "--pid", &pid], 1);
@@ -644,7 +642,7 @@ fn json_process_cores_used_nonneg_with_pid() {
 
 /// T-MEM-01: free_mib + used_mib + buffers_mib + cached_mib <= total_mib.
 #[test]
-fn json_memory_components_dont_exceed_total() {
+fn test_json_memory_components_dont_exceed_total() {
     let lines = collect_lines(&["--interval", "1"], 1);
     let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
     let total    = v["memory"]["total_mib"].as_u64().expect("total_mib");
@@ -661,7 +659,7 @@ fn json_memory_components_dont_exceed_total() {
 
 /// T-MEM-02: used_pct is in [0.0, 100.0].
 #[test]
-fn json_memory_used_pct_in_range() {
+fn test_json_memory_used_pct_in_range() {
     let lines = collect_lines(&["--interval", "1"], 1);
     let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
     let pct = v["memory"]["used_pct"].as_f64().expect("used_pct");
@@ -670,7 +668,7 @@ fn json_memory_used_pct_in_range() {
 
 /// T-MEM-03: swap_used_pct is 0.0 when swap_total_mib == 0 (skip if swap present).
 #[test]
-fn json_swap_used_pct_zero_when_no_swap() {
+fn test_json_swap_used_pct_zero_when_no_swap() {
     let lines = collect_lines(&["--interval", "1"], 1);
     let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
     let swap_total = v["memory"]["swap_total_mib"].as_u64().unwrap_or(0);
@@ -686,7 +684,7 @@ fn json_swap_used_pct_zero_when_no_swap() {
 
 /// T-MEM-04: available_mib <= total_mib.
 #[test]
-fn json_memory_available_le_total() {
+fn test_json_memory_available_le_total() {
     let lines = collect_lines(&["--interval", "1"], 1);
     let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
     let available = v["memory"]["available_mib"].as_u64().expect("available_mib");
@@ -703,29 +701,29 @@ fn json_memory_available_le_total() {
 
 /// T-NET-01: rx_bytes_per_sec and tx_bytes_per_sec are >= 0.0 for every interface.
 #[test]
-fn json_network_bytes_per_sec_nonneg() {
+fn test_json_network_bytes_per_sec_nonneg() {
     let lines = collect_lines(&["--interval", "1"], 1);
     let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
     let ifaces = v["network"].as_array().expect("network must be an array");
-    for iface in ifaces {
+    ifaces.iter().for_each(|iface| {
         let name = iface["interface"].as_str().unwrap_or("?");
         let rx = iface["rx_bytes_per_sec"].as_f64().expect("rx_bytes_per_sec");
         let tx = iface["tx_bytes_per_sec"].as_f64().expect("tx_bytes_per_sec");
         assert!(rx >= 0.0, "rx_bytes_per_sec must be >= 0 for {name}, got {rx}");
         assert!(tx >= 0.0, "tx_bytes_per_sec must be >= 0 for {name}, got {tx}");
-    }
+    });
 }
 
 /// T-NET-02: rx_bytes_total is non-decreasing across two consecutive samples.
 #[test]
-fn json_network_rx_bytes_total_nondecreasing() {
+fn test_json_network_rx_bytes_total_nondecreasing() {
     let lines = collect_lines(&["--interval", "1"], 2);
     assert_eq!(lines.len(), 2, "expected 2 JSON samples");
     let a: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
     let b: serde_json::Value = serde_json::from_str(&lines[1]).unwrap();
     let ifaces_a = a["network"].as_array().expect("network array");
     let ifaces_b = b["network"].as_array().expect("network array");
-    for ia in ifaces_a {
+    ifaces_a.iter().for_each(|ia| {
         let name = ia["interface"].as_str().unwrap_or("");
         if let Some(ib) = ifaces_b.iter().find(|x| x["interface"].as_str() == Some(name)) {
             let total_a = ia["rx_bytes_total"].as_u64().unwrap_or(0);
@@ -735,19 +733,19 @@ fn json_network_rx_bytes_total_nondecreasing() {
                 "rx_bytes_total for {name} must not decrease: {total_a} -> {total_b}"
             );
         }
-    }
+    });
 }
 
 /// T-NET-03: Loopback interface "lo" must not appear in network output.
 #[test]
-fn json_network_no_loopback_interface() {
+fn test_json_network_no_loopback_interface() {
     let lines = collect_lines(&["--interval", "1"], 1);
     let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
     let ifaces = v["network"].as_array().expect("network must be an array");
-    for iface in ifaces {
+    ifaces.iter().for_each(|iface| {
         let name = iface["interface"].as_str().unwrap_or("");
         assert_ne!(name, "lo", "loopback interface 'lo' must not appear in network output");
-    }
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -756,22 +754,22 @@ fn json_network_no_loopback_interface() {
 
 /// T-DSK-01: read_bytes_per_sec and write_bytes_per_sec are >= 0.0 for every device.
 #[test]
-fn json_disk_bytes_per_sec_nonneg() {
+fn test_json_disk_bytes_per_sec_nonneg() {
     let lines = collect_lines(&["--interval", "1"], 1);
     let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
     let disks = v["disk"].as_array().expect("disk must be an array");
-    for disk in disks {
+    disks.iter().for_each(|disk| {
         let dev = disk["device"].as_str().unwrap_or("?");
         let r = disk["read_bytes_per_sec"].as_f64().expect("read_bytes_per_sec");
         let w = disk["write_bytes_per_sec"].as_f64().expect("write_bytes_per_sec");
         assert!(r >= 0.0, "read_bytes_per_sec must be >= 0 for {dev}, got {r}");
         assert!(w >= 0.0, "write_bytes_per_sec must be >= 0 for {dev}, got {w}");
-    }
+    });
 }
 
 /// T-DSK-02: used_bytes + available_bytes <= total_bytes for every mount.
 #[test]
-fn json_disk_mount_space_invariant() {
+fn test_json_disk_mount_space_invariant() {
     let lines = collect_lines(&["--interval", "1"], 1);
     let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
     let disks = v["disk"].as_array().expect("disk must be an array");
@@ -781,7 +779,7 @@ fn json_disk_mount_space_invariant() {
             Some(m) => m,
             None    => continue,
         };
-        for mount in mounts {
+        mounts.iter().for_each(|mount| {
             let mp    = mount["mount_point"].as_str().unwrap_or("?");
             let total = mount["total_bytes"].as_u64().expect("total_bytes");
             let used  = mount["used_bytes"].as_u64().expect("used_bytes");
@@ -790,22 +788,22 @@ fn json_disk_mount_space_invariant() {
                 used + avail <= total,
                 "used({used}) + avail({avail}) > total({total}) for {dev}:{mp}"
             );
-        }
+        });
     }
 }
 
 /// T-DSK-03: capacity_bytes is > 0 when present (not null).
 #[test]
-fn json_disk_capacity_positive_when_present() {
+fn test_json_disk_capacity_positive_when_present() {
     let lines = collect_lines(&["--interval", "1"], 1);
     let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
     let disks = v["disk"].as_array().expect("disk must be an array");
-    for disk in disks {
+    disks.iter().for_each(|disk| {
         let dev = disk["device"].as_str().unwrap_or("?");
         if let Some(cap) = disk["capacity_bytes"].as_u64() {
             assert!(cap > 0, "capacity_bytes must be > 0 when present, device {dev}");
         }
-    }
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -816,7 +814,7 @@ fn json_disk_capacity_positive_when_present() {
 /// This test always passes on the development machine; it is a documentation
 /// of the expected behavior and will fail if a GPU is unexpectedly reported.
 #[test]
-fn json_gpu_empty_on_cpu_only_host() {
+fn test_json_gpu_empty_on_cpu_only_host() {
     // Only assert empty if there is no GPU driver present.
     // Check for nvidia/amd GPU presence via /sys or /dev before asserting.
     let has_gpu = std::path::Path::new("/dev/nvidia0").exists()
@@ -837,7 +835,7 @@ fn json_gpu_empty_on_cpu_only_host() {
 /// T-CLD-01: First sample arrives within 5 seconds even on a non-cloud host
 /// where all IMDS probes fail (each probe has a 2s timeout; they run in parallel).
 #[test]
-fn first_sample_arrives_within_5s() {
+fn test_first_sample_arrives_within_5s() {
     let start = std::time::Instant::now();
     let lines = collect_lines(&["--interval", "1"], 1);
     let elapsed = start.elapsed();
@@ -869,7 +867,7 @@ fn write_temp_toml(content: &str) -> std::path::PathBuf {
 
 /// T-CFG-04: TOML `interval_secs = 2` produces ~2s spacing between samples.
 #[test]
-fn toml_interval_secs_controls_sample_spacing() {
+fn test_toml_interval_secs_controls_sample_spacing() {
     let toml = write_temp_toml("[tracker]\ninterval_secs = 2\n");
     let config_path = toml.to_string_lossy().to_string();
 
@@ -897,7 +895,7 @@ fn toml_interval_secs_controls_sample_spacing() {
 /// T-CFG-05: CLI `--interval 2` overrides TOML `interval_secs = 5`.
 /// Two samples must arrive in < 8s (not ~10s which a 5s interval would require).
 #[test]
-fn cli_interval_overrides_toml_interval() {
+fn test_cli_interval_overrides_toml_interval() {
     let toml = write_temp_toml("[tracker]\ninterval_secs = 5\n");
     let config_path = toml.to_string_lossy().to_string();
 
@@ -919,7 +917,7 @@ fn cli_interval_overrides_toml_interval() {
 
 /// T-CFG-06: A nonexistent TOML config path silently falls back to defaults.
 #[test]
-fn missing_toml_config_falls_back_to_defaults() {
+fn test_missing_toml_config_falls_back_to_defaults() {
     let lines = collect_lines(
         &["--config", "/tmp/this-config-does-not-exist-rt-test.toml", "--interval", "1"],
         1,
@@ -935,7 +933,7 @@ fn missing_toml_config_falls_back_to_defaults() {
 
 /// T-EOR-01: On SIGTERM the binary flushes and exits with code 0.
 #[test]
-fn sigterm_exits_zero() {
+fn test_sigterm_exits_zero() {
     let mut child = Command::new(BINARY)
         .args(["--interval", "1"])
         .stdout(Stdio::piped())
@@ -944,13 +942,21 @@ fn sigterm_exits_zero() {
         .expect("failed to spawn binary");
 
     // Wait for the first sample to confirm the binary is running.
+    // The reader thread continues draining stdout after sending the first line
+    // so the pipe stays open; dropping it after .take(1) would cause the binary's
+    // next println! to panic (broken pipe -> exit 101).
     let stdout = child.stdout.take().unwrap();
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
         let reader = BufReader::new(stdout);
-        for line in reader.lines().take(1) {
-            let _ = tx.send(line.unwrap_or_default());
-        }
+        let mut sent = false;
+        reader.lines().for_each(|line| {
+            if !sent {
+                let _ = tx.send(line.unwrap_or_default());
+                sent = true;
+            }
+            // Keep reading so the pipe stays open until the binary exits.
+        });
     });
     rx.recv_timeout(TIMEOUT).expect("binary did not emit a sample before SIGTERM");
 
@@ -981,4 +987,36 @@ fn sigterm_exits_zero() {
         "binary must exit with code 0 after SIGTERM, got: {:?}",
         status.code()
     );
+}
+
+// ---------------------------------------------------------------------------
+// Write the exact S3 batch file to disk for manual inspection
+// ---------------------------------------------------------------------------
+
+/// Runs the binary in CSV mode, captures 3 samples (header + 2 data rows),
+/// gzip-compresses them exactly as the S3 upload path does, and writes the
+/// result to /tmp/resource-tracker-batch-test.csv.gz.
+///
+/// Run with: cargo test write_s3_batch_to_disk -- --nocapture
+/// Inspect:  gunzip -c /tmp/resource-tracker-batch-test.csv.gz
+#[test]
+fn test_write_s3_batch_to_disk() {
+    use flate2::{write::GzEncoder, Compression};
+    use std::io::Write;
+
+    // header line + 2 data rows = 3 lines from the binary
+    let lines = collect_lines(&["--interval", "1", "--format", "csv"], 3);
+    assert!(lines.len() >= 2, "expected at least header + 1 data row, got {}", lines.len());
+
+    let mut csv = String::new();
+    lines.iter().for_each(|l| { csv.push_str(l); csv.push('\n'); });
+
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    encoder.write_all(csv.as_bytes()).expect("gzip write failed");
+    let compressed = encoder.finish().expect("gzip finish failed");
+
+    let path = "/tmp/resource-tracker-batch-test.csv.gz";
+    std::fs::write(path, &compressed).expect("failed to write batch file");
+    println!("wrote {} bytes ({} csv bytes) to {path}", compressed.len(), csv.len());
+    println!("inspect: gunzip -c {path}");
 }

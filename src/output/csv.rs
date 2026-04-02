@@ -127,7 +127,7 @@ mod tests {
 
     // T-CSV-01: header is the first line and contains no embedded newlines.
     #[test]
-    fn csv_header_is_first_line_no_embedded_newline() {
+    fn test_csv_header_is_first_line_no_embedded_newline() {
         let h = csv_header();
         assert!(h.starts_with("timestamp,"), "header must start with 'timestamp,'");
         assert!(!h.contains('\n'), "header must not contain an embedded newline");
@@ -135,7 +135,7 @@ mod tests {
 
     // T-CSV-02: column count in each data row equals column count in header.
     #[test]
-    fn csv_row_column_count_matches_header() {
+    fn test_csv_row_column_count_matches_header() {
         let header_cols = csv_header().split(',').count();
         let row = sample_to_csv_row(&minimal_sample(), 1);
         let row_cols = row.split(',').count();
@@ -155,7 +155,7 @@ mod tests {
     // utilization_pct is in range 0.0..N_cores, not 0.0..100.0.
     // This test verifies the actual (correct) behavior.
     #[test]
-    fn csv_cpu_usage_is_utilization_pct_direct() {
+    fn test_csv_cpu_usage_is_utilization_pct_direct() {
         let mut sample = minimal_sample();
         sample.cpu.utilization_pct = 3.1415;
         let row = sample_to_csv_row(&sample, 1);
@@ -171,7 +171,7 @@ mod tests {
 
     // T-CSV-04: disk_space_used_gb == disk_space_total_gb - disk_space_free_gb.
     #[test]
-    fn csv_disk_space_used_equals_total_minus_free() {
+    fn test_csv_disk_space_used_equals_total_minus_free() {
         let mut sample = minimal_sample();
         sample.disk = vec![DiskMetrics {
             device:            "sda".to_string(),
@@ -207,7 +207,7 @@ mod tests {
 
     // T-CSV-05: output is byte-for-byte reproducible for the same sample.
     #[test]
-    fn csv_output_is_deterministic() {
+    fn test_csv_output_is_deterministic() {
         let sample = minimal_sample();
         let r1 = sample_to_csv_row(&sample, 1);
         let r2 = sample_to_csv_row(&sample, 1);
@@ -216,7 +216,7 @@ mod tests {
 
     // T-CSV-06: no trailing commas; no quoted fields.
     #[test]
-    fn csv_no_trailing_commas_no_quoted_fields() {
+    fn test_csv_no_trailing_commas_no_quoted_fields() {
         let row = sample_to_csv_row(&minimal_sample(), 1);
         assert!(!row.ends_with(','),  "trailing comma in row: {row}");
         assert!(!row.contains('"'),   "double-quoted field in row: {row}");

@@ -258,7 +258,7 @@ mod tests {
     // counts 8x larger than the hard-coded 512 would give for the same
     // sector delta.
     #[test]
-    fn sector_size_4k_gives_8x_bytes() {
+    fn test_sector_size_4k_gives_8x_bytes() {
         let sector_delta: u64 = 1000;
         let sector_size_512:  u32 = 512;
         let sector_size_4096: u32 = 4096;
@@ -273,7 +273,7 @@ mod tests {
     // Verify read_device_info falls back to 512 when hw_sector_size is absent
     // (non-existent device path).
     #[test]
-    fn sector_size_fallback_is_512() {
+    fn test_sector_size_fallback_is_512() {
         let info = read_device_info("__nonexistent_device__");
         assert_eq!(info.sector_size, 512);
     }

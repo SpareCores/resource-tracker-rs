@@ -79,7 +79,7 @@ fn read_vcpus_and_model() -> (Option<u32>, Option<String>) {
     };
     let mut count: u32 = 0;
     let mut model: Option<String> = None;
-    for line in content.lines() {
+    content.lines().for_each(|line| {
         if line.starts_with("processor") {
             count += 1;
         } else if line.starts_with("model name") && model.is_none() {
@@ -87,7 +87,7 @@ fn read_vcpus_and_model() -> (Option<u32>, Option<String>) {
                 model = Some(val.trim().to_string());
             }
         }
-    }
+    });
     let vcpus = if count > 0 { Some(count) } else { None };
     (vcpus, model)
 }

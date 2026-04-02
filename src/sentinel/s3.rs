@@ -324,7 +324,7 @@ mod tests {
 
     // T-S3-01
     #[test]
-    fn parse_valid_s3_uri() {
+    fn test_parse_valid_s3_uri() {
         let uri = parse_s3_uri("s3://my-bucket/path/to/obj.csv.gz").unwrap();
         assert_eq!(uri.bucket, "my-bucket");
         assert_eq!(uri.key,    "path/to/obj.csv.gz");
@@ -332,18 +332,18 @@ mod tests {
 
     // T-S3-02
     #[test]
-    fn parse_https_uri_is_error() {
+    fn test_parse_https_uri_is_error() {
         assert!(parse_s3_uri("https://bucket/path").is_err());
     }
 
     // T-S3-03
     #[test]
-    fn parse_empty_key_is_error() {
+    fn test_parse_empty_key_is_error() {
         assert!(parse_s3_uri("s3://bucket/").is_err());
     }
 
     #[test]
-    fn parse_missing_slash_is_error() {
+    fn test_parse_missing_slash_is_error() {
         assert!(parse_s3_uri("s3://bucket-only").is_err());
     }
 
@@ -352,7 +352,7 @@ mod tests {
     // Reference values computed independently using the AWS Signature V4 test
     // suite vectors adapted for a PUT request to S3 with a fixed payload.
     #[test]
-    fn sig_v4_golden_value() {
+    fn test_sig_v4_golden_value() {
         let auth = sign_put_request(
             "AKIAIOSFODNN7EXAMPLE",
             "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
@@ -379,7 +379,7 @@ mod tests {
     // Pre-populate the cache directly; supply an agent that would fail
     // (1ms timeout) to prove no network call is made on the second lookup.
     #[test]
-    fn region_cache_skips_network_on_hit() {
+    fn test_region_cache_skips_network_on_hit() {
         let mut cache = RegionCache::new();
         // Directly seed the cache.
         cache.0.insert("my-bucket".to_string(), "ap-southeast-1".to_string());
@@ -396,7 +396,7 @@ mod tests {
     // T-S3-05 (functional): detect_region_at reads the x-amz-bucket-region
     // header from a mock TCP server.
     #[test]
-    fn detect_region_from_mock_server() {
+    fn test_detect_region_from_mock_server() {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
 
@@ -420,7 +420,7 @@ mod tests {
     // T-S3-06: s3_put_to mock HTTP server returns the S3 URI on 200 OK,
     // and the outgoing request contains Content-Encoding: gzip (T-STR-02 / Section 9.2.2).
     #[test]
-    fn s3_put_to_mock_server_returns_uri() {
+    fn test_s3_put_to_mock_server_returns_uri() {
         use std::sync::mpsc;
 
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -478,17 +478,17 @@ mod tests {
     }
 
     #[test]
-    fn format_amz_date_known_timestamp() {
+    fn test_format_amz_date_known_timestamp() {
         assert_eq!(format_amz_date(1_369_353_600), "20130524T000000Z");
     }
 
     #[test]
-    fn epoch_to_utc_unix_epoch() {
+    fn test_epoch_to_utc_unix_epoch() {
         assert_eq!(epoch_to_utc(0), (1970, 1, 1, 0, 0, 0));
     }
 
     #[test]
-    fn epoch_to_utc_known_date() {
+    fn test_epoch_to_utc_known_date() {
         // 2026-04-01T12:34:56Z
         // 20544 days * 86400 + 45296 = 1_775_046_896
         assert_eq!(epoch_to_utc(1_775_046_896), (2026, 4, 1, 12, 34, 56));

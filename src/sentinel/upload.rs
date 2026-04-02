@@ -3,12 +3,12 @@
 
 use crate::metrics::Sample;
 use crate::output::csv::{csv_header, sample_to_csv_row};
-use crate::sentinel::run::{refresh_credentials, RunContext};
-use crate::sentinel::s3::{parse_s3_uri, s3_put, RegionCache};
-use flate2::{write::GzEncoder, Compression};
+use crate::sentinel::run::{RunContext, refresh_credentials};
+use crate::sentinel::s3::{RegionCache, parse_s3_uri, s3_put};
+use flate2::{Compression, write::GzEncoder};
 use std::io::Write;
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 #[cfg(test)]
@@ -30,19 +30,21 @@ pub fn samples_to_csv(samples: &[Sample], interval_secs: u64) -> String {
     let mut out = String::with_capacity(samples.len() * 256);
     out.push_str(csv_header());
     out.push('\n');
-    for s in samples {
+    samples.iter().for_each(|s| {
         out.push_str(&sample_to_csv_row(s, interval_secs));
         out.push('\n');
-    }
+    });
     out
 }
 
 /// Gzip-compress `data` using the default compression level.
 pub fn gzip_compress(data: &[u8]) -> Result<Vec<u8>, String> {
     let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-    encoder.write_all(data)
+    encoder
+        .write_all(data)
         .map_err(|e| format!("gzip write failed: {e}"))?;
-    encoder.finish()
+    encoder
+        .finish()
         .map_err(|e| format!("gzip finish failed: {e}"))
 }
 
@@ -52,9 +54,9 @@ pub fn gzip_compress(data: &[u8]) -> Result<Vec<u8>, String> {
 
 pub struct BatchUploader {
     /// Buffer shared with the main thread.
-    pub buffer:          SampleBuffer,
+    pub buffer: SampleBuffer,
     /// Set to true by `request_shutdown()` to trigger a final flush.
-    shutdown:            Arc<AtomicBool>,
+    shutdown: Arc<AtomicBool>,
     /// Polling interval for the upload thread (seconds, default 60).
     upload_interval_secs: u64,
     /// Sampling interval (seconds) -- needed to compute per-interval byte counts in CSV.
@@ -67,8 +69,8 @@ impl BatchUploader {
     pub fn new(upload_interval_secs: u64, sample_interval_secs: u64) -> (Self, SampleBuffer) {
         let buffer = Arc::new(Mutex::new(Vec::<Sample>::new()));
         let uploader = Self {
-            buffer:               Arc::clone(&buffer),
-            shutdown:             Arc::new(AtomicBool::new(false)),
+            buffer: Arc::clone(&buffer),
+            shutdown: Arc::new(AtomicBool::new(false)),
             upload_interval_secs,
             sample_interval_secs,
         };
@@ -88,15 +90,15 @@ impl BatchUploader {
     /// one final flush before returning all successfully uploaded S3 URIs.
     pub fn spawn(
         self,
-        ctx:     Arc<Mutex<RunContext>>,
-        agent:   ureq::Agent,
+        ctx: Arc<Mutex<RunContext>>,
+        agent: ureq::Agent,
         api_base: String,
-        token:   String,
+        token: String,
     ) -> std::thread::JoinHandle<Vec<String>> {
         std::thread::spawn(move || {
             let mut uploaded_uris: Vec<String> = Vec::new();
-            let mut region_cache  = RegionCache::new();
-            let mut seq: u32      = 0;
+            let mut region_cache = RegionCache::new();
+            let mut seq: u32 = 0;
             let mut consecutive_failures: u32 = 0;
 
             let sleep_duration = Duration::from_secs(self.upload_interval_secs);
@@ -127,7 +129,9 @@ impl BatchUploader {
                     Ok(b) => b,
                     Err(e) => {
                         eprintln!("warn: upload batch {seq} gzip failed: {e}");
-                        if shutting_down { break; }
+                        if shutting_down {
+                            break;
+                        }
                         continue;
                     }
                 };
@@ -136,7 +140,9 @@ impl BatchUploader {
                 {
                     let mut ctx_guard = ctx.lock().unwrap_or_else(|e| e.into_inner());
                     if ctx_guard.creds_expiring_soon() {
-                        if let Err(e) = refresh_credentials(&agent, &api_base, &token, &mut ctx_guard) {
+                        if let Err(e) =
+                            refresh_credentials(&agent, &api_base, &token, &mut ctx_guard)
+                        {
                             eprintln!("warn: credential refresh failed: {e}");
                         }
                     }
@@ -148,15 +154,22 @@ impl BatchUploader {
                     let uri = parse_s3_uri(&ctx_guard.upload_uri_prefix).unwrap_or_else(|_| {
                         crate::sentinel::s3::S3Uri {
                             bucket: String::new(),
-                            key:    String::new(),
+                            key: String::new(),
                         }
                     });
-                    (uri.bucket, uri.key, ctx_guard.credentials.clone(), ctx_guard.run_id.clone())
+                    (
+                        uri.bucket,
+                        uri.key,
+                        ctx_guard.credentials.clone(),
+                        ctx_guard.run_id.clone(),
+                    )
                 };
 
                 if bucket.is_empty() {
                     eprintln!("warn: upload_uri_prefix could not be parsed; skipping batch {seq}");
-                    if shutting_down { break; }
+                    if shutting_down {
+                        break;
+                    }
                     continue;
                 }
 
@@ -185,9 +198,13 @@ impl BatchUploader {
                     }
                     Err(e) => {
                         consecutive_failures += 1;
-                        eprintln!("warn: S3 upload failed (attempt {consecutive_failures}/{MAX_CONSECUTIVE_FAILURES}): {e}");
+                        eprintln!(
+                            "warn: S3 upload failed (attempt {consecutive_failures}/{MAX_CONSECUTIVE_FAILURES}): {e}"
+                        );
                         if consecutive_failures >= MAX_CONSECUTIVE_FAILURES {
-                            eprintln!("warn: {MAX_CONSECUTIVE_FAILURES} consecutive upload failures; buffering continues but data may be lost");
+                            eprintln!(
+                                "warn: {MAX_CONSECUTIVE_FAILURES} consecutive upload failures; buffering continues but data may be lost"
+                            );
                             consecutive_failures = 0;
                         }
                     }
@@ -217,35 +234,46 @@ mod tests {
     fn minimal_sample() -> Sample {
         Sample {
             timestamp_secs: 1_000_000,
-            job_name:       None,
-            cpu:    CpuMetrics    { utilization_pct: 1.0, ..Default::default() },
-            memory: MemoryMetrics { free_mib: 512, used_mib: 512, ..Default::default() },
+            job_name: None,
+            cpu: CpuMetrics {
+                utilization_pct: 1.0,
+                ..Default::default()
+            },
+            memory: MemoryMetrics {
+                free_mib: 512,
+                used_mib: 512,
+                ..Default::default()
+            },
             network: vec![],
-            disk:    vec![],
-            gpu:     vec![],
+            disk: vec![],
+            gpu: vec![],
         }
     }
 
     // T-STR-02: batch body decompresses to valid CSV (header + data rows).
     //
-    // Spec §9.2.2: "A batch upload request contains Content-Encoding: gzip
+    // Spec Section 9.2.2: "A batch upload request contains Content-Encoding: gzip
     // and the body decompresses to valid CSV or JSONL."
     // This test verifies the compress/decompress round-trip and CSV structure.
     #[test]
-    fn gzip_compress_decompresses_to_valid_csv() {
+    fn test_gzip_compress_decompresses_to_valid_csv() {
         let samples = vec![minimal_sample(), minimal_sample()];
         let csv = samples_to_csv(&samples, 1);
         let compressed = gzip_compress(csv.as_bytes()).expect("gzip_compress failed");
 
-        // Gzip magic bytes (RFC 1952 §2.3.1).
+        // Gzip magic bytes (RFC 1952 Section 2.3.1).
         assert_eq!(&compressed[..2], b"\x1f\x8b", "missing gzip magic bytes");
 
         // Decompress must round-trip to identical bytes.
         let mut decoder = GzDecoder::new(&compressed[..]);
         let mut decompressed = String::new();
-        decoder.read_to_string(&mut decompressed)
+        decoder
+            .read_to_string(&mut decompressed)
             .expect("gzip decompression failed");
-        assert_eq!(decompressed, csv, "decompressed content does not match original CSV");
+        assert_eq!(
+            decompressed, csv,
+            "decompressed content does not match original CSV"
+        );
 
         // First line must be the CSV header.
         let first_line = decompressed.lines().next().expect("empty output");
@@ -253,26 +281,30 @@ mod tests {
 
         // Every data row must have the same column count as the header.
         let header_cols = csv_header().split(',').count();
-        for (i, line) in decompressed.lines().skip(1).enumerate() {
-            assert!(!line.is_empty(), "unexpected empty data line at index {i}");
-            let cols = line.split(',').count();
-            assert_eq!(
-                cols, header_cols,
-                "data row {i} has {cols} columns, expected {header_cols}: {line}"
-            );
-        }
+        decompressed
+            .lines()
+            .skip(1)
+            .enumerate()
+            .for_each(|(i, line)| {
+                assert!(!line.is_empty(), "unexpected empty data line at index {i}");
+                let cols = line.split(',').count();
+                assert_eq!(
+                    cols, header_cols,
+                    "data row {i} has {cols} columns, expected {header_cols}: {line}"
+                );
+            });
     }
 
     // Every line produced by samples_to_csv (header and data rows) ends with '\n'.
     #[test]
-    fn samples_to_csv_all_lines_end_with_newline() {
+    fn test_samples_to_csv_all_lines_end_with_newline() {
         let samples = vec![minimal_sample()];
         let csv = samples_to_csv(&samples, 1);
-        for chunk in csv.split_inclusive('\n') {
+        csv.split_inclusive('\n').for_each(|chunk| {
             assert!(
                 chunk.ends_with('\n'),
                 "line does not end with newline: {chunk:?}"
             );
-        }
+        });
     }
 }

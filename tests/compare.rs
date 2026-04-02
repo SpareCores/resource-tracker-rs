@@ -233,7 +233,7 @@ fn col_specs() -> Vec<ColSpec> {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn python_rust_csv_numeric_comparison() {
+fn test_python_rust_csv_numeric_comparison() {
     let uv = match find_uv() {
         Some(u) => u,
         None => {

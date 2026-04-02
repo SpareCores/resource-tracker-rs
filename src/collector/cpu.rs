@@ -74,11 +74,11 @@ fn process_tree_ticks(root_pid: i32) -> HashMap<i32, u64> {
 
     // Build a parent to children lookup.
     let mut children: HashMap<i32, Vec<i32>> = HashMap::new();
-    for proc in &all {
+    all.iter().for_each(|proc| {
         if let Ok(stat) = proc.stat() {
             children.entry(stat.ppid).or_default().push(proc.pid);
         }
-    }
+    });
 
     // Build a pid to ticks lookup.
     let ticks_for: HashMap<i32, u64> = all
@@ -245,27 +245,27 @@ mod tests {
     // Tick layout: (prev_total, prev_idle, curr_total, curr_idle)
 
     #[test]
-    fn util_pct_all_idle_is_zero() {
+    fn test_util_pct_all_idle_is_zero() {
         // All new ticks went to idle.
         assert_eq!(util_pct_from_ticks(0, 0, 1600, 1600), 0.0);
     }
 
     #[test]
-    fn util_pct_fully_busy_is_100() {
+    fn test_util_pct_fully_busy_is_100() {
         // 1600 new ticks, 0 idle -> 100%.
         let pct = util_pct_from_ticks(0, 0, 1600, 0);
         assert!((pct - 100.0).abs() < 0.01, "expected 100.0, got {pct}");
     }
 
     #[test]
-    fn util_pct_half_busy_is_50() {
+    fn test_util_pct_half_busy_is_50() {
         // 1600 new ticks, 800 idle -> 50%.
         let pct = util_pct_from_ticks(0, 0, 1600, 800);
         assert!((pct - 50.0).abs() < 0.01, "expected 50.0, got {pct}");
     }
 
     #[test]
-    fn util_pct_no_delta_is_zero() {
+    fn test_util_pct_no_delta_is_zero() {
         // Identical snapshots: no elapsed ticks.
         assert_eq!(util_pct_from_ticks(100, 50, 100, 50), 0.0);
     }
@@ -273,7 +273,7 @@ mod tests {
     /// Aggregate util converts the percentage to fractional cores and does NOT clamp.
     /// 99.9% busy on a 4-core machine -> ~3.996 cores, not forced to <= 4.0.
     #[test]
-    fn aggregate_util_cores_no_clamp() {
+    fn test_aggregate_util_cores_no_clamp() {
         // 999 active ticks, 1 idle, total 1000 -> 99.9% -> 99.9/100*4 = 3.996
         let pct = util_pct_from_ticks(0, 0, 1000, 1);
         let cores = pct / 100.0 * 4.0_f64;
@@ -284,7 +284,7 @@ mod tests {
     /// Per-core values are clamped to 100 by `core_util_pct`; verify the
     /// underlying math exceeds 100 without the clamp (so the clamp is doing work).
     #[test]
-    fn util_pct_raw_is_not_clamped() {
+    fn test_util_pct_raw_is_not_clamped() {
         // 100% busy -- raw result is exactly 100, clamp has no effect here.
         let raw = util_pct_from_ticks(0, 0, 1000, 0);
         assert!((raw - 100.0).abs() < 0.01);
@@ -296,7 +296,7 @@ mod tests {
     // (utilization_pct, per_core_pct, utime_secs, stime_secs).  A warm-up
     // sleep then a second collect() produces real data.
     #[test]
-    fn first_collect_returns_zero_for_delta_fields() {
+    fn test_first_collect_returns_zero_for_delta_fields() {
         let mut collector = CpuCollector::new(None);
         let metrics = collector.collect().expect("first collect failed");
         assert_eq!(

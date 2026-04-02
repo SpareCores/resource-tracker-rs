@@ -2,6 +2,45 @@
 
 ## [Unreleased]
 
+### Code fixes and test improvements (2026-04-02)
+
+#### `src/sentinel/run.rs` -- `close_run` payload compression (bug fix)
+- The entire JSON body sent to `/runs/{id}/finish` is now gzip-compressed with
+  `Content-Encoding: gzip`, matching the Python reference and the S3 upload path.
+- Previously only the `data_csv` field was gzip+base64 encoded while the outer
+  HTTP body was sent uncompressed with no `Content-Encoding` header.
+- `data_csv` is now plain base64 (no inner gzip) since the HTTP-level compression
+  covers the whole body; matches Python `b64encode(data_csv)`.
+
+#### `for_each` substitution (all `*.rs` files)
+- Replaced `for` loops with `.for_each()` calls throughout `src/` and `tests/`
+  wherever `break`, `continue`, and `return` are not used in the loop body.
+- Loops containing `break`, `continue`, or early `return` (e.g. `host.rs:98`,
+  `compare.rs:115`, `compare.rs:338`, `smoke.rs` helper loops) are left as `for`.
+
+#### Test function naming (`src/**/*.rs`, `tests/*.rs`)
+- All `#[test]` functions now carry a `test_` prefix (e.g. `fn creds_expiring_soon_far_future`
+  → `fn test_creds_expiring_soon_far_future`).
+- Affects `src/collector/cpu.rs`, `src/collector/disk.rs`, `src/output/csv.rs`,
+  `src/sentinel/mod.rs`, `src/sentinel/run.rs`, `src/sentinel/s3.rs`,
+  `src/sentinel/upload.rs`, `tests/smoke.rs`, `tests/compare.rs`.
+
+#### `tests/smoke.rs` -- `test_sigterm_exits_zero` (T-EOR-01) fix
+- The reader thread previously called `.take(1)` and dropped the `BufReader`,
+  breaking the stdout pipe; the binary's next `println!` panicked (exit 101).
+- Fixed by replacing `.take(1)` with `.for_each()` that sends the first line then
+  keeps draining stdout so the pipe stays open until the binary exits naturally.
+
+#### `tests/smoke.rs` -- `test_write_s3_batch_to_disk` (new inspection helper)
+- Runs the binary in CSV mode (`--format csv --interval 1`), captures 3 lines
+  (header + 2 data rows), gzip-compresses them, and writes the result to
+  `/tmp/resource-tracker-batch-test.csv.gz` for manual inspection.
+- Produces the exact bytes that would be PUT to S3 from a real run.
+- Run with: `cargo test test_write_s3_batch_to_disk -- --nocapture`
+- Inspect with: `gunzip -c /tmp/resource-tracker-batch-test.csv.gz`
+
+---
+
 ### Python reference alignment (2026-04-01)
 
 #### `src/sentinel/mod.rs` -- API base URL

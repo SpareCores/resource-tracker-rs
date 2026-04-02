@@ -71,7 +71,7 @@ mod tests {
     // is absent.  Every HTTP call site in main.rs is gated on `Option<SentinelClient>`,
     // so None here provably prevents all HTTP connections.
     #[test]
-    fn no_token_returns_none() {
+    fn test_no_token_returns_none() {
         // SAFETY: single-threaded test; no concurrent env access.
         unsafe { std::env::remove_var("SENTINEL_API_TOKEN"); }
         assert!(
@@ -81,7 +81,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_token_returns_none() {
+    fn test_empty_token_returns_none() {
         // SAFETY: single-threaded test; no concurrent env access.
         unsafe { std::env::set_var("SENTINEL_API_TOKEN", ""); }
         let result = SentinelClient::from_env();
