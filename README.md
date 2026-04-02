@@ -49,8 +49,8 @@ What worked great in the Python implementation was the ability to discover the
 
 These limited tools are implemented at
 
-- https://github.com/SpareCores/resource-tracker/blob/main/src/resource_tracker/server_info.py
-- https://github.com/SpareCores/resource-tracker/blob/main/src/resource_tracker/cloud_info.py
+- <https://github.com/SpareCores/resource-tracker/blob/main/src/resource_tracker/server_info.py>
+- <https://github.com/SpareCores/resource-tracker/blob/main/src/resource_tracker/cloud_info.py>
 
 We are sure the hardware discovery could be improved further, and we aim to
 collect at least the following (all prefixed with `host_` in the data ingestion
@@ -86,8 +86,8 @@ following fields (all using the `cloud_` prefix in the data ingestion endpoint):
   Navigator's server table's `api_reference` field (e.g. `t3a.nano`).
 
 Find the Spare Cores Navigator's vendor, region, zone and server tables at
-https://github.com/SpareCores/sc-data-dumps/tree/main/data and schemas described at
-https://dbdocs.io/spare-cores/sc-crawler.
+<https://github.com/SpareCores/sc-data-dumps/tree/main/data> and schemas described at
+<https://dbdocs.io/spare-cores/sc-crawler>.
 
 ## Metrics to Track
 

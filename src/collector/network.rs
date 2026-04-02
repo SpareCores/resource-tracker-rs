@@ -27,7 +27,7 @@ fn net_attr(iface: &str, attr: &str) -> Option<String> {
 #[derive(Clone)]
 struct InterfaceInfo {
     mac_address: Option<String>,
-    /// Kernel driver name resolved from the /sys/class/net/<if>/device/driver
+    /// Kernel driver name resolved from `/sys/class/net/<if>/device/driver`
     /// symlink basename, e.g. "igc", "virtio_net", "e1000e".
     driver: Option<String>,
 }

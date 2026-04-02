@@ -15,18 +15,21 @@
 
 ### Current `Cargo.toml` dependencies
 
-| Crate        | Version                                             | Purpose                                             |
-|--------------|-----------------------------------------------------|-----------------------------------------------------|
-| `all-smi`    | 0.17.3                                              | GPU/VRAM monitoring via dynamic linking (NVML/ROCm) |
-| `clap`       | 4, no defaults, derive+std+help+usage+error-context | CLI argument parsing, minimal footprint             |
-| `procfs`     | 0.18, serde feature only                            | Linux `/proc` — CPU, memory, network, disk          |
-| `ureq`       | 3, json feature                                     | Lightweight sync HTTP — no tokio, no async runtime  |
-| `serde`      | 1, derive                                           | Serialization/deserialization                       |
-| `serde_json` | 1                                                   | JSON payload encoding for API and S3                |
-| `toml`       | 1.0, no defaults, parse feature                     | TOML config file parsing                            |
-| `hmac`       | 0.13.0-rc.6                                         | AWS Signature V4 HMAC signing                       |
-| `sha2`       | 0.10                                                | SHA-256 hashing for AWS Sig V4                      |
-| `hex`        | 0.4                                                 | Hex encoding for AWS Sig V4 signature               |
+| Crate             | Version                                                      | Purpose                                                      |
+|-------------------|--------------------------------------------------------------|--------------------------------------------------------------|
+| `nvml-wrapper`    | 0.12                                                         | NVIDIA GPU/VRAM monitoring via NVML; runtime dynamic loading |
+| `libamdgpu_top`   | 0.11.2, no defaults, libdrm\_dynamic\_loading                | AMD GPU monitoring via libdrm; runtime dynamic loading       |
+| `clap`            | 4, no defaults, derive+std+help+usage+error-context+env      | CLI argument parsing, minimal footprint                      |
+| `procfs`          | 0.18, serde feature only                                     | Linux `/proc` -- CPU, memory, network, disk                  |
+| `ureq`            | 3, json feature                                              | Lightweight sync HTTP -- no tokio, no async runtime          |
+| `serde`           | 1, derive                                                    | Serialization/deserialization                                |
+| `serde_json`      | 1                                                            | JSON payload encoding for API and S3                         |
+| `toml`            | 1.0, no defaults, parse+serde features                       | TOML config file parsing                                     |
+| `hmac`            | 0.13.0-rc.6                                                  | AWS Signature V4 HMAC signing                                |
+| `sha2`            | 0.11.0                                                       | SHA-256 hashing for AWS Sig V4                               |
+| `hex`             | 0.4                                                          | Hex encoding for AWS Sig V4 signature                        |
+| `libc`            | 0.2                                                          | `statvfs` for filesystem space, `gethostname`, SIGTERM       |
+| `flate2`          | =1.1.9 (pinned), no defaults, rust\_backend                  | Gzip compression for S3 batch uploads; pure Rust, no zlib-sys|
 
 ### Release profile
 
@@ -41,11 +44,14 @@ panic = "abort"      # smaller panic handler
 
 ### Key decisions
 
-- **`ureq` over `reqwest`**: `reqwest` v0.13 pulls in `tokio` (full async runtime), `hyper`, and TLS stacks — adds ~5–10 MB. `ureq` v3 is synchronous, no runtime, comparable API surface.
+- **`nvml-wrapper` + `libamdgpu_top` over `all-smi`**: `all-smi` required `protoc` at build time. Replaced with `nvml-wrapper` (NVIDIA, no build-time deps) and `libamdgpu_top` with `libdrm_dynamic_loading` (AMD, runtime-only). Both load their respective drivers at runtime and degrade gracefully when absent.
+- **`ureq` over `reqwest`**: `reqwest` v0.13 pulls in `tokio` (full async runtime), `hyper`, and TLS stacks -- adds ~5-10 MB. `ureq` v3 is synchronous, no runtime, comparable API surface.
 - **`procfs` features trimmed**: Dropped `chrono` (heavy date/time lib, `std::time` suffices) and `flate2` (only needed for gzip-compressed `/proc` files, which are rare).
-- **`clap` defaults disabled**: Default clap features include terminal color, unicode width, etc. Stripped to the functional minimum.
-- **Manual AWS Sig V4** (`hmac` + `sha2` + `hex`): Avoids `aws-sdk-s3` (~50+ transitive deps, large binary). S3 PUT only needs ~100–150 lines of signing logic.
-- **`toml` v1.0 defaults disabled**: Only the `parse` feature needed for config file reading.
+- **`clap` defaults disabled**: Default clap features include terminal color, unicode width, etc. Stripped to the functional minimum; `env` feature added to support `TRACKER_*` environment variable overrides.
+- **Manual AWS Sig V4** (`hmac` + `sha2` + `hex`): Avoids `aws-sdk-s3` (~50+ transitive deps, large binary). S3 PUT only needs ~100-150 lines of signing logic.
+- **`toml` v1.0 defaults disabled**: `parse` + `serde` features; `serde` feature required for `toml::from_str` deserialization into config structs.
+- **`flate2` pinned to `=1.1.9` with `rust_backend`**: Pure Rust gzip implementation; avoids a `zlib-sys` C build dependency. Version pinned to prevent unexpected breakage from pre-1.0 semver.
+- **`libc` for sysfs/POSIX calls**: `statvfs` for filesystem space, `gethostname` for host identity, and `SIGTERM` signal handling -- pure FFI bindings with no additional binary size overhead.
 
 ---
 

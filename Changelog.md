@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Dependencies.md Cargo crate table added (2026-04-02)
+
+#### `resource-tracker-rs-book/src/Dependencies.md` -- Rust crate dependencies section
+- Added "Rust Crate Dependencies" section with two tables: runtime crates and dev dependencies.
+- Each row lists crate name, pinned/constrained version, and the purpose / why it was chosen.
+- Covers all 13 runtime crates (`nvml-wrapper`, `clap`, `procfs`, `ureq`, `serde`, `serde_json`,
+  `toml`, `hmac`, `sha2`, `hex`, `libc`, `flate2`, `libamdgpu_top`) and 1 dev crate (`num_cpus`).
+
+---
+
 ### Code fixes and test improvements (2026-04-02)
 
 #### `src/sentinel/run.rs` -- `close_run` payload compression (bug fix)

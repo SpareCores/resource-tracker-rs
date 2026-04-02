@@ -22,7 +22,7 @@ pub struct CpuMetrics {
     /// `procs_running`). Matches Python resource-tracker's `processes` column.
     pub process_count: u32,
     /// Fractional cores actively consumed by the tracked process tree
-    /// (root process + all descendants), derived from /proc/<pid>/stat tick
+    /// (root process + all descendants), derived from `/proc/<pid>/stat` tick
     /// deltas divided by elapsed wall-clock ticks.
     /// e.g. 2.0 means the tree is consuming the equivalent of 2 full cores.
     /// None when no process PID is being tracked.

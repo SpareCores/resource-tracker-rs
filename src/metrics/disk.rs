@@ -9,14 +9,14 @@ pub struct DiskMetrics {
     // Identity - read from /sys/block/<dev>/ once at startup.
     // ------------------------------------------------------------------
     pub device: String,
-    /// e.g. "Samsung SSD 870 EVO 1TB", from /sys/block/<dev>/device/model.
+    /// e.g. "Samsung SSD 870 EVO 1TB", from `/sys/block/<dev>/device/model`.
     pub model: Option<String>,
-    /// e.g. "ATA", from /sys/block/<dev>/device/vendor.
+    /// e.g. "ATA", from `/sys/block/<dev>/device/vendor`.
     pub vendor: Option<String>,
-    /// World-Wide ID or serial, from /sys/block/<dev>/device/wwid or serial.
+    /// World-Wide ID or serial, from `/sys/block/<dev>/device/wwid` or `serial`.
     pub serial: Option<String>,
     pub device_type: Option<DiskType>,
-    /// Total raw device capacity in bytes (/sys/block/<dev>/size × 512).
+    /// Total raw device capacity in bytes (`/sys/block/<dev>/size` × 512).
     pub capacity_bytes: Option<u64>,
 
     // ------------------------------------------------------------------

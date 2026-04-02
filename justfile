@@ -20,9 +20,12 @@ build_release_gpu:
 run_only_show_key_names:
      target/release/resource-tracker-rs --interval 3 | jq -r 'paths(scalars) as $p | "\($p | join(".")): \(getpath($p) | type)"'
 
+# Build cargo doc and mdbook in parallel, then open both in the browser
+# without either open blocking the other.
 document:
-    cd resource-tracker-rs-book && mdbook build && open book/index.html && cd -
-    cargo doc --open
+    (cd resource-tracker-rs-book && mdbook build) & cargo doc & wait
+    xdg-open resource-tracker-rs-book/book/index.html &
+    xdg-open target/doc/resource_tracker_rs/index.html &
 
 test:
     cargo test

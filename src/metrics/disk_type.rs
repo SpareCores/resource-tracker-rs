@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 pub enum DiskType {
     /// NVMe SSD (PCIe-attached).
     Nvme,
-    /// SATA/SAS SSD - /sys/block/<dev>/queue/rotational == 0.
+    /// SATA/SAS SSD - `/sys/block/<dev>/queue/rotational` == 0.
     Ssd,
-    /// Spinning hard disk - /sys/block/<dev>/queue/rotational == 1.
+    /// Spinning hard disk - `/sys/block/<dev>/queue/rotational` == 1.
     Hdd,
 }

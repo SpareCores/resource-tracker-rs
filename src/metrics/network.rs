@@ -17,7 +17,7 @@ pub struct NetworkMetrics {
     // Link state - polled each interval (operstate can flap; speed can
     // change on auto-negotiation).
     // ------------------------------------------------------------------
-    /// "up", "down", "unknown", etc. from /sys/class/net/<iface>/operstate.
+    /// "up", "down", "unknown", etc. from `/sys/class/net/<iface>/operstate`.
     pub operstate: Option<String>,
     /// Link speed in Mbps. -1 when the driver does not report it.
     pub speed_mbps: Option<i64>,
