@@ -79,8 +79,8 @@ The binary MUST accept the following flags via a command line parser:
 | `-f`  | `--format`         | enum     | `json`                     | Output format: `json` or `csv`                          |
 |       | `--version`        | flag     |                            | Print binary version and exit                           |
 
-All metadata fields listed in §9.3 (job_name, project_name, stage_name, etc.)
-MUST also be accepted as CLI flags.  See §9.3 for the full flag and environment
+All metadata fields listed in Section 9.3 (job_name, project_name, stage_name, etc.)
+MUST also be accepted as CLI flags.  See Section 9.3 for the full flag and environment
 variable table.
 
 **Shell-wrapper mode (MVP target):** The binary SHOULD support being used as a
@@ -121,7 +121,7 @@ Unrecognized keys MUST be silently ignored.
 ### 3.4 Verifiable Configuration Tests
 
 - `T-CFG-01`: Running with no flags produces valid JSON Lines output on stdout.
-- `T-CFG-02`: `--format csv` emits a header line matching the exact column list in §6.2 before the first data row.
+- `T-CFG-02`: `--format csv` emits a header line matching the exact column list in Section 6.2 before the first data row.
 - `T-CFG-03`: `--interval 0` exits with code ≠ 0.
 - `T-CFG-04`: A TOML file with `[tracker] interval_secs = 3` results in
   samples separated by ≈ 3 seconds when no `--interval` flag is provided.
@@ -134,12 +134,12 @@ Unrecognized keys MUST be silently ignored.
 
 On startup the binary MUST:
 
-1. Parse configuration (§3).
+1. Parse configuration (Section 3).
 2. Initialize all collectors.
 3. Execute one warm-up collection pass to prime delta state in stateful collectors (`CpuCollector`, `NetworkCollector`, `DiskCollector`).
 4. Sleep exactly one full interval.
 5. Emit the CSV header (if format = CSV) <u>before</u> the first data row.
-6. Enter the polling loop (§5).
+6. Enter the polling loop (Section 5).
 
 The warm-up pass result MUST NOT be emitted to stdout.
 
@@ -150,7 +150,7 @@ The warm-up pass result MUST NOT be emitted to stdout.
 The loop MUST:
 
 1. Record `timestamp_secs` = current Unix time as `u64` (seconds since UNIX epoch, UTC).
-2. Collect all metric subsystems (§6.1) in the order: CPU, Memory, Network, Disk, GPU.
+2. Collect all metric subsystems (Section 6.1) in the order: CPU, Memory, Network, Disk, GPU.
 3. Serialize and emit one line to stdout per the chosen format (Section 6.2, Section 6.3).
 4. Sleep the configured interval.
 5. Repeat indefinitely until killed.
@@ -183,9 +183,9 @@ pub struct Sample {
 Source: `/proc/stat` tick deltas; `/proc/<pid>/stat` for process tracking.
 
 > **Note:** `total_cores` (logical CPU count) is a static host property that
-> rarely changes.  It belongs in the host discovery snapshot (§8.1) rather than
+> rarely changes.  It belongs in the host discovery snapshot (Section 8.1) rather than
 > in every per-second sample.  It is referenced here only for computing
-> `cpu_usage` in the CSV output (§7.2).
+> `cpu_usage` in the CSV output (Section 7.2).
 
 | Field                 | Type          | Unit             | Source                 | Notes                                                              |
 |-----------------------|---------------|------------------|------------------------|--------------------------------------------------------------------|
@@ -294,23 +294,31 @@ partitions and device-mapper synthetic devices unless mounted independently).
 | `model`               | `Option<String>`        | —       | `/sys/block/<dev>/device/model`            |                            |
 | `vendor`              | `Option<String>`        | —       | `/sys/block/<dev>/device/vendor`           |                            |
 | `serial`              | `Option<String>`        | —       | `/sys/block/<dev>/device/wwid` or `serial` |                            |
-| `device_type`         | `Option<DiskType>`      | —       | `/sys/block/<dev>/queue/rotational`        | `HDD`, `SSD`, or `Unknown` |
+| `device_type`         | `Option<DiskType>`      | —       | `/sys/block/<dev>/queue/rotational`        | `Nvme`, `Ssd`, or `Hdd`; `None` when type cannot be determined |
 | `capacity_bytes`      | `Option<u64>`           | bytes   | `/sys/block/<dev>/size × 512`              |                            |
 | `mounts`              | `Vec<DiskMountMetrics>` | —       | `statvfs(3)`                               | One per mount point        |
 | `read_bytes_per_sec`  | `f64`                   | bytes/s | `/proc/diskstats` Δ                        |                            |
 | `write_bytes_per_sec` | `f64`                   | bytes/s | `/proc/diskstats` Δ                        |                            |
-| `read_bytes_total`    | `u64`                   | bytes   | `/proc/diskstats` sectors × 512            | Cumulative since boot      |
-| `write_bytes_total`   | `u64`                   | bytes   | `/proc/diskstats` sectors × 512            | Cumulative since boot      |
+| `read_bytes_total`    | `u64`                   | bytes   | `/proc/diskstats` sectors × sector_size    | Cumulative since boot; see sector size note |
+| `write_bytes_total`   | `u64`                   | bytes   | `/proc/diskstats` sectors × sector_size    | Cumulative since boot; see sector size note |
 
 `DiskMountMetrics` fields:
 
-| Field             | Type             | Unit  | Notes                                       |
-|-------------------|------------------|-------|---------------------------------------------|
-| `mount_point`     | `String`         | —     | e.g. `"/"`                                  |
-| `fs_type`         | `Option<String>` | —     | e.g. `"ext4"`                               |
-| `total_bytes`     | `u64`            | bytes | `statvfs.f_blocks × f_bsize`                |
-| `available_bytes` | `u64`            | bytes | `statvfs.f_bavail × f_bsize` (unprivileged) |
-| `used_bytes`      | `u64`            | bytes | `total_bytes − (statvfs.f_bfree × f_bsize)` |
+| Field             | Type     | Unit  | Notes                                        |
+|-------------------|----------|-------|----------------------------------------------|
+| `mount_point`     | `String` | —     | e.g. `"/"`                                   |
+| `filesystem`      | `String` | —     | Filesystem type from `/proc/mounts`; e.g. `"ext4"`, `"xfs"` |
+| `total_bytes`     | `u64`    | bytes | `statvfs.f_blocks × f_bsize`                 |
+| `available_bytes` | `u64`    | bytes | `statvfs.f_bavail × f_bsize` (unprivileged)  |
+| `used_bytes`      | `u64`    | bytes | `total_bytes − (statvfs.f_bfree × f_bsize)`  |
+| `used_pct`        | `f64`    | %     | `used_bytes / total_bytes × 100`; 0.0 when total == 0 |
+
+> **Sector size note:** The current implementation hard-codes 512 bytes/sector for
+> `/proc/diskstats` conversions.  Python's `get_sector_sizes()` reads
+> `/sys/block/<dev>/queue/hw_sector_size` (fallback 512).  On 4K-native drives
+> (some NVMe) the Rust code will under-count I/O bytes by up to 8×.  A future
+> fix should read `/sys/block/<dev>/queue/logical_block_size` at startup and use
+> the actual sector size.  See implementation plan P-DSK-SECTOR.
 
 **Verifiable DiskMetrics Tests:**
 
@@ -403,13 +411,13 @@ Column definitions:
 | `processes`           | `cpu.process_count`   | count            | direct                                                                  |
 | `utime`               | `cpu.utime_secs`      | seconds          | direct; 3 decimal places                                                |
 | `stime`               | `cpu.stime_secs`      | seconds          | direct; 3 decimal places                                                |
-| `cpu_usage`           | `cpu.utilization_pct` | fractional cores | `utilization_pct / 100 × total_cores`; 4 decimal places                 |
-| `memory_free`         | `memory.free_kib`     | KiB              | direct                                                                  |
-| `memory_used`         | `memory.used_kib`     | KiB              | direct                                                                  |
-| `memory_buffers`      | `memory.buffers_kib`  | KiB              | direct                                                                  |
-| `memory_cached`       | `memory.cached_kib`   | KiB              | direct                                                                  |
-| `memory_active`       | `memory.active_kib`   | KiB              | direct                                                                  |
-| `memory_inactive`     | `memory.inactive_kib` | KiB              | direct                                                                  |
+| `cpu_usage`           | `cpu.utilization_pct` | fractional cores | `utilization_pct` directly; field is already in fractional cores (0..N_cores); 4 decimal places |
+| `memory_free`         | `memory.free_mib`     | MiB              | direct                                                                  |
+| `memory_used`         | `memory.used_mib`     | MiB              | direct                                                                  |
+| `memory_buffers`      | `memory.buffers_mib`  | MiB              | direct                                                                  |
+| `memory_cached`       | `memory.cached_mib`   | MiB              | direct                                                                  |
+| `memory_active`       | `memory.active_mib`   | MiB              | direct                                                                  |
+| `memory_inactive`     | `memory.inactive_mib` | MiB              | direct                                                                  |
 | `disk_read_bytes`     | disk subsystem        | bytes            | Σ `read_bytes_per_sec × interval_secs` across all devices; integer      |
 | `disk_write_bytes`    | disk subsystem        | bytes            | Σ `write_bytes_per_sec × interval_secs` across all devices; integer     |
 | `disk_space_total_gb` | disk mounts           | GB (10⁹)         | Σ `total_bytes / 1_000_000_000` across all mounts; 6 decimal places     |
@@ -425,7 +433,7 @@ Column definitions:
 
 - `T-CSV-01`: Header is emitted exactly once, as the first line.
 - `T-CSV-02`: Column count per data row equals column count in header.
-- `T-CSV-03`: `cpu_usage` column equals `utilization_pct / 100 × total_cores` to 4 dp.
+- `T-CSV-03`: `cpu_usage` column equals `utilization_pct` directly (field is already fractional cores, 0..N_cores) to 4 dp.
 - `T-CSV-04`: `disk_space_used_gb = disk_space_total_gb − disk_space_free_gb` for all rows.
 - `T-CSV-05`: CSV output for a given sample is byte-for-byte reproducible (deterministic).
 - `T-CSV-06`: No trailing commas; no quoted fields (all values are numbers or bare identifiers).
@@ -434,11 +442,8 @@ Column definitions:
 
 ## 8. Host and Cloud Discovery
 
-> **Note:** This section specifies functionality not yet implemented in the
-> prototype.  It is a planning target for v1.
-
 The binary SHOULD collect machine-level metadata once at startup and include it
-in the Sentinel API registration payload (§9.1).  Collected fields use the prefix `host_` or `cloud_`.
+in the Sentinel API registration payload (Section 9.1).  Collected fields use the prefix `host_` or `cloud_`.
 
 ### 8.1 Host Discovery
 
@@ -485,16 +490,14 @@ the first sample emission.
 
 ## 9. Sentinel API Streaming (Extra Component)
 
-> **Note:** This section specifies the data-streaming layer not yet implemented
-> in the prototype.  Activation is gated on the `SENTINEL_API_TOKEN` environment variable being set.
+Activation is gated on the `SENTINEL_API_TOKEN` environment variable being set.
 
-##### Open Questions
+> **Resolved design decisions:**
+> 1. Streaming is enabled automatically whenever `SENTINEL_API_TOKEN` is set; no additional flag needed.
+> 2. Upload format is `csv.gz` only; `jsonl.gz` is not supported.
+> 3. Streaming is not separately configurable via TOML or CLI beyond the token env var.
+> 4. On network unavailability: `start_run` logs a warning and disables streaming; local stdout output continues normally (see Section 11 error handling).
 
- 1. Should data always be streamed by default? Yes, if a Token is set.
- 1. Can the format be `jsonl.gz` instead of `csv`? Use `csv.gz` 
- 1. Should it be configurable to disable/enable in the TOML file or by CLAP arguments?
- 1. What error behavior should be exhibited if the run is in a sandbox with network unavailable?
- 
 
 ### 9.1 Authentication
 
@@ -513,31 +516,32 @@ If `SENTINEL_API_TOKEN` is not set, all streaming functionality MUST be silently
 
 At startup (after host/cloud discovery), the binary MUST POST to the data ingestion endpoint to register a new Run.
 
-Request payload (JSON, Content-Type: `application/json`):
+POST `/runs` (default base URL: `https://api.sentinel.sparecores.net`).
+
+Request payload (JSON, Content-Type: `application/json`): all metadata, host, and
+cloud fields are merged into a **flat** top-level object (no nesting):
 
 ```json
 {
-  "metadata": {
-    "job_name": "...",
-    "project_name": "...",
-    "pid": 12345,
-    ...
-  },
-  "host": { ... },
-  "cloud": { ... }
+  "job_name": "...",
+  "project_name": "...",
+  "pid": 12345,
+  "host_vcpus": 8,
+  "cloud_vendor_id": "aws",
+  ...
 }
 ```
 
 Response fields the binary MUST store:
 
-| Response Field                         | Type                | Usage                                  |
-|----------------------------------------|---------------------|----------------------------------------|
-| `run_id`                               | `String`            | Referenced in all subsequent API calls |
-| `upload_uri_prefix`                    | `String`            | S3 URI prefix for metric uploads       |
-| `upload_credentials.access_key_id`     | `String`            | STS credential                         |
-| `upload_credentials.secret_access_key` | `String`            | STS credential                         |
-| `upload_credentials.session_token`     | `String`            | STS credential                         |
-| `upload_credentials.expiry`            | `String` (ISO 8601) | STS credential expiry                  |
+| Response Field                      | Type                | Usage                                  |
+|-------------------------------------|---------------------|----------------------------------------|
+| `run_id`                            | `String`            | Referenced in all subsequent API calls |
+| `upload_uri_prefix`                 | `String`            | S3 URI prefix for metric uploads       |
+| `upload_credentials.access_key`     | `String`            | STS credential                         |
+| `upload_credentials.secret_key`     | `String`            | STS credential                         |
+| `upload_credentials.session_token`  | `String`            | STS credential                         |
+| `upload_credentials.expiration`     | `String` (ISO 8601) | STS credential expiry; optional        |
 
 #### 9.2.2 Batch Upload (Background Thread)
 
@@ -551,8 +555,8 @@ The binary MUST start a background thread that:
 5. Uploads via AWS Signature V4 (Section 10).
 6. Appends the uploaded URI to an internal list `uploaded_uris`.
 
-If STS credentials are within **5 minutes** of expiry, the binary MUST refresh
-them by POSTing to the credential-refresh endpoint before attempting the upload.
+If STS credentials are within **5 minutes** of `expiration`, the binary MUST refresh
+them by POSTing to `/runs/{run_id}/refresh-credentials` before attempting the upload.
 
 Upload failures MUST be retried at least once with exponential back-off before
 being recorded as errors.  After 3 consecutive upload failures the background
@@ -563,26 +567,31 @@ thread MUST log a warning and continue buffering (data is not lost).
 - `T-STR-01`: Without `SENTINEL_API_TOKEN`, no HTTP connection is made.
 - `T-STR-02`: A batch upload request contains `Content-Encoding: gzip` and the body decompresses to valid CSV or JSONL.
 - `T-STR-03`: `uploaded_uris` contains the S3 URIs of all successfully uploaded batches.
-- `T-STR-04`: Credential refresh is triggered when ≤ 5 minutes remain before expiry.
+- `T-STR-04`: Credential refresh is triggered when ≤ 5 minutes remain before expires_at.
 
 #### 9.2.3 End of Run
 
-When the tracked process terminates (or the binary receives SIGTERM/SIGINT), the binary MUST:
+When the tracked process terminates (or the binary receives SIGTERM), the binary MUST:
+
+> **SIGINT note:** An explicit SIGINT handler is not installed.  When the binary
+> is used in shell-wrapper mode, Ctrl-C is delivered to the entire process group,
+> so both the child and the tracker receive SIGINT and exit together.  Explicit
+> SIGTERM forwarding to the child process is a future enhancement.
 
 1. Flush any remaining samples as a final batch upload (if `uploaded_uris` is non-empty).
-2. POST to the data ingestion endpoint to close the Run, including:
+2. POST to `/runs/{run_id}/finish` to close the Run, including:
    - `run_id`
    - `exit_code` (i32, if tracked process exited cleanly; else None)
-   - `run_status` enum: `"success"`, `"failure"`, or `"unknown"`
+   - `run_status` enum: `"finished"` (exit 0 or SIGTERM) or `"failed"` (non-zero exit)
    - `data_source`:
      - `"s3"` + `data_uris: Vec<String>` if any S3 uploads succeeded.
-     - `"local"` + `data_csv: <raw CSV string>` for short runs with no S3 uploads.
+     - `"inline"` + `data_csv: <base64(gzip(csv))>` for short runs with no S3 uploads.
 
 **Verifiable End-of-Run Tests:**
 
 - `T-EOR-01`: On SIGTERM, the binary exits with code 0 after flushing remaining data.
 - `T-EOR-02`: The close-run request body contains `run_id` matching the start-run response.
-- `T-EOR-03`: `data_source` is `"local"` when no S3 uploads occurred.
+- `T-EOR-03`: `data_source` is `"inline"` when no S3 uploads occurred.
 - `T-EOR-04`: `data_source` is `"s3"` when at least one S3 upload succeeded.
 
 ### 9.3 Metadata Fields
@@ -639,7 +648,7 @@ A PUT request to `https://<bucket>.s3.<region>.amazonaws.com/<key>` with:
 - `x-amz-content-sha256`: SHA-256 hex of body.
 - `x-amz-date`: `YYYYMMDDTHHmmSSZ` UTC.
 - `x-amz-security-token`: STS session token.
-- `Authorization`: AWS4-HMAC-SHA256 signature (see §10.4).
+- `Authorization`: AWS4-HMAC-SHA256 signature (see Section 10.4).
 
 ### 10.4 AWS Signature V4
 
@@ -735,7 +744,7 @@ The CSV output format MUST maintain byte-for-byte column-name compatibility
 with the Python `SystemTracker` output so that the Sentinel API backend can
 ingest both without schema changes.
 
-Confirmed equivalent columns (see §7.2 for derivation):
+Confirmed equivalent columns (see Section 7.2 for derivation):
 
 | Python column         | Rust CSV column       | Python unit      | Rust unit        |
 |-----------------------|-----------------------|------------------|------------------|
@@ -744,12 +753,12 @@ Confirmed equivalent columns (see §7.2 for derivation):
 | `utime`               | `utime`               | seconds          | seconds          |
 | `stime`               | `stime`               | seconds          | seconds          |
 | `cpu_usage`           | `cpu_usage`           | fractional cores | fractional cores |
-| `memory_free`         | `memory_free`         | KiB              | KiB              |
-| `memory_used`         | `memory_used`         | KiB              | KiB              |
-| `memory_buffers`      | `memory_buffers`      | KiB              | KiB              |
-| `memory_cached`       | `memory_cached`       | KiB              | KiB              |
-| `memory_active`       | `memory_active`       | KiB              | KiB              |
-| `memory_inactive`     | `memory_inactive`     | KiB              | KiB              |
+| `memory_free`         | `memory_free`         | MiB              | MiB              |
+| `memory_used`         | `memory_used`         | MiB              | MiB              |
+| `memory_buffers`      | `memory_buffers`      | MiB              | MiB              |
+| `memory_cached`       | `memory_cached`       | MiB              | MiB              |
+| `memory_active`       | `memory_active`       | MiB              | MiB              |
+| `memory_inactive`     | `memory_inactive`     | MiB              | MiB              |
 | `disk_read_bytes`     | `disk_read_bytes`     | bytes/interval   | bytes/interval   |
 | `disk_write_bytes`    | `disk_write_bytes`    | bytes/interval   | bytes/interval   |
 | `disk_space_total_gb` | `disk_space_total_gb` | GB (10⁹)         | GB (10⁹)         |

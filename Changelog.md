@@ -2,6 +2,147 @@
 
 ## [Unreleased]
 
+### Python reference alignment (2026-04-01)
+
+#### `src/sentinel/mod.rs` -- API base URL
+- Corrected `DEFAULT_API_BASE` from `https://sentinel.sparecores.com` to
+  `https://api.sentinel.sparecores.net` (matches `sentinel_api.py`).
+
+#### `src/sentinel/run.rs` -- endpoint paths, payload shape, status values, encoding
+- `start_run` payload: changed from nested `{metadata:{...}, host:{...}, cloud:{...}}`
+  to flat dict using `#[serde(flatten)]` on all three fields (matches Python
+  `register_run` which merges all dicts at the top level).
+- `refresh_credentials` endpoint: `/runs/{id}/credentials/refresh` →
+  `/runs/{id}/refresh-credentials`.
+- `close_run` endpoint: `/runs/{id}/close` → `/runs/{id}/finish`.
+- `run_status` values: `"success"`/`"failure"`/`"unknown"` →
+  `"finished"`/`"failed"` (matches Python `RunStatus` enum).
+- `DataSource::Local` renamed to `DataSource::Inline`; serde value `"local"` →
+  `"inline"` (matches Python `DataSource.inline`).
+- `data_csv` encoding: inline fallback now gzip-compresses then base64-encodes the
+  CSV before sending (matches Python `b64encode(data_csv)`).
+- `RawCredentials` field names corrected to `access_key`, `secret_key`,
+  `session_token` (matches live API response); `expiration` made
+  `Option<String>` with `#[serde(alias = "expires_at")]` so missing or
+  differently-named fields fall back to `"2099-01-01T00:00:00Z"` instead of
+  aborting.
+- Parse error messages no longer include the raw response body; replaced with
+  byte-count only (`{N} bytes`) to prevent STS credentials leaking to stderr.
+
+### Phase 5 -- Remaining Work (2026-04-01)
+
+#### P-S3-CONTENT-ENCODING: `Content-Encoding: gzip` added to S3 PUT (`src/sentinel/s3.rs`)
+- Added `.header("Content-Encoding", "gzip")` to the `s3_put_to` call chain.
+- Extended T-S3-06 (`s3_put_to_mock_server_returns_uri`) to capture the raw
+  request bytes from the mock TCP server via `mpsc::channel` and assert that
+  `content-encoding: gzip` is present (case-insensitive).
+
+#### P-S3-BACKOFF: Exponential backoff for S3 upload retry (`src/sentinel/upload.rs`)
+- Replaced the single flat 2s retry with two retries: retry 1 after 2s, retry 2
+  after 4s (Section 9.2.2: "retry at least once with exponential back-off").
+- Error message now includes `retry1:` / `retry2:` labels for log readability.
+
+#### Release-build warnings eliminated (`src/main.rs`, `src/config.rs`, `src/sentinel/`)
+- `handle_sigterm as libc::sighandler_t` -- added intermediate `*const ()` cast to
+  silence `function_casts_as_integer` lint (compiler-suggested fix).
+- Removed unused `pub const DEFAULT_UPLOAD_TIMEOUT_SECS` from `config.rs`.
+- Removed unused `request_shutdown` method from `BatchUploader`; callers already
+  hold the `Arc<AtomicBool>` via `shutdown_flag()`.
+- Removed unused `pub use` re-exports (`refresh_credentials`, `UploadCredentials`,
+  `SampleBuffer`) from `sentinel/mod.rs`.
+- Release build now compiles with zero warnings.
+
+#### P-TEST-SMOKE: Missing spec tests added (`tests/smoke.rs`, `src/collector/cpu.rs`)
+
+Binary-level integration tests (19 new in `tests/smoke.rs`):
+- T-CPU-03: `process_cores_used` and `process_child_count` are null without `--pid`
+- T-CPU-04: `process_cores_used >= 0` when `--pid <self>` is supplied
+- T-MEM-01: `free_mib + used_mib + buffers_mib + cached_mib <= total_mib`
+- T-MEM-02: `used_pct` in [0.0, 100.0]
+- T-MEM-03: `swap_used_pct == 0.0` when `swap_total_mib == 0` (skipped if swap present)
+- T-MEM-04: `available_mib <= total_mib`
+- T-NET-01: `rx_bytes_per_sec >= 0` and `tx_bytes_per_sec >= 0` per interface
+- T-NET-02: `rx_bytes_total` non-decreasing across two consecutive samples
+- T-NET-03: loopback `lo` absent from network array
+- T-DSK-01: `read_bytes_per_sec >= 0` and `write_bytes_per_sec >= 0` per device
+- T-DSK-02: `used_bytes + available_bytes <= total_bytes` per mount
+- T-DSK-03: `capacity_bytes > 0` when present
+- T-GPU-01: `gpu` array empty on CPU-only host (skipped when GPU device detected)
+- T-OUT-02: `timestamp_secs` is a positive integer
+- T-OUT-03: `resource-tracker-rs-version` is a semver string
+- T-CLD-01: first sample arrives within 5s on a non-cloud host
+- T-CFG-04: TOML `interval_secs = 2` controls sample spacing (~4s for 2 samples)
+- T-CFG-05: CLI `--interval 2` overrides TOML `interval_secs = 5` (2 samples in < 8s)
+- T-CFG-06: nonexistent TOML config path silently falls back to defaults
+- T-EOR-01: SIGTERM causes the binary to exit with code 0
+
+CSV integration tests (6 new in `tests/smoke.rs`):
+- `csv_disk_io_bytes_nonneg`: `disk_read_bytes` and `disk_write_bytes` parse as u64
+- `csv_net_bytes_nonneg`: `net_recv_bytes` and `net_sent_bytes` parse as u64
+- `csv_disk_space_invariant`: `disk_space_used_gb + disk_space_free_gb <= disk_space_total_gb`
+- `csv_memory_fields_nonneg`: all six memory columns parse as non-negative u64
+- `csv_cpu_time_fields_nonneg`: `utime >= 0` and `stime >= 0`
+- `csv_gpu_fields_nonneg`: `gpu_usage >= 0`, `gpu_vram >= 0`, `gpu_utilized` parses
+
+Unit test (1 new in `src/collector/cpu.rs`):
+- T-CPU-06: first `collect()` returns 0.0 for all delta fields
+  (`utilization_pct`, `per_core_pct`, `utime_secs`, `stime_secs`)
+
+#### P-DSK-SECTOR: Per-device sector size for disk I/O accounting (`src/collector/disk.rs`)
+- Added `sector_size: u32` to `DeviceInfo`.
+- `read_device_info` reads `/sys/block/<dev>/queue/hw_sector_size`; falls back to 512.
+- `collect()` uses per-device `sector_size` for `read_bytes_per_sec`,
+  `write_bytes_per_sec`, `read_bytes_total`, and `write_bytes_total`.
+  Capacity bytes still use the fixed 512 (kernel reports `/sys/block/<dev>/size`
+  in 512-byte logical sectors regardless of physical sector size).
+- `sector_size` stored as `u32` so `f64::from(sector_size)` and
+  `u64::from(sector_size)` avoid `as` casts (per project convention).
+- Two new unit tests: `T-DSK-SECTOR` (`sector_size_4k_gives_8x_bytes`) and
+  `sector_size_fallback_is_512`.
+
+---
+
+### Priority 4 -- Sentinel API Streaming: tests and spec fixes (2026-04-01)
+
+#### Spec corrections (`resource-tracker-rs-book/src/Specification.md`)
+- T-CSV-03: corrected stale formula `utilization_pct / 100 × total_cores` to
+  `utilization_pct` directly; field is already fractional cores (0..N_cores).
+  Confirmed by PR #1 Changelog entry.
+- Column table: updated `cpu_usage` computation note to match code.
+- Memory column entries: updated field names and units from `*_kib / KiB`
+  to `*_mib / MiB` to match the rename made in Priority 1.
+
+#### `src/output/csv.rs` -- T-CSV-01 through T-CSV-06
+- `csv_header_is_first_line_no_embedded_newline` (T-CSV-01)
+- `csv_row_column_count_matches_header` (T-CSV-02)
+- `csv_cpu_usage_is_utilization_pct_direct` (T-CSV-03): annotated stale spec formula
+- `csv_disk_space_used_equals_total_minus_free` (T-CSV-04)
+- `csv_output_is_deterministic` (T-CSV-05)
+- `csv_no_trailing_commas_no_quoted_fields` (T-CSV-06)
+
+#### `src/sentinel/upload.rs` -- T-STR-02 + completeness check
+- `gzip_compress_decompresses_to_valid_csv` (T-STR-02): verifies gzip magic bytes,
+  round-trip decompression, header as first line, and per-row column count.
+- `samples_to_csv_all_lines_end_with_newline`: every line (header and data) ends `\n`.
+- Fixed call site: `region_cache.get_or_detect(&bucket, &agent)` corrected to
+  `region_cache.get_or_detect(&bucket)` after `RegionCache` API was updated.
+
+#### `src/sentinel/run.rs` -- T-EOR-02, T-EOR-03, T-EOR-04
+- `close_run_request_contains_run_id` (T-EOR-02)
+- `close_run_data_source_local_when_no_uploads` (T-EOR-03)
+- `close_run_data_source_s3_when_uploads_present` (T-EOR-04)
+
+#### `src/sentinel/mod.rs` -- T-STR-01
+- `no_token_returns_none` (T-STR-01): `from_env()` returns `None` without token.
+- `empty_token_returns_none`: empty-string token also returns `None`.
+
+#### `src/sentinel/s3.rs` -- bug fix
+- Added `use std::io::{Read, Write};` in test module (was missing `Read`).
+- Corrected `epoch_to_utc_known_date` test: timestamp `1_743_510_896` was 2025-04-01,
+  not 2026-04-01; corrected to `1_775_046_896`.
+
+---
+
 ### Priority 3 -- Host and Cloud Discovery (2026-04-01)
 
 #### `HostInfo` and `CloudInfo` structs added (`src/metrics/host.rs`)

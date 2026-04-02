@@ -334,6 +334,120 @@ fn csv_two_rows_have_nondecreasing_timestamps() {
     assert!(ts2 >= ts1, "timestamps must be non-decreasing");
 }
 
+/// Helper: parse a CSV row into a lookup closure by column name.
+/// Returns a closure `col(name) -> &str`.
+fn csv_row_col<'h, 'r>(
+    headers: &'h [&'r str],
+    row: &'r [&'r str],
+) -> impl Fn(&str) -> &'r str + 'h {
+    move |name: &str| {
+        let idx = headers
+            .iter()
+            .position(|&h| h == name)
+            .unwrap_or_else(|| panic!("column '{name}' not found in CSV header"));
+        row[idx]
+    }
+}
+
+/// T-DSK-01 (CSV): disk_read_bytes and disk_write_bytes are >= 0.
+#[test]
+fn csv_disk_io_bytes_nonneg() {
+    let lines = collect_lines(&["--interval", "1", "--format", "csv"], 2);
+    assert!(lines.len() >= 2);
+    let headers: Vec<&str> = lines[0].split(',').collect();
+    let row:     Vec<&str> = lines[1].split(',').collect();
+    let col = csv_row_col(&headers, &row);
+
+    let read:  u64 = col("disk_read_bytes").parse().expect("disk_read_bytes: not u64");
+    let write: u64 = col("disk_write_bytes").parse().expect("disk_write_bytes: not u64");
+    // u64 is always >= 0; these assertions guard against future type changes.
+    let _ = (read, write);
+}
+
+/// T-NET-01 (CSV): net_recv_bytes and net_sent_bytes are >= 0.
+#[test]
+fn csv_net_bytes_nonneg() {
+    let lines = collect_lines(&["--interval", "1", "--format", "csv"], 2);
+    assert!(lines.len() >= 2);
+    let headers: Vec<&str> = lines[0].split(',').collect();
+    let row:     Vec<&str> = lines[1].split(',').collect();
+    let col = csv_row_col(&headers, &row);
+
+    let recv: u64 = col("net_recv_bytes").parse().expect("net_recv_bytes: not u64");
+    let sent: u64 = col("net_sent_bytes").parse().expect("net_sent_bytes: not u64");
+    let _ = (recv, sent);
+}
+
+/// T-DSK-02 (CSV): disk_space_used_gb + disk_space_free_gb <= disk_space_total_gb.
+#[test]
+fn csv_disk_space_invariant() {
+    let lines = collect_lines(&["--interval", "1", "--format", "csv"], 2);
+    assert!(lines.len() >= 2);
+    let headers: Vec<&str> = lines[0].split(',').collect();
+    let row:     Vec<&str> = lines[1].split(',').collect();
+    let col = csv_row_col(&headers, &row);
+
+    let total: f64 = col("disk_space_total_gb").parse().expect("disk_space_total_gb");
+    let used:  f64 = col("disk_space_used_gb").parse().expect("disk_space_used_gb");
+    let free:  f64 = col("disk_space_free_gb").parse().expect("disk_space_free_gb");
+    assert!(
+        used + free <= total * 1.001, // 0.1% tolerance for floating-point rounding
+        "disk_space_used_gb({used:.4}) + disk_space_free_gb({free:.4}) > \
+         disk_space_total_gb({total:.4})"
+    );
+}
+
+/// T-MEM-01 (CSV): all memory columns parse as non-negative integers.
+#[test]
+fn csv_memory_fields_nonneg() {
+    let lines = collect_lines(&["--interval", "1", "--format", "csv"], 2);
+    assert!(lines.len() >= 2);
+    let headers: Vec<&str> = lines[0].split(',').collect();
+    let row:     Vec<&str> = lines[1].split(',').collect();
+    let col = csv_row_col(&headers, &row);
+
+    for name in &[
+        "memory_free", "memory_used", "memory_buffers",
+        "memory_cached", "memory_active", "memory_inactive",
+    ] {
+        let v: u64 = col(name).parse().unwrap_or_else(|_| panic!("{name}: not u64"));
+        let _ = v; // u64 is always >= 0; parse success is the key assertion
+    }
+}
+
+/// cpu time fields (utime, stime) must parse as non-negative floats.
+#[test]
+fn csv_cpu_time_fields_nonneg() {
+    let lines = collect_lines(&["--interval", "1", "--format", "csv"], 2);
+    assert!(lines.len() >= 2);
+    let headers: Vec<&str> = lines[0].split(',').collect();
+    let row:     Vec<&str> = lines[1].split(',').collect();
+    let col = csv_row_col(&headers, &row);
+
+    let utime: f64 = col("utime").parse().expect("utime: not f64");
+    let stime: f64 = col("stime").parse().expect("stime: not f64");
+    assert!(utime >= 0.0, "utime must be >= 0, got {utime}");
+    assert!(stime >= 0.0, "stime must be >= 0, got {stime}");
+}
+
+/// T-GPU-01 (CSV): gpu_usage and gpu_vram parse as non-negative floats;
+/// gpu_utilized parses as a non-negative integer.
+#[test]
+fn csv_gpu_fields_nonneg() {
+    let lines = collect_lines(&["--interval", "1", "--format", "csv"], 2);
+    assert!(lines.len() >= 2);
+    let headers: Vec<&str> = lines[0].split(',').collect();
+    let row:     Vec<&str> = lines[1].split(',').collect();
+    let col = csv_row_col(&headers, &row);
+
+    let usage:    f64 = col("gpu_usage").parse().expect("gpu_usage: not f64");
+    let vram:     f64 = col("gpu_vram").parse().expect("gpu_vram: not f64");
+    let utilized: u32 = col("gpu_utilized").parse().expect("gpu_utilized: not u32");
+    assert!(usage >= 0.0,    "gpu_usage must be >= 0, got {usage}");
+    assert!(vram  >= 0.0,    "gpu_vram must be >= 0, got {vram}");
+    let _ = utilized; // u32 is always >= 0
+}
+
 // ---------------------------------------------------------------------------
 // Shell-wrapper mode (Priority 2)
 // ---------------------------------------------------------------------------
@@ -458,4 +572,413 @@ fn tag_flag_repeatable() {
     assert_eq!(lines.len(), 1, "binary should start normally with multiple --tag flags");
     let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
     assert!(v.is_object());
+}
+
+// ---------------------------------------------------------------------------
+// T-OUT-02 / T-OUT-03: output metadata
+// ---------------------------------------------------------------------------
+
+/// T-OUT-02: timestamp_secs is a positive integer.
+#[test]
+fn json_timestamp_secs_is_positive_integer() {
+    let lines = collect_lines(&["--interval", "1"], 1);
+    let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
+    let ts = v["timestamp_secs"]
+        .as_u64()
+        .expect("timestamp_secs must be a non-negative integer");
+    assert!(ts > 0, "timestamp_secs must be a positive integer, got {ts}");
+}
+
+/// T-OUT-03: resource-tracker-rs-version key present and is a semver string.
+#[test]
+fn json_version_key_is_semver() {
+    let lines = collect_lines(&["--interval", "1"], 1);
+    let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
+    let version_key = "resource-tracker-rs-version";
+    let ver = v[version_key]
+        .as_str()
+        .unwrap_or_else(|| panic!("'{version_key}' missing or not a string"));
+    // Must contain at least two dots (semver: major.minor.patch).
+    assert!(
+        ver.chars().filter(|&c| c == '.').count() >= 2,
+        "version '{ver}' does not look like semver (major.minor.patch)"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// T-CPU-03 / T-CPU-04: process metrics
+// ---------------------------------------------------------------------------
+
+/// T-CPU-03: Without --pid, process_cores_used and process_child_count are null.
+#[test]
+fn json_process_fields_null_without_pid() {
+    let lines = collect_lines(&["--interval", "1"], 1);
+    let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
+    assert!(
+        v["cpu"]["process_cores_used"].is_null(),
+        "process_cores_used must be null without --pid"
+    );
+    assert!(
+        v["cpu"]["process_child_count"].is_null(),
+        "process_child_count must be null without --pid"
+    );
+}
+
+/// T-CPU-04: With --pid <self>, process_cores_used is >= 0.
+#[test]
+fn json_process_cores_used_nonneg_with_pid() {
+    // Use the current test process PID so it is guaranteed to be running.
+    let pid = std::process::id().to_string();
+    let lines = collect_lines(&["--interval", "1", "--pid", &pid], 1);
+    assert!(!lines.is_empty(), "expected at least one sample with --pid");
+    let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
+    let cores_used = v["cpu"]["process_cores_used"]
+        .as_f64()
+        .expect("process_cores_used must be a number when --pid is supplied");
+    assert!(cores_used >= 0.0, "process_cores_used must be >= 0, got {cores_used}");
+}
+
+// ---------------------------------------------------------------------------
+// T-MEM-01 through T-MEM-04: memory invariants
+// ---------------------------------------------------------------------------
+
+/// T-MEM-01: free_mib + used_mib + buffers_mib + cached_mib <= total_mib.
+#[test]
+fn json_memory_components_dont_exceed_total() {
+    let lines = collect_lines(&["--interval", "1"], 1);
+    let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
+    let total    = v["memory"]["total_mib"].as_u64().expect("total_mib");
+    let free     = v["memory"]["free_mib"].as_u64().expect("free_mib");
+    let used     = v["memory"]["used_mib"].as_u64().expect("used_mib");
+    let buffers  = v["memory"]["buffers_mib"].as_u64().expect("buffers_mib");
+    let cached   = v["memory"]["cached_mib"].as_u64().expect("cached_mib");
+    let sum = free + used + buffers + cached;
+    assert!(
+        sum <= total,
+        "free({free}) + used({used}) + buffers({buffers}) + cached({cached}) = {sum} > total({total})"
+    );
+}
+
+/// T-MEM-02: used_pct is in [0.0, 100.0].
+#[test]
+fn json_memory_used_pct_in_range() {
+    let lines = collect_lines(&["--interval", "1"], 1);
+    let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
+    let pct = v["memory"]["used_pct"].as_f64().expect("used_pct");
+    assert!(pct >= 0.0 && pct <= 100.0, "used_pct must be in [0.0, 100.0], got {pct}");
+}
+
+/// T-MEM-03: swap_used_pct is 0.0 when swap_total_mib == 0 (skip if swap present).
+#[test]
+fn json_swap_used_pct_zero_when_no_swap() {
+    let lines = collect_lines(&["--interval", "1"], 1);
+    let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
+    let swap_total = v["memory"]["swap_total_mib"].as_u64().unwrap_or(0);
+    if swap_total == 0 {
+        let swap_pct = v["memory"]["swap_used_pct"].as_f64().expect("swap_used_pct");
+        assert!(
+            swap_pct == 0.0,
+            "swap_used_pct must be 0.0 when swap_total_mib == 0, got {swap_pct}"
+        );
+    }
+    // If swap is present, no assertion is needed; the field may be nonzero.
+}
+
+/// T-MEM-04: available_mib <= total_mib.
+#[test]
+fn json_memory_available_le_total() {
+    let lines = collect_lines(&["--interval", "1"], 1);
+    let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
+    let available = v["memory"]["available_mib"].as_u64().expect("available_mib");
+    let total     = v["memory"]["total_mib"].as_u64().expect("total_mib");
+    assert!(
+        available <= total,
+        "available_mib ({available}) must be <= total_mib ({total})"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// T-NET-01 through T-NET-03: network metrics
+// ---------------------------------------------------------------------------
+
+/// T-NET-01: rx_bytes_per_sec and tx_bytes_per_sec are >= 0.0 for every interface.
+#[test]
+fn json_network_bytes_per_sec_nonneg() {
+    let lines = collect_lines(&["--interval", "1"], 1);
+    let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
+    let ifaces = v["network"].as_array().expect("network must be an array");
+    for iface in ifaces {
+        let name = iface["interface"].as_str().unwrap_or("?");
+        let rx = iface["rx_bytes_per_sec"].as_f64().expect("rx_bytes_per_sec");
+        let tx = iface["tx_bytes_per_sec"].as_f64().expect("tx_bytes_per_sec");
+        assert!(rx >= 0.0, "rx_bytes_per_sec must be >= 0 for {name}, got {rx}");
+        assert!(tx >= 0.0, "tx_bytes_per_sec must be >= 0 for {name}, got {tx}");
+    }
+}
+
+/// T-NET-02: rx_bytes_total is non-decreasing across two consecutive samples.
+#[test]
+fn json_network_rx_bytes_total_nondecreasing() {
+    let lines = collect_lines(&["--interval", "1"], 2);
+    assert_eq!(lines.len(), 2, "expected 2 JSON samples");
+    let a: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
+    let b: serde_json::Value = serde_json::from_str(&lines[1]).unwrap();
+    let ifaces_a = a["network"].as_array().expect("network array");
+    let ifaces_b = b["network"].as_array().expect("network array");
+    for ia in ifaces_a {
+        let name = ia["interface"].as_str().unwrap_or("");
+        if let Some(ib) = ifaces_b.iter().find(|x| x["interface"].as_str() == Some(name)) {
+            let total_a = ia["rx_bytes_total"].as_u64().unwrap_or(0);
+            let total_b = ib["rx_bytes_total"].as_u64().unwrap_or(0);
+            assert!(
+                total_b >= total_a,
+                "rx_bytes_total for {name} must not decrease: {total_a} -> {total_b}"
+            );
+        }
+    }
+}
+
+/// T-NET-03: Loopback interface "lo" must not appear in network output.
+#[test]
+fn json_network_no_loopback_interface() {
+    let lines = collect_lines(&["--interval", "1"], 1);
+    let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
+    let ifaces = v["network"].as_array().expect("network must be an array");
+    for iface in ifaces {
+        let name = iface["interface"].as_str().unwrap_or("");
+        assert_ne!(name, "lo", "loopback interface 'lo' must not appear in network output");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// T-DSK-01 through T-DSK-03: disk metrics
+// ---------------------------------------------------------------------------
+
+/// T-DSK-01: read_bytes_per_sec and write_bytes_per_sec are >= 0.0 for every device.
+#[test]
+fn json_disk_bytes_per_sec_nonneg() {
+    let lines = collect_lines(&["--interval", "1"], 1);
+    let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
+    let disks = v["disk"].as_array().expect("disk must be an array");
+    for disk in disks {
+        let dev = disk["device"].as_str().unwrap_or("?");
+        let r = disk["read_bytes_per_sec"].as_f64().expect("read_bytes_per_sec");
+        let w = disk["write_bytes_per_sec"].as_f64().expect("write_bytes_per_sec");
+        assert!(r >= 0.0, "read_bytes_per_sec must be >= 0 for {dev}, got {r}");
+        assert!(w >= 0.0, "write_bytes_per_sec must be >= 0 for {dev}, got {w}");
+    }
+}
+
+/// T-DSK-02: used_bytes + available_bytes <= total_bytes for every mount.
+#[test]
+fn json_disk_mount_space_invariant() {
+    let lines = collect_lines(&["--interval", "1"], 1);
+    let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
+    let disks = v["disk"].as_array().expect("disk must be an array");
+    for disk in disks {
+        let dev = disk["device"].as_str().unwrap_or("?");
+        let mounts = match disk["mounts"].as_array() {
+            Some(m) => m,
+            None    => continue,
+        };
+        for mount in mounts {
+            let mp    = mount["mount_point"].as_str().unwrap_or("?");
+            let total = mount["total_bytes"].as_u64().expect("total_bytes");
+            let used  = mount["used_bytes"].as_u64().expect("used_bytes");
+            let avail = mount["available_bytes"].as_u64().expect("available_bytes");
+            assert!(
+                used + avail <= total,
+                "used({used}) + avail({avail}) > total({total}) for {dev}:{mp}"
+            );
+        }
+    }
+}
+
+/// T-DSK-03: capacity_bytes is > 0 when present (not null).
+#[test]
+fn json_disk_capacity_positive_when_present() {
+    let lines = collect_lines(&["--interval", "1"], 1);
+    let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
+    let disks = v["disk"].as_array().expect("disk must be an array");
+    for disk in disks {
+        let dev = disk["device"].as_str().unwrap_or("?");
+        if let Some(cap) = disk["capacity_bytes"].as_u64() {
+            assert!(cap > 0, "capacity_bytes must be > 0 when present, device {dev}");
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// T-GPU-01: GPU vec is empty on CPU-only host
+// ---------------------------------------------------------------------------
+
+/// T-GPU-01: On a CPU-only host the gpu array is empty.
+/// This test always passes on the development machine; it is a documentation
+/// of the expected behavior and will fail if a GPU is unexpectedly reported.
+#[test]
+fn json_gpu_empty_on_cpu_only_host() {
+    // Only assert empty if there is no GPU driver present.
+    // Check for nvidia/amd GPU presence via /sys or /dev before asserting.
+    let has_gpu = std::path::Path::new("/dev/nvidia0").exists()
+        || std::path::Path::new("/dev/dri/renderD128").exists();
+
+    if !has_gpu {
+        let lines = collect_lines(&["--interval", "1"], 1);
+        let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
+        let gpu = v["gpu"].as_array().expect("gpu must be an array");
+        assert!(gpu.is_empty(), "gpu array must be empty on a CPU-only host");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// T-CLD-01: startup does not hang on non-cloud host
+// ---------------------------------------------------------------------------
+
+/// T-CLD-01: First sample arrives within 5 seconds even on a non-cloud host
+/// where all IMDS probes fail (each probe has a 2s timeout; they run in parallel).
+#[test]
+fn first_sample_arrives_within_5s() {
+    let start = std::time::Instant::now();
+    let lines = collect_lines(&["--interval", "1"], 1);
+    let elapsed = start.elapsed();
+    assert!(!lines.is_empty(), "expected at least one sample");
+    assert!(
+        elapsed < Duration::from_secs(5),
+        "first sample took {:?}, must arrive in < 5s (IMDS probes must not block startup)",
+        elapsed
+    );
+}
+
+// ---------------------------------------------------------------------------
+// T-CFG-04 / T-CFG-05 / T-CFG-06: TOML config file
+// ---------------------------------------------------------------------------
+
+fn write_temp_toml(content: &str) -> std::path::PathBuf {
+    let name = format!(
+        "rt-test-{}-{}.toml",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .subsec_nanos()
+    );
+    let path = std::env::temp_dir().join(name);
+    std::fs::write(&path, content).expect("failed to write temp TOML");
+    path
+}
+
+/// T-CFG-04: TOML `interval_secs = 2` produces ~2s spacing between samples.
+#[test]
+fn toml_interval_secs_controls_sample_spacing() {
+    let toml = write_temp_toml("[tracker]\ninterval_secs = 2\n");
+    let config_path = toml.to_string_lossy().to_string();
+
+    let start = std::time::Instant::now();
+    let lines = collect_lines(&["--config", &config_path], 2);
+    let elapsed = start.elapsed();
+
+    let _ = std::fs::remove_file(&toml);
+
+    assert_eq!(lines.len(), 2, "expected 2 samples");
+    // With interval=2: warm-up=2s + first sample, sleep 2s, second sample ~= 4s total.
+    // Allow generous bounds: [3s, 10s].
+    assert!(
+        elapsed >= Duration::from_secs(3),
+        "elapsed {:?} too short for 2s interval (expected >= 3s)",
+        elapsed
+    );
+    assert!(
+        elapsed < Duration::from_secs(10),
+        "elapsed {:?} too long (expected < 10s)",
+        elapsed
+    );
+}
+
+/// T-CFG-05: CLI `--interval 2` overrides TOML `interval_secs = 5`.
+/// Two samples must arrive in < 8s (not ~10s which a 5s interval would require).
+#[test]
+fn cli_interval_overrides_toml_interval() {
+    let toml = write_temp_toml("[tracker]\ninterval_secs = 5\n");
+    let config_path = toml.to_string_lossy().to_string();
+
+    let start = std::time::Instant::now();
+    let lines = collect_lines(&["--config", &config_path, "--interval", "2"], 2);
+    let elapsed = start.elapsed();
+
+    let _ = std::fs::remove_file(&toml);
+
+    assert_eq!(lines.len(), 2, "expected 2 samples");
+    // With CLI --interval 2 overriding TOML 5: two samples in ~4s.
+    // If TOML were used, two samples would take ~10s.
+    assert!(
+        elapsed < Duration::from_secs(8),
+        "elapsed {:?} suggests TOML interval (5s) was used instead of CLI (2s)",
+        elapsed
+    );
+}
+
+/// T-CFG-06: A nonexistent TOML config path silently falls back to defaults.
+#[test]
+fn missing_toml_config_falls_back_to_defaults() {
+    let lines = collect_lines(
+        &["--config", "/tmp/this-config-does-not-exist-rt-test.toml", "--interval", "1"],
+        1,
+    );
+    assert_eq!(lines.len(), 1, "binary must start normally when config file is missing");
+    let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
+    assert!(v.is_object(), "output must be valid JSON with fallback defaults");
+}
+
+// ---------------------------------------------------------------------------
+// T-EOR-01: SIGTERM causes clean exit with code 0
+// ---------------------------------------------------------------------------
+
+/// T-EOR-01: On SIGTERM the binary flushes and exits with code 0.
+#[test]
+fn sigterm_exits_zero() {
+    let mut child = Command::new(BINARY)
+        .args(["--interval", "1"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("failed to spawn binary");
+
+    // Wait for the first sample to confirm the binary is running.
+    let stdout = child.stdout.take().unwrap();
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines().take(1) {
+            let _ = tx.send(line.unwrap_or_default());
+        }
+    });
+    rx.recv_timeout(TIMEOUT).expect("binary did not emit a sample before SIGTERM");
+
+    // Send SIGTERM.
+    let pid = child.id().to_string();
+    Command::new("kill")
+        .args(["-TERM", &pid])
+        .status()
+        .expect("failed to send SIGTERM");
+
+    // Wait for exit (up to 5s).
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    let status = loop {
+        if let Ok(Some(s)) = child.try_wait() {
+            break s;
+        }
+        if std::time::Instant::now() > deadline {
+            child.kill().ok();
+            child.wait().ok();
+            panic!("binary did not exit within 5s after SIGTERM");
+        }
+        thread::sleep(Duration::from_millis(100));
+    };
+
+    assert_eq!(
+        status.code(),
+        Some(0),
+        "binary must exit with code 0 after SIGTERM, got: {:?}",
+        status.code()
+    );
 }

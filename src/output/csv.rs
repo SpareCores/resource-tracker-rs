@@ -82,3 +82,147 @@ pub fn sample_to_csv_row(s: &Sample, interval_secs: u64) -> String {
         gpu_utilized,
     )
 }
+
+// ---------------------------------------------------------------------------
+// Unit tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::metrics::{CpuMetrics, DiskMetrics, DiskMountMetrics, MemoryMetrics, Sample};
+
+    fn minimal_sample() -> Sample {
+        Sample {
+            timestamp_secs: 1_000_000,
+            job_name:       None,
+            cpu: CpuMetrics {
+                utilization_pct:     2.5,
+                utime_secs:          1.234,
+                stime_secs:          0.567,
+                process_count:       42,
+                per_core_pct:        vec![],
+                process_cores_used:  None,
+                process_child_count: None,
+            },
+            memory: MemoryMetrics {
+                total_mib:      8192,
+                free_mib:       1000,
+                available_mib:  2000,
+                used_mib:       2000,
+                used_pct:       25.0,
+                buffers_mib:    100,
+                cached_mib:     500,
+                swap_total_mib: 0,
+                swap_used_mib:  0,
+                swap_used_pct:  0.0,
+                active_mib:     1500,
+                inactive_mib:   300,
+            },
+            network: vec![],
+            disk:    vec![],
+            gpu:     vec![],
+        }
+    }
+
+    // T-CSV-01: header is the first line and contains no embedded newlines.
+    #[test]
+    fn csv_header_is_first_line_no_embedded_newline() {
+        let h = csv_header();
+        assert!(h.starts_with("timestamp,"), "header must start with 'timestamp,'");
+        assert!(!h.contains('\n'), "header must not contain an embedded newline");
+    }
+
+    // T-CSV-02: column count in each data row equals column count in header.
+    #[test]
+    fn csv_row_column_count_matches_header() {
+        let header_cols = csv_header().split(',').count();
+        let row = sample_to_csv_row(&minimal_sample(), 1);
+        let row_cols = row.split(',').count();
+        assert_eq!(
+            row_cols, header_cols,
+            "header has {header_cols} columns but row has {row_cols}: {row}"
+        );
+    }
+
+    // T-CSV-03: cpu_usage column equals utilization_pct (already fractional cores) to 4 dp.
+    //
+    // NOTE: The Specification.md table formula reads "utilization_pct / 100 × total_cores"
+    // which is stale.  PR #1 Changelog explicitly corrected this:
+    //   "Was: utilization_pct / 100.0 * total_cores; Now: utilization_pct directly
+    //    (field is already in fractional cores)."
+    // The CpuMetrics field definition in the spec and in metrics/cpu.rs both confirm
+    // utilization_pct is in range 0.0..N_cores, not 0.0..100.0.
+    // This test verifies the actual (correct) behavior.
+    #[test]
+    fn csv_cpu_usage_is_utilization_pct_direct() {
+        let mut sample = minimal_sample();
+        sample.cpu.utilization_pct = 3.1415;
+        let row = sample_to_csv_row(&sample, 1);
+        // Column order: timestamp(0),processes(1),utime(2),stime(3),cpu_usage(4),...
+        let cols: Vec<&str> = row.split(',').collect();
+        let cpu_usage: f64 = cols[4].parse()
+            .unwrap_or_else(|_| panic!("cpu_usage column is not numeric: {:?}", cols[4]));
+        assert!(
+            (cpu_usage - 3.1415_f64).abs() < 0.00005,
+            "cpu_usage {cpu_usage:.4} does not match utilization_pct 3.1415"
+        );
+    }
+
+    // T-CSV-04: disk_space_used_gb == disk_space_total_gb - disk_space_free_gb.
+    #[test]
+    fn csv_disk_space_used_equals_total_minus_free() {
+        let mut sample = minimal_sample();
+        sample.disk = vec![DiskMetrics {
+            device:            "sda".to_string(),
+            model:             None,
+            vendor:            None,
+            serial:            None,
+            device_type:       None,
+            capacity_bytes:    None,
+            mounts: vec![DiskMountMetrics {
+                mount_point:     "/".to_string(),
+                filesystem:      "ext4".to_string(),
+                total_bytes:     100_000_000_000,
+                used_bytes:      60_000_000_000,
+                available_bytes: 40_000_000_000,
+                used_pct:        60.0,
+            }],
+            read_bytes_per_sec:  0.0,
+            write_bytes_per_sec: 0.0,
+            read_bytes_total:    0,
+            write_bytes_total:   0,
+        }];
+        let row = sample_to_csv_row(&sample, 1);
+        // Column order: ...disk_space_total_gb(13),disk_space_used_gb(14),disk_space_free_gb(15),...
+        let cols: Vec<&str> = row.split(',').collect();
+        let total: f64 = cols[13].parse().unwrap();
+        let used:  f64 = cols[14].parse().unwrap();
+        let free:  f64 = cols[15].parse().unwrap();
+        assert!(
+            (used - (total - free)).abs() < 1e-9,
+            "disk_space_used_gb {used:.6} != total {total:.6} - free {free:.6}"
+        );
+    }
+
+    // T-CSV-05: output is byte-for-byte reproducible for the same sample.
+    #[test]
+    fn csv_output_is_deterministic() {
+        let sample = minimal_sample();
+        let r1 = sample_to_csv_row(&sample, 1);
+        let r2 = sample_to_csv_row(&sample, 1);
+        assert_eq!(r1, r2, "csv row output is not deterministic");
+    }
+
+    // T-CSV-06: no trailing commas; no quoted fields.
+    #[test]
+    fn csv_no_trailing_commas_no_quoted_fields() {
+        let row = sample_to_csv_row(&minimal_sample(), 1);
+        assert!(!row.ends_with(','),  "trailing comma in row: {row}");
+        assert!(!row.contains('"'),   "double-quoted field in row: {row}");
+        assert!(!row.contains('\''),  "single-quoted field in row: {row}");
+        let h = csv_header();
+        assert!(!h.ends_with(','), "trailing comma in header");
+        assert!(!h.contains('"'),  "double-quoted field in header");
+    }
+}

@@ -291,4 +291,33 @@ mod tests {
         // Apply clamp explicitly to show it would cap any value > 100.
         assert_eq!(raw.clamp(0.0, 100.0), 100.0);
     }
+
+    // T-CPU-06: the first call to collect() returns 0.0 for all delta fields
+    // (utilization_pct, per_core_pct, utime_secs, stime_secs).  A warm-up
+    // sleep then a second collect() produces real data.
+    #[test]
+    fn first_collect_returns_zero_for_delta_fields() {
+        let mut collector = CpuCollector::new(None);
+        let metrics = collector.collect().expect("first collect failed");
+        assert_eq!(
+            metrics.utilization_pct, 0.0,
+            "utilization_pct must be 0.0 on first collect, got {}",
+            metrics.utilization_pct
+        );
+        assert!(
+            metrics.per_core_pct.iter().all(|&v| v == 0.0),
+            "per_core_pct must be all-zero on first collect: {:?}",
+            metrics.per_core_pct
+        );
+        assert_eq!(
+            metrics.utime_secs, 0.0,
+            "utime_secs must be 0.0 on first collect, got {}",
+            metrics.utime_secs
+        );
+        assert_eq!(
+            metrics.stime_secs, 0.0,
+            "stime_secs must be 0.0 on first collect, got {}",
+            metrics.stime_secs
+        );
+    }
 }

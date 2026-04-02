@@ -33,6 +33,9 @@ struct DeviceInfo {
     serial:         Option<String>,
     device_type:    Option<DiskType>,
     capacity_bytes: Option<u64>,
+    /// Physical sector size in bytes used for I/O accounting.
+    /// Read from `/sys/block/<dev>/queue/hw_sector_size`; falls back to 512.
+    sector_size:    u32,
 }
 
 fn read_device_info(device: &str) -> DeviceInfo {
@@ -51,12 +54,21 @@ fn read_device_info(device: &str) -> DeviceInfo {
         }
     };
 
-    // /sys/block/<dev>/size reports 512-byte sectors regardless of physical sector size.
+    // /sys/block/<dev>/size reports 512-byte logical sectors regardless of
+    // physical sector size, so capacity always uses SECTOR_BYTES (512).
     let capacity_bytes = block_attr(device, "size")
         .and_then(|s| s.parse::<u64>().ok())
         .map(|sectors| sectors * SECTOR_BYTES);
 
-    DeviceInfo { model, vendor, serial, device_type, capacity_bytes }
+    // Physical sector size for I/O byte accounting.  On 4K-native NVMe drives
+    // this is 4096; on most SATA/HDD it is 512.  The kernel value is
+    // authoritative; fall back to 512 if absent or unparseable.
+    let sector_size = block_attr(device, "queue/hw_sector_size")
+        .and_then(|s| s.parse::<u32>().ok())
+        .filter(|&v| v >= 512)
+        .unwrap_or(u32::try_from(SECTOR_BYTES).unwrap_or(512));
+
+    DeviceInfo { model, vendor, serial, device_type, capacity_bytes, sector_size }
 }
 
 /// Discover all whole-disk block devices from /sys/block/ and cache their
@@ -189,6 +201,13 @@ impl DiskCollector {
             .map(|d| {
                 let info = self.device_cache.get(&d.name);
 
+                let sector_size: u32 = info.map_or(
+                    u32::try_from(SECTOR_BYTES).unwrap_or(512),
+                    |i| i.sector_size,
+                );
+                let sector_size_f64 = f64::from(sector_size);
+                let sector_size_u64 = u64::from(sector_size);
+
                 let (read_bps, write_bps) = match &self.prev {
                     None => (0.0, 0.0),
                     Some(prev) => {
@@ -197,9 +216,10 @@ impl DiskCollector {
                         let sw     = sectors_written[&d.name];
                         let psr    = prev.sectors_read.get(&d.name).copied().unwrap_or(sr);
                         let psw    = prev.sectors_written.get(&d.name).copied().unwrap_or(sw);
+                        // u64 -> f64 is lossy for very large values but no From impl exists in std.
                         (
-                            sr.saturating_sub(psr) as f64 * SECTOR_BYTES as f64 / secs,
-                            sw.saturating_sub(psw) as f64 * SECTOR_BYTES as f64 / secs,
+                            sr.saturating_sub(psr) as f64 * sector_size_f64 / secs,
+                            sw.saturating_sub(psw) as f64 * sector_size_f64 / secs,
                         )
                     }
                 };
@@ -214,8 +234,8 @@ impl DiskCollector {
                     mounts:         mounts_for_device(&d.name),
                     read_bytes_per_sec:  read_bps,
                     write_bytes_per_sec: write_bps,
-                    read_bytes_total:  sectors_read[&d.name] * SECTOR_BYTES,
-                    write_bytes_total: sectors_written[&d.name] * SECTOR_BYTES,
+                    read_bytes_total:  sectors_read[&d.name] * sector_size_u64,
+                    write_bytes_total: sectors_written[&d.name] * sector_size_u64,
                 }
             })
             .collect();
@@ -223,5 +243,38 @@ impl DiskCollector {
         metrics.sort_by(|a, b| a.device.cmp(&b.device));
         self.prev = Some(Snapshot { instant: now, sectors_read, sectors_written });
         Ok(metrics)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Unit tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // T-DSK-SECTOR: a 4K-native device (sector_size = 4096) produces byte
+    // counts 8x larger than the hard-coded 512 would give for the same
+    // sector delta.
+    #[test]
+    fn sector_size_4k_gives_8x_bytes() {
+        let sector_delta: u64 = 1000;
+        let sector_size_512:  u32 = 512;
+        let sector_size_4096: u32 = 4096;
+
+        let bytes_512  = sector_delta * u64::from(sector_size_512);
+        let bytes_4096 = sector_delta * u64::from(sector_size_4096);
+
+        assert_eq!(bytes_4096, bytes_512 * 8,
+            "4K sector should produce 8x the bytes of 512-byte sector");
+    }
+
+    // Verify read_device_info falls back to 512 when hw_sector_size is absent
+    // (non-existent device path).
+    #[test]
+    fn sector_size_fallback_is_512() {
+        let info = read_device_info("__nonexistent_device__");
+        assert_eq!(info.sector_size, 512);
     }
 }

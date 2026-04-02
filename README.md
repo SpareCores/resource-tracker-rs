@@ -229,7 +229,7 @@ The response contains:
    calls will need to reference that.
 - `upload_uri_prefix`: An S3 URI prefix to upload the metrics to.
 - `upload_credentials`: The temporary AWS STS session credentials for the upload
-  authentication, including an expiry date.
+  authentication, including an `expires_at` timestamp.
 
 Then the Resource Tracker should start a background thread (or similar solution)
 to upload collected metrics in batches (e.g. every 1 minute) as new objects

@@ -3,7 +3,6 @@ use serde::Deserialize;
 
 const DEFAULT_INTERVAL_SECS: u64 = 1;
 const DEFAULT_CONFIG_FILE: &str = "resource-tracker-rs.toml";
-pub const DEFAULT_UPLOAD_TIMEOUT_SECS: u64 = 30;
 
 // ---------------------------------------------------------------------------
 // Output format
