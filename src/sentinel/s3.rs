@@ -240,7 +240,7 @@ pub(crate) fn s3_put_to(
     let url = format!("{base_url}/{key}");
     let result = agent
         .put(&url)
-        .header("Content-Encoding",      "gzip")
+        .header("Content-Type",          "application/gzip")
         .header("Content-Length",        &body.len().to_string())
         .header("x-amz-content-sha256",  &body_sha256)
         .header("x-amz-date",            &amz_date)
@@ -468,12 +468,15 @@ mod tests {
         assert!(result.is_ok(), "expected Ok, got: {result:?}");
         assert_eq!(result.unwrap(), "s3://test-bucket/run-1/000001.csv.gz");
 
-        // Verify the request contained Content-Encoding: gzip (Section 9.2.2).
+        // Verify the request contained Content-Type: application/gzip.
+        // Using Content-Type (not Content-Encoding) prevents HTTP clients from
+        // transparently decompressing the object on download; the gzip bytes are
+        // stored and retrieved as-is.
         let raw_request = rx.recv().expect("mock server did not send captured request");
         let raw_str = String::from_utf8_lossy(&raw_request).to_ascii_lowercase();
         assert!(
-            raw_str.contains("content-encoding: gzip"),
-            "expected 'content-encoding: gzip' in request headers, got:\n{raw_str}"
+            raw_str.contains("content-type: application/gzip"),
+            "expected 'content-type: application/gzip' in request headers, got:\n{raw_str}"
         );
     }
 

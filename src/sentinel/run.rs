@@ -390,19 +390,15 @@ pub fn close_run(
     let body = serde_json::to_string(&payload)
         .map_err(|e| format!("failed to serialize close_run payload: {e}"))?;
 
-    // Gzip-compress the entire JSON payload and declare Content-Encoding: gzip.
-    // Compressing the whole body (not only the data_csv field) reduces wire size
-    // and is consistent with how the Python reference sends batch uploads.
-    let compressed = super::upload::gzip_compress(body.as_bytes())
-        .map_err(|e| format!("close_run gzip failed: {e}"))?;
-
+    // Send plain JSON -- no body-level gzip.  The Sentinel API (FastAPI) does
+    // not decompress Content-Encoding: gzip on incoming request bodies, so
+    // sending compressed bytes causes a 422.  This matches the Python reference
+    // which calls requests.post(url, json=payload) with no Content-Encoding.
     agent
         .post(&url)
         .header("Authorization", &format!("Bearer {token}"))
         .header("Content-Type", "application/json")
-        .header("Content-Encoding", "gzip")
-        .header("Content-Length", &compressed.len().to_string())
-        .send(&compressed)
+        .send(body.as_bytes())
         .map_err(|e| format!("close_run POST failed: {e}"))?;
 
     Ok(())

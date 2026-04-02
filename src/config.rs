@@ -102,6 +102,16 @@ struct Cli {
     #[arg(short = 'f', long, value_name = "FORMAT", default_value = "json")]
     format: OutputFormat,
 
+    /// Write metric output to FILE instead of stdout.
+    /// Useful in shell-wrapper mode to keep the tracked app's stdout clean.
+    #[arg(short = 'o', long, value_name = "FILE", env = "TRACKER_OUTPUT")]
+    output: Option<String>,
+
+    /// Suppress metric output entirely (no stdout, no file).
+    /// Useful when streaming to Sentinel and local output is not needed.
+    #[arg(long, env = "TRACKER_QUIET")]
+    quiet: bool,
+
     // -- Section 9.3 metadata flags ------------------------------------------
 
     /// Project name for Sentinel run registration.
@@ -168,8 +178,13 @@ pub struct Config {
     pub pid: Option<i32>,
     /// Polling interval in seconds.
     pub interval_secs: u64,
-    /// Output format emitted to stdout.
+    /// Output format (JSON or CSV).
     pub format: OutputFormat,
+    /// Write metric output to this file path instead of stdout.
+    /// None = write to stdout.
+    pub output_file: Option<String>,
+    /// Suppress all metric output (no stdout, no file).
+    pub quiet: bool,
     /// Section 9.3 job metadata (used for Sentinel API registration).
     pub metadata: JobMetadata,
     /// Shell-wrapper command. Empty = standalone mode.
@@ -219,9 +234,11 @@ impl Config {
         Config {
             pid,
             interval_secs,
-            format: cli.format,
+            format:      cli.format,
+            output_file: cli.output,
+            quiet:       cli.quiet,
             metadata,
-            command: cli.command,
+            command:     cli.command,
         }
     }
 }

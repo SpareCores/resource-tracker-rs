@@ -235,12 +235,17 @@ fn test_json_memory_kib_fields_absent() {
 // ---------------------------------------------------------------------------
 
 const EXPECTED_HEADER: &str =
-    "timestamp,processes,utime,stime,cpu_usage,\
-     memory_free,memory_used,memory_buffers,memory_cached,memory_active,memory_inactive,\
-     disk_read_bytes,disk_write_bytes,\
-     disk_space_total_gb,disk_space_used_gb,disk_space_free_gb,\
-     net_recv_bytes,net_sent_bytes,\
-     gpu_usage,gpu_vram,gpu_utilized";
+    "timestamp,\
+     system_processes,system_utime,system_stime,system_cpu_usage,\
+     system_memory_free_mib,system_memory_used_mib,system_memory_buffers_mib,\
+     system_memory_cached_mib,system_memory_active_mib,system_memory_inactive_mib,\
+     system_disk_read_bytes,system_disk_write_bytes,\
+     system_disk_space_total_gb,system_disk_space_used_gb,system_disk_space_free_gb,\
+     system_net_recv_bytes,system_net_sent_bytes,\
+     system_gpu_usage,system_gpu_vram_mib,system_gpu_utilized,\
+     process_pid,process_children,process_utime,process_stime,process_cpu_usage,\
+     process_memory_mib,process_disk_read_bytes,process_disk_write_bytes,\
+     process_gpu_usage,process_gpu_vram_mib,process_gpu_utilized";
 
 #[test]
 fn test_csv_header_matches_expected() {
@@ -267,17 +272,17 @@ fn test_csv_cpu_usage_is_fractional_cores() {
 
     let headers: Vec<&str> = lines[0].split(',').collect();
     let row:     Vec<&str> = lines[1].split(',').collect();
-    let idx = headers.iter().position(|&h| h == "cpu_usage").unwrap();
+    let idx = headers.iter().position(|&h| h == "system_cpu_usage").unwrap();
 
-    let cpu_usage: f64 = row[idx].parse().expect("cpu_usage: not f64");
-    assert!(cpu_usage >= 0.0, "cpu_usage must be >= 0");
+    let cpu_usage: f64 = row[idx].parse().expect("system_cpu_usage: not f64");
+    assert!(cpu_usage >= 0.0, "system_cpu_usage must be >= 0");
     // On any real machine the value is well below 1024; a percentage-scale bug
     // would push it to e.g. 62.5 on a loaded single core.
     // We check it is NOT an unreasonably large percentage-like number.
     let n_cpus = num_cpus::get();
     assert!(
         cpu_usage <= n_cpus as f64 * 1.05,
-        "cpu_usage ({cpu_usage}) looks like a percentage rather than fractional cores \
+        "system_cpu_usage ({cpu_usage}) looks like a percentage rather than fractional cores \
          (n_cpus = {n_cpus})"
     );
 }
@@ -299,25 +304,25 @@ fn test_csv_values_parse_and_are_sane() {
     let timestamp: u64 = col("timestamp").parse().expect("timestamp: not u64");
     assert!(timestamp > 0);
 
-    let processes: u32 = col("processes").parse().expect("processes: not u32");
-    assert!(processes >= 1, "processes should be >= 1");
+    let processes: u32 = col("system_processes").parse().expect("system_processes: not u32");
+    assert!(processes >= 1, "system_processes should be >= 1");
 
     // memory columns are MiB values; they should be positive but much smaller
     // than old KiB values (total RAM is typically 1000-65536 MiB)
-    let memory_free: u64 = col("memory_free").parse().expect("memory_free: not u64");
-    assert!(memory_free > 0, "memory_free should be > 0");
-    assert!(memory_free < 10_000_000, "memory_free looks like KiB, not MiB");
+    let memory_free: u64 = col("system_memory_free_mib").parse().expect("system_memory_free_mib: not u64");
+    assert!(memory_free > 0, "system_memory_free_mib should be > 0");
+    assert!(memory_free < 10_000_000, "system_memory_free_mib looks like KiB, not MiB");
 
-    let memory_used: u64 = col("memory_used").parse().expect("memory_used: not u64");
-    assert!(memory_used > 0, "memory_used should be > 0");
-    assert!(memory_used < 10_000_000, "memory_used looks like KiB, not MiB");
+    let memory_used: u64 = col("system_memory_used_mib").parse().expect("system_memory_used_mib: not u64");
+    assert!(memory_used > 0, "system_memory_used_mib should be > 0");
+    assert!(memory_used < 10_000_000, "system_memory_used_mib looks like KiB, not MiB");
 
-    let disk_total: f64 = col("disk_space_total_gb")
+    let disk_total: f64 = col("system_disk_space_total_gb")
         .parse()
-        .expect("disk_space_total_gb: not f64");
-    assert!(disk_total > 0.0, "disk_space_total_gb should be > 0");
+        .expect("system_disk_space_total_gb: not f64");
+    assert!(disk_total > 0.0, "system_disk_space_total_gb should be > 0");
 
-    let gpu_utilized: u32 = col("gpu_utilized").parse().expect("gpu_utilized: not u32");
+    let gpu_utilized: u32 = col("system_gpu_utilized").parse().expect("system_gpu_utilized: not u32");
     let _ = gpu_utilized; // 0 is valid on CPU-only hosts
 }
 
@@ -358,8 +363,8 @@ fn test_csv_disk_io_bytes_nonneg() {
     let row:     Vec<&str> = lines[1].split(',').collect();
     let col = csv_row_col(&headers, &row);
 
-    let read:  u64 = col("disk_read_bytes").parse().expect("disk_read_bytes: not u64");
-    let write: u64 = col("disk_write_bytes").parse().expect("disk_write_bytes: not u64");
+    let read:  u64 = col("system_disk_read_bytes").parse().expect("system_disk_read_bytes: not u64");
+    let write: u64 = col("system_disk_write_bytes").parse().expect("system_disk_write_bytes: not u64");
     // u64 is always >= 0; these assertions guard against future type changes.
     let _ = (read, write);
 }
@@ -373,8 +378,8 @@ fn test_csv_net_bytes_nonneg() {
     let row:     Vec<&str> = lines[1].split(',').collect();
     let col = csv_row_col(&headers, &row);
 
-    let recv: u64 = col("net_recv_bytes").parse().expect("net_recv_bytes: not u64");
-    let sent: u64 = col("net_sent_bytes").parse().expect("net_sent_bytes: not u64");
+    let recv: u64 = col("system_net_recv_bytes").parse().expect("system_net_recv_bytes: not u64");
+    let sent: u64 = col("system_net_sent_bytes").parse().expect("system_net_sent_bytes: not u64");
     let _ = (recv, sent);
 }
 
@@ -387,13 +392,13 @@ fn test_csv_disk_space_invariant() {
     let row:     Vec<&str> = lines[1].split(',').collect();
     let col = csv_row_col(&headers, &row);
 
-    let total: f64 = col("disk_space_total_gb").parse().expect("disk_space_total_gb");
-    let used:  f64 = col("disk_space_used_gb").parse().expect("disk_space_used_gb");
-    let free:  f64 = col("disk_space_free_gb").parse().expect("disk_space_free_gb");
+    let total: f64 = col("system_disk_space_total_gb").parse().expect("system_disk_space_total_gb");
+    let used:  f64 = col("system_disk_space_used_gb").parse().expect("system_disk_space_used_gb");
+    let free:  f64 = col("system_disk_space_free_gb").parse().expect("system_disk_space_free_gb");
     assert!(
         used + free <= total * 1.001, // 0.1% tolerance for floating-point rounding
-        "disk_space_used_gb({used:.4}) + disk_space_free_gb({free:.4}) > \
-         disk_space_total_gb({total:.4})"
+        "system_disk_space_used_gb({used:.4}) + system_disk_space_free_gb({free:.4}) > \
+         system_disk_space_total_gb({total:.4})"
     );
 }
 
@@ -406,8 +411,8 @@ fn test_csv_memory_fields_nonneg() {
     let row:     Vec<&str> = lines[1].split(',').collect();
     let col = csv_row_col(&headers, &row);
 
-    ["memory_free", "memory_used", "memory_buffers",
-     "memory_cached", "memory_active", "memory_inactive"].iter().for_each(|name| {
+    ["system_memory_free_mib", "system_memory_used_mib", "system_memory_buffers_mib",
+     "system_memory_cached_mib", "system_memory_active_mib", "system_memory_inactive_mib"].iter().for_each(|name| {
         let v: u64 = col(name).parse().unwrap_or_else(|_| panic!("{name}: not u64"));
         let _ = v; // u64 is always >= 0; parse success is the key assertion
     });
@@ -422,10 +427,10 @@ fn test_csv_cpu_time_fields_nonneg() {
     let row:     Vec<&str> = lines[1].split(',').collect();
     let col = csv_row_col(&headers, &row);
 
-    let utime: f64 = col("utime").parse().expect("utime: not f64");
-    let stime: f64 = col("stime").parse().expect("stime: not f64");
-    assert!(utime >= 0.0, "utime must be >= 0, got {utime}");
-    assert!(stime >= 0.0, "stime must be >= 0, got {stime}");
+    let utime: f64 = col("system_utime").parse().expect("system_utime: not f64");
+    let stime: f64 = col("system_stime").parse().expect("system_stime: not f64");
+    assert!(utime >= 0.0, "system_utime must be >= 0, got {utime}");
+    assert!(stime >= 0.0, "system_stime must be >= 0, got {stime}");
 }
 
 /// T-GPU-01 (CSV): gpu_usage and gpu_vram parse as non-negative floats;
@@ -438,11 +443,11 @@ fn test_csv_gpu_fields_nonneg() {
     let row:     Vec<&str> = lines[1].split(',').collect();
     let col = csv_row_col(&headers, &row);
 
-    let usage:    f64 = col("gpu_usage").parse().expect("gpu_usage: not f64");
-    let vram:     f64 = col("gpu_vram").parse().expect("gpu_vram: not f64");
-    let utilized: u32 = col("gpu_utilized").parse().expect("gpu_utilized: not u32");
-    assert!(usage >= 0.0,    "gpu_usage must be >= 0, got {usage}");
-    assert!(vram  >= 0.0,    "gpu_vram must be >= 0, got {vram}");
+    let usage:    f64 = col("system_gpu_usage").parse().expect("system_gpu_usage: not f64");
+    let vram:     f64 = col("system_gpu_vram_mib").parse().expect("system_gpu_vram_mib: not f64");
+    let utilized: u32 = col("system_gpu_utilized").parse().expect("system_gpu_utilized: not u32");
+    assert!(usage >= 0.0,    "system_gpu_usage must be >= 0, got {usage}");
+    assert!(vram  >= 0.0,    "system_gpu_vram_mib must be >= 0, got {vram}");
     let _ = utilized; // u32 is always >= 0
 }
 
@@ -1019,4 +1024,175 @@ fn test_write_s3_batch_to_disk() {
     std::fs::write(path, &compressed).expect("failed to write batch file");
     println!("wrote {} bytes ({} csv bytes) to {path}", compressed.len(), csv.len());
     println!("inspect: gunzip -c {path}");
+}
+
+// ---------------------------------------------------------------------------
+// --quiet / --output / TRACKER_QUIET / TRACKER_OUTPUT
+// ---------------------------------------------------------------------------
+
+/// Spawn the binary, let it run for `duration`, kill it, and return every
+/// non-empty line that appeared on stdout.  Used by output-sink tests where
+/// `collect_lines` would block up to 10 s waiting for a line that never arrives.
+fn run_for(args: &[&str], duration: Duration) -> Vec<String> {
+    let mut child = Command::new(BINARY)
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("failed to spawn binary");
+
+    thread::sleep(duration);
+    child.kill().ok();
+
+    let out = child.wait_with_output().expect("wait_with_output failed");
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter(|l| !l.is_empty())
+        .map(|l| l.to_string())
+        .collect()
+}
+
+/// Spawn the binary with `env_key=env_val` set, let it run for `duration`,
+/// kill it, and return stdout lines.
+fn run_for_with_env(args: &[&str], env_key: &str, env_val: &str, duration: Duration) -> Vec<String> {
+    let mut child = Command::new(BINARY)
+        .args(args)
+        .env(env_key, env_val)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("failed to spawn binary");
+
+    thread::sleep(duration);
+    child.kill().ok();
+
+    let out = child.wait_with_output().expect("wait_with_output failed");
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter(|l| !l.is_empty())
+        .map(|l| l.to_string())
+        .collect()
+}
+
+/// Warm-up takes ~1 s; after 3 s a normal run has emitted at least 1 sample.
+/// Used as the wait duration for output-sink tests.
+const OUTPUT_TEST_WAIT: Duration = Duration::from_secs(3);
+
+/// PID-namespaced temp path so parallel test runs never collide.
+fn tmp_path(suffix: &str) -> String {
+    std::env::temp_dir()
+        .join(format!("rt_rs_{}_{}", std::process::id(), suffix))
+        .to_string_lossy()
+        .into_owned()
+}
+
+/// --quiet suppresses all stdout output.
+#[test]
+fn test_quiet_produces_no_stdout() {
+    let lines = run_for(&["--quiet", "--interval", "1"], OUTPUT_TEST_WAIT);
+    assert!(
+        lines.is_empty(),
+        "--quiet should produce no stdout, got {} line(s): {:?}",
+        lines.len(), lines
+    );
+}
+
+/// Without --quiet the binary does produce stdout (sanity control for the above).
+#[test]
+fn test_no_quiet_produces_stdout() {
+    let lines = run_for(&["--interval", "1"], OUTPUT_TEST_WAIT);
+    assert!(
+        !lines.is_empty(),
+        "expected stdout output without --quiet"
+    );
+}
+
+/// --output FILE writes JSON to the file and nothing to stdout.
+#[test]
+fn test_output_file_json() {
+    let path = tmp_path("out.json");
+    let stdout_lines = run_for(&["--output", &path, "--interval", "1"], OUTPUT_TEST_WAIT);
+
+    assert!(
+        stdout_lines.is_empty(),
+        "--output should suppress stdout, got {} line(s)",
+        stdout_lines.len()
+    );
+
+    let content = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("output file {path} not readable: {e}"));
+    std::fs::remove_file(&path).ok();
+
+    let lines: Vec<&str> = content.lines().filter(|l| !l.is_empty()).collect();
+    assert!(!lines.is_empty(), "output file should contain at least one JSON line");
+    let _: serde_json::Value = serde_json::from_str(lines[0])
+        .unwrap_or_else(|e| panic!("first line of output file is not valid JSON: {e}\n{}", lines[0]));
+}
+
+/// --output FILE with --format csv writes header + rows to the file, nothing to stdout.
+#[test]
+fn test_output_file_csv() {
+    let path = tmp_path("out.csv");
+    let stdout_lines = run_for(
+        &["--output", &path, "--format", "csv", "--interval", "1"],
+        OUTPUT_TEST_WAIT,
+    );
+
+    assert!(
+        stdout_lines.is_empty(),
+        "--output should suppress stdout in CSV mode, got {} line(s)",
+        stdout_lines.len()
+    );
+
+    let content = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("output file {path} not readable: {e}"));
+    std::fs::remove_file(&path).ok();
+
+    let lines: Vec<&str> = content.lines().filter(|l| !l.is_empty()).collect();
+    assert!(lines.len() >= 2, "CSV output file should have header + at least 1 data row");
+    assert_eq!(
+        lines[0], EXPECTED_HEADER,
+        "CSV header in output file does not match expected"
+    );
+}
+
+/// TRACKER_QUIET=1 env var behaves the same as --quiet.
+#[test]
+fn test_tracker_quiet_env_var() {
+    let lines = run_for_with_env(
+        &["--interval", "1"],
+        "TRACKER_QUIET", "1",
+        OUTPUT_TEST_WAIT,
+    );
+    assert!(
+        lines.is_empty(),
+        "TRACKER_QUIET=1 should suppress stdout, got {} line(s)",
+        lines.len()
+    );
+}
+
+/// TRACKER_OUTPUT env var behaves the same as --output.
+#[test]
+fn test_tracker_output_env_var() {
+    let path = tmp_path("env_out.json");
+    let stdout_lines = run_for_with_env(
+        &["--interval", "1"],
+        "TRACKER_OUTPUT", &path,
+        OUTPUT_TEST_WAIT,
+    );
+
+    assert!(
+        stdout_lines.is_empty(),
+        "TRACKER_OUTPUT should suppress stdout, got {} line(s)",
+        stdout_lines.len()
+    );
+
+    let content = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("output file {path} not readable: {e}"));
+    std::fs::remove_file(&path).ok();
+
+    assert!(
+        content.lines().any(|l| !l.is_empty()),
+        "output file written via TRACKER_OUTPUT should be non-empty"
+    );
 }

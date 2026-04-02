@@ -86,8 +86,9 @@ impl BatchUploader {
     /// Spawn the background upload thread.
     ///
     /// The thread wakes every `upload_interval_secs`, drains the buffer, builds
-    /// a `.csv.gz` batch, and uploads it to S3.  On shutdown signal it performs
-    /// one final flush before returning all successfully uploaded S3 URIs.
+    /// a `.csv.gz` batch (gzip-compressed CSV, `Content-Type: application/gzip`),
+    /// and uploads it to S3.  On shutdown signal it performs one final flush
+    /// before returning all successfully uploaded S3 URIs.
     pub fn spawn(
         self,
         ctx: Arc<Mutex<RunContext>>,
@@ -234,7 +235,8 @@ mod tests {
     fn minimal_sample() -> Sample {
         Sample {
             timestamp_secs: 1_000_000,
-            job_name: None,
+            job_name:    None,
+            tracked_pid: None,
             cpu: CpuMetrics {
                 utilization_pct: 1.0,
                 ..Default::default()

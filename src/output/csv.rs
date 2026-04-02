@@ -1,41 +1,50 @@
 use crate::metrics::Sample;
 
-/// CSV header in parity with Python resource-tracker's SystemTracker columns;
-/// the Rust binary is a functional superset of the Python version.
+/// CSV header using the same `system_`/`process_` prefix convention as
+/// Python resource-tracker.  System columns (21) cover host-wide metrics;
+/// process columns (11) cover the tracked PID tree.
 ///
-/// Unit notes vs. Python SystemTracker:
-///   cpu_usage        - fractional cores (0..N), same as Python
-///   memory_*         - mebibytes (MiB), standardized in Python PR #9
-///   disk_read/write  - bytes per interval, same as Python
-///   net_recv/sent    - bytes per interval, same as Python
-///   disk_space_*     - GB summed across all block-device mounts (same method as Python)
-///   gpu_vram         - MiB, same as Python
+/// Unit notes:
+///   system_cpu_usage    - fractional cores (0..N), same as Python
+///   system_memory_*_mib - mebibytes (MiB = 1,048,576 bytes)
+///   system_disk_*       - bytes per interval, same as Python
+///   system_net_*        - bytes per interval, same as Python
+///   system_disk_space_* - GB summed across all block-device mounts
+///   system_gpu_vram_mib - MiB, same as Python
+///   process_cpu_usage   - fractional cores consumed by tracked PID tree
+///
+/// Process fields not yet collected are emitted as empty strings.
 pub fn csv_header() -> &'static str {
-    "timestamp,processes,utime,stime,cpu_usage,\
-     memory_free,memory_used,memory_buffers,memory_cached,memory_active,memory_inactive,\
-     disk_read_bytes,disk_write_bytes,\
-     disk_space_total_gb,disk_space_used_gb,disk_space_free_gb,\
-     net_recv_bytes,net_sent_bytes,\
-     gpu_usage,gpu_vram,gpu_utilized"
+    "timestamp,\
+     system_processes,system_utime,system_stime,system_cpu_usage,\
+     system_memory_free_mib,system_memory_used_mib,system_memory_buffers_mib,\
+     system_memory_cached_mib,system_memory_active_mib,system_memory_inactive_mib,\
+     system_disk_read_bytes,system_disk_write_bytes,\
+     system_disk_space_total_gb,system_disk_space_used_gb,system_disk_space_free_gb,\
+     system_net_recv_bytes,system_net_sent_bytes,\
+     system_gpu_usage,system_gpu_vram_mib,system_gpu_utilized,\
+     process_pid,process_children,process_utime,process_stime,process_cpu_usage,\
+     process_memory_mib,process_disk_read_bytes,process_disk_write_bytes,\
+     process_gpu_usage,process_gpu_vram_mib,process_gpu_utilized"
 }
 
 /// Serialize a `Sample` as a single CSV row (no newline).
 ///
 /// `interval_secs` is required to convert bytes/sec rates into per-interval
 /// byte counts, matching Python resource-tracker's convention.
+///
+/// Process fields not yet collected are emitted as empty strings.
+/// All process fields are empty when no PID is being tracked.
 pub fn sample_to_csv_row(s: &Sample, interval_secs: u64) -> String {
-    // cpu_usage: utilization_pct is already in fractional cores (0..N_cores)
+    // system_cpu_usage: utilization_pct is already in fractional cores (0..N_cores)
     let cpu_usage = s.cpu.utilization_pct;
 
-    // disk I/O: per-interval byte counts, matching Python's convention
-    // (rate × interval ≈ bytes transferred in this sampling window)
+    // Disk I/O: per-interval byte counts (rate × interval ≈ bytes in this window)
     let secs = f64::from(u32::try_from(interval_secs).unwrap_or(u32::MAX));
     let disk_read: u64  = s.disk.iter().map(|d| (d.read_bytes_per_sec  * secs) as u64).sum();
     let disk_write: u64 = s.disk.iter().map(|d| (d.write_bytes_per_sec * secs) as u64).sum();
 
-    // disk space: sum all mounts across all devices, matching Python's
-    // SystemTracker convention.
-    // used = total − free  (includes reserved-for-root blocks, same as Python)
+    // Disk space: sum all mounts; used = total - free (includes root-reserved blocks)
     let disk_space_total: f64 = s.disk.iter()
         .flat_map(|d| d.mounts.iter())
         .map(|m| m.total_bytes as f64 / 1_000_000_000.0)
@@ -46,18 +55,19 @@ pub fn sample_to_csv_row(s: &Sample, interval_secs: u64) -> String {
         .sum();
     let disk_space_used = disk_space_total - disk_space_free;
 
-    // network I/O: per-interval byte counts, matching Python's convention
+    // Network I/O: per-interval byte counts
     let net_recv: u64 = s.network.iter().map(|n| (n.rx_bytes_per_sec * secs) as u64).sum();
     let net_sent: u64 = s.network.iter().map(|n| (n.tx_bytes_per_sec * secs) as u64).sum();
 
-    // GPU: fractional utilization, VRAM in MiB, count of active GPUs
+    // GPU system aggregates
     let gpu_usage: f64    = s.gpu.iter().map(|g| g.utilization_pct / 100.0).sum();
     let gpu_vram: f64     = s.gpu.iter().map(|g| g.vram_used_bytes as f64 / 1_048_576.0).sum();
     let gpu_utilized: u32 = u32::try_from(
         s.gpu.iter().filter(|g| g.utilization_pct > 0.0).count()
     ).unwrap_or(0);
 
-    format!(
+    // System columns (21): same layout and values as before, new names in header.
+    let system_row = format!(
         "{},{},{:.3},{:.3},{:.4},{},{},{},{},{},{},{},{},{:.6},{:.6},{:.6},{},{},{:.4},{:.4},{}",
         s.timestamp_secs,
         s.cpu.process_count,
@@ -80,7 +90,28 @@ pub fn sample_to_csv_row(s: &Sample, interval_secs: u64) -> String {
         gpu_usage,
         gpu_vram,
         gpu_utilized,
-    )
+    );
+
+    // Process columns (11): empty when not tracked or not yet collected.
+    let opt_u32 = |v: Option<u32>| v.map_or(String::new(), |x| x.to_string());
+    let opt_i32 = |v: Option<i32>| v.map_or(String::new(), |x| x.to_string());
+    let opt_f4  = |v: Option<f64>| v.map_or(String::new(), |x| format!("{x:.4}"));
+
+    let process_row = [
+        opt_i32(s.tracked_pid),
+        opt_u32(s.cpu.process_child_count),
+        String::new(), // process_utime: not yet collected
+        String::new(), // process_stime: not yet collected
+        opt_f4(s.cpu.process_cores_used),
+        String::new(), // process_memory_mib: not yet collected
+        String::new(), // process_disk_read_bytes: not yet collected
+        String::new(), // process_disk_write_bytes: not yet collected
+        String::new(), // process_gpu_usage: not yet collected
+        String::new(), // process_gpu_vram_mib: not yet collected
+        String::new(), // process_gpu_utilized: not yet collected
+    ].join(",");
+
+    format!("{system_row},{process_row}")
 }
 
 // ---------------------------------------------------------------------------
@@ -96,6 +127,7 @@ mod tests {
         Sample {
             timestamp_secs: 1_000_000,
             job_name:       None,
+            tracked_pid:    None,
             cpu: CpuMetrics {
                 utilization_pct:     2.5,
                 utime_secs:          1.234,
@@ -145,7 +177,7 @@ mod tests {
         );
     }
 
-    // T-CSV-03: cpu_usage column equals utilization_pct (already fractional cores) to 4 dp.
+    // T-CSV-03: system_cpu_usage column equals utilization_pct (already fractional cores) to 4 dp.
     //
     // NOTE: The Specification.md table formula reads "utilization_pct / 100 × total_cores"
     // which is stale.  PR #1 Changelog explicitly corrected this:
@@ -159,13 +191,14 @@ mod tests {
         let mut sample = minimal_sample();
         sample.cpu.utilization_pct = 3.1415;
         let row = sample_to_csv_row(&sample, 1);
-        // Column order: timestamp(0),processes(1),utime(2),stime(3),cpu_usage(4),...
+        // Column order: timestamp(0),system_processes(1),system_utime(2),
+        //   system_stime(3),system_cpu_usage(4),...
         let cols: Vec<&str> = row.split(',').collect();
         let cpu_usage: f64 = cols[4].parse()
-            .unwrap_or_else(|_| panic!("cpu_usage column is not numeric: {:?}", cols[4]));
+            .unwrap_or_else(|_| panic!("system_cpu_usage column is not numeric: {:?}", cols[4]));
         assert!(
             (cpu_usage - 3.1415_f64).abs() < 0.00005,
-            "cpu_usage {cpu_usage:.4} does not match utilization_pct 3.1415"
+            "system_cpu_usage {cpu_usage:.4} does not match utilization_pct 3.1415"
         );
     }
 
@@ -194,7 +227,8 @@ mod tests {
             write_bytes_total:   0,
         }];
         let row = sample_to_csv_row(&sample, 1);
-        // Column order: ...disk_space_total_gb(13),disk_space_used_gb(14),disk_space_free_gb(15),...
+        // Column order: ...system_disk_space_total_gb(13),system_disk_space_used_gb(14),
+        //   system_disk_space_free_gb(15),...  (indices unchanged from original layout)
         let cols: Vec<&str> = row.split(',').collect();
         let total: f64 = cols[13].parse().unwrap();
         let used:  f64 = cols[14].parse().unwrap();
@@ -214,11 +248,13 @@ mod tests {
         assert_eq!(r1, r2, "csv row output is not deterministic");
     }
 
-    // T-CSV-06: no trailing commas; no quoted fields.
+    // T-CSV-06: no quoted fields; header has no trailing comma.
+    // Note: data rows may end with ',' when trailing process fields are empty
+    // (no PID tracked).  This is valid CSV -- empty fields after the last comma
+    // represent null values, not a formatting error.
     #[test]
     fn test_csv_no_trailing_commas_no_quoted_fields() {
         let row = sample_to_csv_row(&minimal_sample(), 1);
-        assert!(!row.ends_with(','),  "trailing comma in row: {row}");
         assert!(!row.contains('"'),   "double-quoted field in row: {row}");
         assert!(!row.contains('\''),  "single-quoted field in row: {row}");
         let h = csv_header();

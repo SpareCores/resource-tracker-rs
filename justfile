@@ -7,7 +7,7 @@ build:
     cargo build
 
 build_release:
-    cargo build --release
+    (cargo build --release) && upx target/release/resource-tracker-rs
 
 # GPU machine: requires AMD driver (libdrm) + NVIDIA driver (libnvidia-ml.so) at runtime.
 # Both libraries are loaded dynamically; the binary degrades gracefully if either is absent.

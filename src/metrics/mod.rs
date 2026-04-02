@@ -25,6 +25,10 @@ pub struct Sample {
     pub timestamp_secs: u64,
     /// Optional job label supplied via CLI or config file.
     pub job_name: Option<String>,
+    /// Root PID of the process tree being tracked, if any.
+    /// Carried here so the CSV serializer can emit `process_pid` without
+    /// needing access to `Config`.
+    pub tracked_pid: Option<i32>,
     pub cpu: CpuMetrics,
     pub memory: MemoryMetrics,
     pub network: Vec<NetworkMetrics>,

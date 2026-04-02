@@ -2,6 +2,83 @@
 
 ## [Unreleased]
 
+### --quiet / --output flags + output routing tests (2026-04-02)
+
+#### `src/config.rs` -- new output control flags
+- Added `--output FILE` / `-o` / `TRACKER_OUTPUT` env var: redirect metric output
+  to a file instead of stdout. Useful in shell-wrapper mode to keep the tracked
+  app's stdout clean.
+- Added `--quiet` / `TRACKER_QUIET` env var: suppress all metric output (no stdout,
+  no file). Useful when streaming to Sentinel and local output is not needed.
+- Added `output_file: Option<String>` and `quiet: bool` to `Config`.
+
+#### `src/main.rs` -- `emit!` macro + `BufWriter` output sink
+- Added `let mut out_file: Option<BufWriter<File>>` to select the output sink at
+  startup: `None` when `--quiet`, `Some(file)` when `--output FILE`, else writes
+  to stdout via `println!`.
+- Added `emit!` macro that routes formatted output to the chosen sink, calling
+  `flush()` after each write so `tail -f` works on the output file.
+- All metric output (`println!` calls in the sampling loop) replaced with `emit!`.
+
+#### `tests/smoke.rs` -- 6 new output-sink tests
+- `test_quiet_produces_no_stdout`: `--quiet` produces no stdout lines.
+- `test_no_quiet_produces_stdout`: control -- normal mode does produce output.
+- `test_output_file_json`: `--output FILE` writes JSON to file; stdout is empty;
+  file contains valid JSON.
+- `test_output_file_csv`: `--output FILE --format csv` writes CSV header to file;
+  stdout is empty.
+- `test_tracker_quiet_env_var`: `TRACKER_QUIET=1` behaves identically to `--quiet`.
+- `test_tracker_output_env_var`: `TRACKER_OUTPUT=path` behaves identically to `--output`.
+- Added `run_for` / `run_for_with_env` helpers and `OUTPUT_TEST_WAIT` constant
+  (3 s) to avoid the 10 s `collect_lines` timeout when testing empty stdout.
+
+---
+
+### CSV system_/process_ prefixes + close_run fixes (2026-04-02)
+
+#### `src/output/csv.rs` -- system_ / process_ column prefixes
+- All 21 system columns renamed with `system_` prefix; memory columns
+  additionally carry explicit `_mib` suffix (e.g. `memory_free` ->
+  `system_memory_free_mib`, `gpu_vram` -> `system_gpu_vram_mib`).
+- 11 `process_` columns appended: `process_pid`, `process_children`,
+  `process_utime`, `process_stime`, `process_cpu_usage`,
+  `process_memory_mib`, `process_disk_read_bytes`, `process_disk_write_bytes`,
+  `process_gpu_usage`, `process_gpu_vram_mib`, `process_gpu_utilized`.
+- Populated fields: `process_pid` (`tracked_pid`), `process_children`
+  (`cpu.process_child_count`), `process_cpu_usage` (`cpu.process_cores_used`).
+  Remaining process fields emitted as empty strings (not yet collected).
+- T-CSV-06 updated: empty trailing process fields are valid CSV nulls, not
+  a formatting error; trailing-comma assertion removed from data row check.
+
+#### `src/metrics/mod.rs` -- `tracked_pid` added to `Sample`
+- New `tracked_pid: Option<i32>` field carries the root PID into the CSV
+  serializer without requiring access to `Config`.
+
+#### `tests/smoke.rs` -- column name renames
+- `EXPECTED_HEADER` updated to new 32-column format.
+- All `col("name")` lookups updated to use `system_`/`process_` prefixed names.
+
+#### `tests/compare.rs` -- dual column name support
+- Added `rs_name: &'static str` to `ColSpec`; Python CSV lookup uses `name`
+  (unprefixed), Rust CSV lookup uses `rs_name` (`system_` prefixed).
+  All 17 ColSpec entries updated.
+
+#### `src/sentinel/run.rs` -- `close_run` body gzip reverted
+- Removed `Content-Encoding: gzip` and body-level compression from
+  `close_run` POST.  The Sentinel API (FastAPI) does not decompress
+  gzip-encoded request bodies, causing a 422.
+- Body is now plain JSON matching the Python reference `requests.post(url,
+  json=payload)`.  `data_csv` remains plain base64 (no inner gzip).
+
+#### `src/sentinel/s3.rs` -- S3 PUT header: Content-Encoding -> Content-Type
+- Changed S3 PUT from `Content-Encoding: gzip` to `Content-Type: application/gzip`.
+  `Content-Encoding: gzip` caused HTTP clients to transparently decompress
+  the object on GET, making the `.csv.gz` file appear uncompressed.
+  `Content-Type: application/gzip` stores the gzip bytes as-is.
+- Test updated to assert `content-type: application/gzip`.
+
+---
+
 ### Dependencies.md Cargo crate table added (2026-04-02)
 
 #### `resource-tracker-rs-book/src/Dependencies.md` -- Rust crate dependencies section

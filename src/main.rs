@@ -17,6 +17,7 @@ use metrics::Sample;
 use sentinel::{
     close_run, samples_to_csv, start_run, BatchUploader, RunContext, SentinelClient,
 };
+use std::io::Write;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -89,6 +90,41 @@ fn main() {
     unsafe { libc::signal(libc::SIGTERM, handle_sigterm as *const () as libc::sighandler_t); }
 
     let mut config = Config::load();
+
+    // -----------------------------------------------------------------------
+    // Output sink: stdout (default), file (--output), or suppressed (--quiet).
+    // Warnings and errors always go to stderr via eprintln! regardless.
+    // -----------------------------------------------------------------------
+    let mut out_file: Option<std::io::BufWriter<std::fs::File>> =
+        if config.quiet {
+            None
+        } else {
+            config.output_file.as_deref().map(|path| {
+                std::io::BufWriter::new(
+                    std::fs::File::create(path).unwrap_or_else(|e| {
+                        eprintln!("error: cannot open output file {path}: {e}");
+                        std::process::exit(1);
+                    })
+                )
+            })
+        };
+
+    // Emit one line of metric output to the selected sink.
+    // quiet=true  -> no-op
+    // output_file -> write to file and flush (so `tail -f` works)
+    // default     -> println! to stdout
+    macro_rules! emit {
+        ($($arg:tt)*) => {
+            if !config.quiet {
+                if let Some(ref mut f) = out_file {
+                    let _ = writeln!(f, $($arg)*);
+                    let _ = f.flush();
+                } else {
+                    println!($($arg)*);
+                }
+            }
+        }
+    }
 
     // -----------------------------------------------------------------------
     // Shell-wrapper mode: spawn the command and track its PID automatically.
@@ -180,9 +216,9 @@ fn main() {
             }
         };
 
-    // Print CSV header once before the loop.
+    // Emit CSV header once before the loop.
     if config.format == OutputFormat::Csv {
-        println!("{}", output::csv::csv_header());
+        emit!("{}", output::csv::csv_header());
     }
 
     // Samples collected since the last S3 batch upload (for local fallback).
@@ -199,31 +235,29 @@ fn main() {
 
         let sample = Sample {
             timestamp_secs,
-            job_name: config.metadata.job_name.clone(),
-            cpu:     cpu.collect().unwrap_or_default(),
-            memory:  memory.collect().unwrap_or_default(),
-            network: network.collect().unwrap_or_default(),
-            disk:    disk.collect().unwrap_or_default(),
-            gpu:     gpu.collect().unwrap_or_default(),
+            job_name:    config.metadata.job_name.clone(),
+            tracked_pid: config.pid,
+            cpu:         cpu.collect().unwrap_or_default(),
+            memory:      memory.collect().unwrap_or_default(),
+            network:     network.collect().unwrap_or_default(),
+            disk:        disk.collect().unwrap_or_default(),
+            gpu:         gpu.collect().unwrap_or_default(),
         };
 
-        // Emit to stdout.
+        // Emit to selected output sink.
         match config.format {
             OutputFormat::Json => {
                 match serde_json::to_value(&sample) {
                     Ok(mut v) => {
                         v[format!("{}-version", env!("CARGO_PKG_NAME"))] =
                             serde_json::Value::String(env!("CARGO_PKG_VERSION").to_string());
-                        println!("{}", v);
+                        emit!("{}", v);
                     }
                     Err(e) => eprintln!("warn: json serialize error: {e}"),
                 }
             }
             OutputFormat::Csv => {
-                println!(
-                    "{}",
-                    output::csv::sample_to_csv_row(&sample, config.interval_secs)
-                );
+                emit!("{}", output::csv::sample_to_csv_row(&sample, config.interval_secs));
             }
         }
 

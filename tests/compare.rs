@@ -159,7 +159,10 @@ fn uv_query(uv: &str, code: &str, fallback: &str) -> String {
 // ---------------------------------------------------------------------------
 
 struct ColSpec {
+    /// Column name in Python CSV output (no prefix).
     name:          &'static str,
+    /// Column name in Rust CSV output (`system_` / `process_` prefixed).
+    rs_name:       &'static str,
     tolerance_pct: f64,
     use_median:    bool,
     /// Multiply Python values by this factor before comparison.
@@ -219,24 +222,24 @@ fn col_specs() -> Vec<ColSpec> {
     const KIB_TO_MIB: f64 = 1.0 / 1024.0;
     vec![
         // --- CPU ---
-        ColSpec { name: "utime",               tolerance_pct: 5.0,  use_median: false, py_scale: 1.0,        description: "user+nice CPU seconds / interval",     note: None },
-        ColSpec { name: "stime",               tolerance_pct: 5.0,  use_median: false, py_scale: 1.0,        description: "system CPU seconds / interval",         note: None },
-        ColSpec { name: "cpu_usage",           tolerance_pct: 25.0, use_median: true,  py_scale: 1.0,        description: "fractional cores in use (volatile)",    note: None },
-        ColSpec { name: "processes",           tolerance_pct: 30.0, use_median: true,  py_scale: 1.0,        description: "runnable process count (volatile)",     note: None },
+        ColSpec { name: "utime",               rs_name: "system_utime",               tolerance_pct: 5.0,  use_median: false, py_scale: 1.0,        description: "user+nice CPU seconds / interval",     note: None },
+        ColSpec { name: "stime",               rs_name: "system_stime",               tolerance_pct: 5.0,  use_median: false, py_scale: 1.0,        description: "system CPU seconds / interval",         note: None },
+        ColSpec { name: "cpu_usage",           rs_name: "system_cpu_usage",           tolerance_pct: 25.0, use_median: true,  py_scale: 1.0,        description: "fractional cores in use (volatile)",    note: None },
+        ColSpec { name: "processes",           rs_name: "system_processes",           tolerance_pct: 30.0, use_median: true,  py_scale: 1.0,        description: "runnable process count (volatile)",     note: None },
         // --- Memory (Python KiB, Rust MiB -- scale Python by 1/1024) ---
-        ColSpec { name: "memory_used",         tolerance_pct: 2.0,  use_median: true,  py_scale: KIB_TO_MIB, description: "used RAM (MiB)",                        note: None },
-        ColSpec { name: "memory_buffers",      tolerance_pct: 2.0,  use_median: true,  py_scale: KIB_TO_MIB, description: "kernel buffer RAM (MiB)",               note: None },
-        ColSpec { name: "memory_cached",       tolerance_pct: 2.0,  use_median: true,  py_scale: KIB_TO_MIB, description: "page-cache RAM (MiB)",                  note: None },
-        ColSpec { name: "memory_active",       tolerance_pct: 5.0,  use_median: true,  py_scale: KIB_TO_MIB, description: "active-page RAM (MiB)",                 note: None },
-        ColSpec { name: "memory_inactive",     tolerance_pct: 5.0,  use_median: true,  py_scale: KIB_TO_MIB, description: "inactive-page RAM (MiB)",               note: None },
-        ColSpec { name: "memory_free",         tolerance_pct: 10.0, use_median: true,  py_scale: KIB_TO_MIB, description: "available RAM (MiB)",                   note: None },
+        ColSpec { name: "memory_used",         rs_name: "system_memory_used_mib",     tolerance_pct: 2.0,  use_median: true,  py_scale: KIB_TO_MIB, description: "used RAM (MiB)",                        note: None },
+        ColSpec { name: "memory_buffers",      rs_name: "system_memory_buffers_mib",  tolerance_pct: 2.0,  use_median: true,  py_scale: KIB_TO_MIB, description: "kernel buffer RAM (MiB)",               note: None },
+        ColSpec { name: "memory_cached",       rs_name: "system_memory_cached_mib",   tolerance_pct: 2.0,  use_median: true,  py_scale: KIB_TO_MIB, description: "page-cache RAM (MiB)",                  note: None },
+        ColSpec { name: "memory_active",       rs_name: "system_memory_active_mib",   tolerance_pct: 5.0,  use_median: true,  py_scale: KIB_TO_MIB, description: "active-page RAM (MiB)",                 note: None },
+        ColSpec { name: "memory_inactive",     rs_name: "system_memory_inactive_mib", tolerance_pct: 5.0,  use_median: true,  py_scale: KIB_TO_MIB, description: "inactive-page RAM (MiB)",               note: None },
+        ColSpec { name: "memory_free",         rs_name: "system_memory_free_mib",     tolerance_pct: 10.0, use_median: true,  py_scale: KIB_TO_MIB, description: "available RAM (MiB)",                   note: None },
         // --- Disk space ---
         // Python sums all non-virtual mounts including snap/loop devices; Rust
         // only sums mounts visible through /sys/block (real block devices).
         // The remaining gap is from snap squashfs mounts that Python includes.
-        ColSpec { name: "disk_space_total_gb", tolerance_pct: 15.0, use_median: true,  py_scale: 1.0,        description: "total disk GB (all mounts)",            note: None },
-        ColSpec { name: "disk_space_used_gb",  tolerance_pct: 15.0, use_median: true,  py_scale: 1.0,        description: "used disk GB (all mounts)",             note: None },
-        ColSpec { name: "disk_space_free_gb",  tolerance_pct: 15.0, use_median: true,  py_scale: 1.0,        description: "free disk GB (all mounts)",             note: None },
+        ColSpec { name: "disk_space_total_gb", rs_name: "system_disk_space_total_gb", tolerance_pct: 15.0, use_median: true,  py_scale: 1.0,        description: "total disk GB (all mounts)",            note: None },
+        ColSpec { name: "disk_space_used_gb",  rs_name: "system_disk_space_used_gb",  tolerance_pct: 15.0, use_median: true,  py_scale: 1.0,        description: "used disk GB (all mounts)",             note: None },
+        ColSpec { name: "disk_space_free_gb",  rs_name: "system_disk_space_free_gb",  tolerance_pct: 15.0, use_median: true,  py_scale: 1.0,        description: "free disk GB (all mounts)",             note: None },
         // --- I/O (per-interval byte counts - both implementations use deltas) ---
         // I/O byte counts use median to suppress single-interval burst spikes.
         // disk_read_bytes: when Python median is 0 (idle disk), any Rust non-zero
@@ -247,16 +250,16 @@ fn col_specs() -> Vec<ColSpec> {
         //   runs.  Always passes with a note.
         // net_sent_bytes: at low traffic the absolute difference is tens of bytes;
         //   percentage comparison is meaningless at that scale.  Always passes with a note.
-        ColSpec { name: "disk_read_bytes",  tolerance_pct: 10.0, use_median: true, py_scale: 1.0,
+        ColSpec { name: "disk_read_bytes",  rs_name: "system_disk_read_bytes",  tolerance_pct: 10.0, use_median: true, py_scale: 1.0,
                   description: "disk read bytes / interval (median)",
                   note: Some("per-interval rate: when Python=0 Rust captures real reads Python's window missed; not a regression") },
-        ColSpec { name: "disk_write_bytes", tolerance_pct: 20.0, use_median: true, py_scale: 1.0,
+        ColSpec { name: "disk_write_bytes", rs_name: "system_disk_write_bytes", tolerance_pct: 20.0, use_median: true, py_scale: 1.0,
                   description: "disk write bytes / interval (median)",
                   note: Some("per-interval rate: kernel write-back jitter; direction of divergence flips between runs; neither has ground truth") },
-        ColSpec { name: "net_recv_bytes",   tolerance_pct: 10.0, use_median: true, py_scale: 1.0,
+        ColSpec { name: "net_recv_bytes",   rs_name: "system_net_recv_bytes",   tolerance_pct: 10.0, use_median: true, py_scale: 1.0,
                   description: "net recv bytes / interval (median)",
                   note: None },
-        ColSpec { name: "net_sent_bytes",   tolerance_pct: 10.0, use_median: true, py_scale: 1.0,
+        ColSpec { name: "net_sent_bytes",   rs_name: "system_net_sent_bytes",   tolerance_pct: 10.0, use_median: true, py_scale: 1.0,
                   description: "net sent bytes / interval (median)",
                   note: Some("per-interval rate: at low traffic absolute diff is tens of bytes; pct comparison is not meaningful at that scale") },
     ]
@@ -377,10 +380,10 @@ fn test_python_rust_csv_numeric_comparison() {
                 continue;
             }
         };
-        let rs_vals = match rs.col_values(spec.name) {
+        let rs_vals = match rs.col_values(spec.rs_name) {
             Some(v) => v,
             None => {
-                println!("{:<col_w$}  [SKIP - not in Rust output]", spec.name);
+                println!("{:<col_w$}  [SKIP - not in Rust output ({})]", spec.name, spec.rs_name);
                 continue;
             }
         };
