@@ -6,9 +6,10 @@ use libamdgpu_top::{
 };
 use nvml_wrapper::{
     enum_wrappers::device::{Clock, TemperatureSensor},
+    enums::device::UsedGpuMemory,
     Nvml,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -36,6 +37,122 @@ impl GpuCollector {
         self.collect_nvidia(&mut metrics);
         self.collect_amd(&mut metrics);
         Ok(metrics)
+    }
+
+    /// Return `(process_gpu_vram_mib, process_gpu_utilized)` for the given PIDs.
+    ///
+    /// `pids` is the tracked process tree (root + descendants) as u32 values.
+    ///
+    /// NVIDIA: queries NVML running-compute and running-graphics process lists
+    /// for each device; sums `used_gpu_memory` for matched PIDs.
+    ///
+    /// AMD: reads `/proc/{pid}/fdinfo` for each PID, parses `drm-memory-vram`
+    /// and `drm-pdev` from DRM fdinfo entries (Linux kernel >= 5.17), and
+    /// matches against known AMD device PCI addresses.
+    ///
+    /// Returns `(None, None)` when no GPU is present on the host.
+    /// Returns `(Some(0.0), Some(0))` when a GPU is present but the process
+    /// tree has no allocations.
+    pub fn process_gpu_info(&self, pids: &[u32]) -> (Option<f64>, Option<u32>) {
+        let mut total_vram_bytes: u64 = 0;
+        let mut n_utilized: u32 = 0;
+        let mut any_gpu = false;
+
+        // --- NVIDIA via NVML -------------------------------------------------
+        if let Some(ref nvml) = self.nvml {
+            any_gpu = true;
+            let pid_set: HashSet<u32> = pids.iter().copied().collect();
+            let count = nvml.device_count().unwrap_or(0);
+
+            (0..count).for_each(|i| {
+                let Ok(device) = nvml.device_by_index(i) else { return };
+                let procs: Vec<_> = device
+                    .running_compute_processes()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .chain(device.running_graphics_processes().unwrap_or_default())
+                    .collect();
+
+                let mut device_vram: u64 = 0;
+                let mut found = false;
+                procs
+                    .iter()
+                    .filter(|p| pid_set.contains(&p.pid))
+                    .for_each(|p| {
+                        found = true;
+                        if let UsedGpuMemory::Used(bytes) = p.used_gpu_memory {
+                            device_vram += bytes;
+                        }
+                    });
+
+                if found {
+                    n_utilized += 1;
+                    total_vram_bytes += device_vram;
+                }
+            });
+        }
+
+        // --- AMD via /proc/pid/fdinfo ----------------------------------------
+        // DRM fdinfo (kernel >= 5.17): each open DRM fd exposes drm-memory-vram
+        // and drm-pdev so we can attribute VRAM per process and per device.
+        if std::path::Path::new("/sys/module/amdgpu").exists() {
+            any_gpu = true;
+
+            // Collect PCI addresses of all known AMD devices (lowercase for
+            // case-insensitive comparison with kernel fdinfo drm-pdev values).
+            let amd_pci_addrs: HashSet<String> = DevicePath::get_device_path_list()
+                .into_iter()
+                .map(|dp| format!("{}", dp.pci).to_lowercase())
+                .collect();
+
+            // Track which PCI addresses have any VRAM allocated by the tree.
+            let mut utilized_pcis: HashSet<String> = HashSet::new();
+
+            pids.iter().for_each(|&pid| {
+                let fdinfo_dir = format!("/proc/{pid}/fdinfo");
+                let Ok(entries) = std::fs::read_dir(&fdinfo_dir) else { return };
+                entries.filter_map(|e| e.ok()).for_each(|entry| {
+                    let Ok(content) = std::fs::read_to_string(entry.path()) else { return };
+
+                    // Only process amdgpu DRM file descriptors.
+                    if !content
+                        .lines()
+                        .any(|l| l.starts_with("drm-driver:") && l.contains("amdgpu"))
+                    {
+                        return;
+                    }
+
+                    // Match drm-pdev against our known AMD GPU list.
+                    let pdev = content
+                        .lines()
+                        .find(|l| l.starts_with("drm-pdev:"))
+                        .and_then(|l| l.split_whitespace().nth(1))
+                        .map(|s| s.to_lowercase());
+                    let Some(pdev) = pdev else { return };
+                    if !amd_pci_addrs.contains(&pdev) { return; }
+
+                    // Parse drm-memory-vram (value in KiB, unit label "KiB").
+                    content
+                        .lines()
+                        .find(|l| l.starts_with("drm-memory-vram:"))
+                        .and_then(|l| l.split_whitespace().nth(1))
+                        .and_then(|v| v.parse::<u64>().ok())
+                        .map(|kib| {
+                            total_vram_bytes += kib * 1024;
+                            utilized_pcis.insert(pdev.clone());
+                        });
+                });
+            });
+
+            n_utilized += u32::try_from(utilized_pcis.len()).unwrap_or(0);
+        }
+
+        if !any_gpu {
+            return (None, None);
+        }
+
+        let vram_mib = total_vram_bytes as f64 / 1_048_576.0;
+        (Some(vram_mib), Some(n_utilized))
     }
 
     // -----------------------------------------------------------------------
@@ -189,6 +306,117 @@ impl GpuCollector {
                 frequency_mhz,
                 core_count: None,
             });
+        });
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Unit tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // T-GPU-P1: process_gpu_info with an empty PID list must return (None, None)
+    // on a CPU-only host, or (Some(0.0), Some(0)) on a GPU host -- never panic,
+    // and always return matching Some/None for both fields.
+    #[test]
+    fn test_process_gpu_info_empty_pids_consistent() {
+        let collector = GpuCollector::new();
+        let (vram, utilized) = collector.process_gpu_info(&[]);
+        match (vram, utilized) {
+            (None, None) => {}  // CPU-only host
+            (Some(v), Some(u)) => {
+                assert_eq!(v, 0.0, "empty PID list must produce 0.0 VRAM");
+                assert_eq!(u, 0,   "empty PID list must produce 0 utilized GPUs");
+            }
+            _ => panic!("vram_mib and gpu_utilized must both be Some or both be None"),
+        }
+    }
+
+    // T-GPU-P2: process_gpu_info with the current process PID must not panic
+    // and must return a consistent shape: (None, None) on CPU-only hosts, or
+    // (Some(v), Some(u)) with v >= 0.0 on GPU hosts.
+    #[test]
+    fn test_process_gpu_info_real_pid_does_not_panic() {
+        let collector = GpuCollector::new();
+        let pid = std::process::id();
+        let (vram, utilized) = collector.process_gpu_info(&[pid]);
+        match (vram, utilized) {
+            (None, None) => {}
+            (Some(v), Some(u)) => {
+                assert!(v >= 0.0, "vram_mib must be non-negative, got {v}");
+                let _ = u; // test process is unlikely to hold GPU allocations
+            }
+            _ => panic!("vram_mib and gpu_utilized must both be Some or both be None"),
+        }
+    }
+
+    // T-GPU-P3: on a CPU-only host (no NVML, no /sys/module/amdgpu),
+    // any PID list must return (None, None).  Skipped on GPU hosts.
+    #[test]
+    fn test_process_gpu_info_no_gpu_returns_none() {
+        let nvml_unavailable = Nvml::init().is_err();
+        let amd_absent = !std::path::Path::new("/sys/module/amdgpu").exists();
+        if !nvml_unavailable || !amd_absent {
+            // Host has a GPU; this test is not applicable.
+            return;
+        }
+        let collector = GpuCollector::new();
+        let (vram, utilized) = collector.process_gpu_info(&[1, 2, 3]);
+        assert_eq!((vram, utilized), (None, None),
+            "CPU-only host must return (None, None) for any PID list");
+    }
+
+    // T-GPU-C1: collect() does not panic and returns Ok on any host.
+    #[test]
+    fn test_gpu_collect_does_not_panic() {
+        let collector = GpuCollector::new();
+        let result = collector.collect();
+        assert!(result.is_ok(), "collect() must return Ok on any host, got: {:?}", result.err());
+    }
+
+    // T-GPU-C2: all returned GpuMetrics entries have non-empty uuid, name, and device_type.
+    #[test]
+    fn test_gpu_collect_identity_fields_nonempty() {
+        let collector = GpuCollector::new();
+        let gpus = collector.collect().expect("collect() failed");
+        gpus.iter().for_each(|g| {
+            assert!(!g.uuid.is_empty(),        "uuid must not be empty");
+            assert!(!g.name.is_empty(),        "name must not be empty for uuid={}", g.uuid);
+            assert!(!g.device_type.is_empty(), "device_type must not be empty for uuid={}", g.uuid);
+        });
+    }
+
+    // T-GPU-C3: utilization_pct is in range 0.0..=100.0 for all reported GPUs.
+    #[test]
+    fn test_gpu_collect_utilization_in_range() {
+        let collector = GpuCollector::new();
+        let gpus = collector.collect().expect("collect() failed");
+        gpus.iter().for_each(|g| {
+            assert!(
+                g.utilization_pct >= 0.0 && g.utilization_pct <= 100.0,
+                "utilization_pct out of range for {}: {}",
+                g.uuid,
+                g.utilization_pct
+            );
+        });
+    }
+
+    // T-GPU-C4: vram_used_bytes does not exceed vram_total_bytes.
+    #[test]
+    fn test_gpu_collect_vram_used_le_total() {
+        let collector = GpuCollector::new();
+        let gpus = collector.collect().expect("collect() failed");
+        gpus.iter().for_each(|g| {
+            assert!(
+                g.vram_used_bytes <= g.vram_total_bytes,
+                "vram_used_bytes {} > vram_total_bytes {} for {}",
+                g.vram_used_bytes,
+                g.vram_total_bytes,
+                g.uuid
+            );
         });
     }
 }

@@ -277,4 +277,96 @@ mod tests {
         let info = read_device_info("__nonexistent_device__");
         assert_eq!(info.sector_size, 512);
     }
+
+    // T-DSK-01: first collect() returns Ok; all I/O rates are 0.0 (no prior snapshot).
+    #[test]
+    fn test_disk_first_collect_rates_zero() {
+        let mut collector = DiskCollector::new();
+        let metrics = collector.collect().expect("first collect() should succeed");
+        metrics.iter().for_each(|d| {
+            assert_eq!(
+                d.read_bytes_per_sec, 0.0,
+                "read_bytes_per_sec must be 0.0 on first collect for {}",
+                d.device
+            );
+            assert_eq!(
+                d.write_bytes_per_sec, 0.0,
+                "write_bytes_per_sec must be 0.0 on first collect for {}",
+                d.device
+            );
+        });
+    }
+
+    // T-DSK-02: second collect() returns Ok; all I/O rates are >= 0.0.
+    #[test]
+    fn test_disk_second_collect_rates_nonneg() {
+        let mut collector = DiskCollector::new();
+        let _ = collector.collect().expect("first collect() failed");
+        let metrics = collector.collect().expect("second collect() failed");
+        metrics.iter().for_each(|d| {
+            assert!(
+                d.read_bytes_per_sec >= 0.0,
+                "read_bytes_per_sec must be >= 0.0 for {}",
+                d.device
+            );
+            assert!(
+                d.write_bytes_per_sec >= 0.0,
+                "write_bytes_per_sec must be >= 0.0 for {}",
+                d.device
+            );
+        });
+    }
+
+    // T-DSK-03: results are sorted alphabetically by device name.
+    #[test]
+    fn test_disk_results_sorted_by_device() {
+        let mut collector = DiskCollector::new();
+        let metrics = collector.collect().expect("collect() failed");
+        let names: Vec<&str> = metrics.iter().map(|d| d.device.as_str()).collect();
+        let mut sorted = names.clone();
+        sorted.sort();
+        assert_eq!(names, sorted, "disk metrics must be sorted by device name");
+    }
+
+    // T-DSK-04: cumulative totals are non-decreasing between two calls.
+    #[test]
+    fn test_disk_totals_nondecreasing() {
+        let mut collector = DiskCollector::new();
+        let first = collector.collect().expect("first collect() failed");
+        let second = collector.collect().expect("second collect() failed");
+        let first_map: std::collections::HashMap<&str, (u64, u64)> = first
+            .iter()
+            .map(|d| (d.device.as_str(), (d.read_bytes_total, d.write_bytes_total)))
+            .collect();
+        second.iter().for_each(|d| {
+            if let Some(&(prev_r, prev_w)) = first_map.get(d.device.as_str()) {
+                assert!(
+                    d.read_bytes_total >= prev_r,
+                    "read_bytes_total decreased for {}: {} < {}",
+                    d.device,
+                    d.read_bytes_total,
+                    prev_r
+                );
+                assert!(
+                    d.write_bytes_total >= prev_w,
+                    "write_bytes_total decreased for {}: {} < {}",
+                    d.device,
+                    d.write_bytes_total,
+                    prev_w
+                );
+            }
+        });
+    }
+
+    // T-DSK-05: read_device_info for a non-existent device returns all None fields
+    // except sector_size (which falls back to 512).
+    #[test]
+    fn test_read_device_info_nonexistent_all_none() {
+        let info = read_device_info("__nonexistent__");
+        assert!(info.model.is_none(),       "model must be None for missing device");
+        assert!(info.vendor.is_none(),      "vendor must be None for missing device");
+        assert!(info.serial.is_none(),      "serial must be None for missing device");
+        assert!(info.device_type.is_none(), "device_type must be None for missing device");
+        assert!(info.capacity_bytes.is_none(), "capacity_bytes must be None for missing device");
+    }
 }

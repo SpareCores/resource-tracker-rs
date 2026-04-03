@@ -97,18 +97,20 @@ pub fn sample_to_csv_row(s: &Sample, interval_secs: u64) -> String {
     let opt_i32 = |v: Option<i32>| v.map_or(String::new(), |x| x.to_string());
     let opt_f4  = |v: Option<f64>| v.map_or(String::new(), |x| format!("{x:.4}"));
 
+    let opt_u64 = |v: Option<u64>| v.map_or(String::new(), |x| x.to_string());
+
     let process_row = [
         opt_i32(s.tracked_pid),
         opt_u32(s.cpu.process_child_count),
-        String::new(), // process_utime: not yet collected
-        String::new(), // process_stime: not yet collected
+        opt_f4(s.cpu.process_utime_secs),
+        opt_f4(s.cpu.process_stime_secs),
         opt_f4(s.cpu.process_cores_used),
-        String::new(), // process_memory_mib: not yet collected
-        String::new(), // process_disk_read_bytes: not yet collected
-        String::new(), // process_disk_write_bytes: not yet collected
-        String::new(), // process_gpu_usage: not yet collected
-        String::new(), // process_gpu_vram_mib: not yet collected
-        String::new(), // process_gpu_utilized: not yet collected
+        opt_u64(s.cpu.process_rss_mib),
+        opt_u64(s.cpu.process_disk_read_bytes),
+        opt_u64(s.cpu.process_disk_write_bytes),
+        String::new(), // process_gpu_usage: NVML per-process utilization % unavailable without accounting mode
+        opt_f4(s.cpu.process_gpu_vram_mib),
+        opt_u32(s.cpu.process_gpu_utilized),
     ].join(",");
 
     format!("{system_row},{process_row}")
@@ -129,13 +131,21 @@ mod tests {
             job_name:       None,
             tracked_pid:    None,
             cpu: CpuMetrics {
-                utilization_pct:     2.5,
-                utime_secs:          1.234,
-                stime_secs:          0.567,
-                process_count:       42,
-                per_core_pct:        vec![],
-                process_cores_used:  None,
-                process_child_count: None,
+                utilization_pct:          2.5,
+                utime_secs:               1.234,
+                stime_secs:               0.567,
+                process_count:            42,
+                per_core_pct:             vec![],
+                process_cores_used:       None,
+                process_child_count:      None,
+                process_utime_secs:       None,
+                process_stime_secs:       None,
+                process_rss_mib:          None,
+                process_disk_read_bytes:  None,
+                process_disk_write_bytes: None,
+                process_gpu_vram_mib:     None,
+                process_gpu_utilized:     None,
+                process_tree_pids:        vec![],
             },
             memory: MemoryMetrics {
                 total_mib:      8192,
@@ -246,6 +256,36 @@ mod tests {
         let r1 = sample_to_csv_row(&sample, 1);
         let r2 = sample_to_csv_row(&sample, 1);
         assert_eq!(r1, r2, "csv row output is not deterministic");
+    }
+
+    // T-CSV-07: process_gpu_vram_mib and process_gpu_utilized are emitted at
+    // columns 30 and 31 when set; process_gpu_usage (col 29) is always empty.
+    #[test]
+    fn test_csv_process_gpu_fields_emitted_when_set() {
+        let mut sample = minimal_sample();
+        sample.tracked_pid          = Some(42);
+        sample.cpu.process_gpu_vram_mib  = Some(83.1875);
+        sample.cpu.process_gpu_utilized  = Some(1);
+
+        let row = sample_to_csv_row(&sample, 1);
+        let cols: Vec<&str> = row.split(',').collect();
+
+        assert_eq!(cols[29], "",        "process_gpu_usage must always be empty");
+        assert_eq!(cols[30], "83.1875", "process_gpu_vram_mib mismatch");
+        assert_eq!(cols[31], "1",       "process_gpu_utilized mismatch");
+    }
+
+    // T-CSV-08: process GPU columns are empty strings when no PID is tracked.
+    #[test]
+    fn test_csv_process_gpu_fields_empty_when_untracked() {
+        let sample = minimal_sample(); // tracked_pid = None, all process fields None
+
+        let row = sample_to_csv_row(&sample, 1);
+        let cols: Vec<&str> = row.split(',').collect();
+
+        assert_eq!(cols[29], "", "process_gpu_usage must be empty");
+        assert_eq!(cols[30], "", "process_gpu_vram_mib must be empty when None");
+        assert_eq!(cols[31], "", "process_gpu_utilized must be empty when None");
     }
 
     // T-CSV-06: no quoted fields; header has no trailing comma.

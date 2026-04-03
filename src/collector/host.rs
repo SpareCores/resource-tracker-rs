@@ -303,3 +303,89 @@ fn probe_cloud() -> CloudInfo {
 pub fn spawn_cloud_discovery() -> std::thread::JoinHandle<CloudInfo> {
     std::thread::spawn(probe_cloud)
 }
+
+// ---------------------------------------------------------------------------
+// Unit tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn fake_gpu(name: &str, vram_total_bytes: u64) -> GpuMetrics {
+        GpuMetrics {
+            uuid:                "test-uuid".to_string(),
+            name:                name.to_string(),
+            device_type:         "GPU".to_string(),
+            host_id:             "0".to_string(),
+            detail:              HashMap::new(),
+            utilization_pct:     0.0,
+            vram_total_bytes,
+            vram_used_bytes:     0,
+            vram_used_pct:       0.0,
+            temperature_celsius: 0,
+            power_watts:         0.0,
+            frequency_mhz:       0,
+            core_count:          None,
+        }
+    }
+
+    // T-HOST-01: no-GPU path returns None for all GPU fields.
+    #[test]
+    fn test_collect_host_info_no_gpus_returns_none_gpu_fields() {
+        let info = collect_host_info(&[]);
+        assert!(info.host_gpu_model.is_none(),    "host_gpu_model must be None when no GPUs");
+        assert!(info.host_gpu_count.is_none(),    "host_gpu_count must be None when no GPUs");
+        assert!(info.host_gpu_vram_mib.is_none(), "host_gpu_vram_mib must be None when no GPUs");
+    }
+
+    // T-HOST-02: one GPU sets model, count, and VRAM correctly.
+    #[test]
+    fn test_collect_host_info_one_gpu_sets_fields() {
+        // 8 GiB = 8192 MiB
+        let gpu = fake_gpu("TestGPU X100", 8 * 1_073_741_824);
+        let info = collect_host_info(&[gpu]);
+        assert_eq!(info.host_gpu_model.as_deref(), Some("TestGPU X100"));
+        assert_eq!(info.host_gpu_count, Some(1));
+        assert_eq!(info.host_gpu_vram_mib, Some(8192));
+    }
+
+    // T-HOST-03: two GPUs sum VRAM and report count = 2.
+    #[test]
+    fn test_collect_host_info_two_gpus_sums_vram() {
+        let gpu1 = fake_gpu("GPU A", 4 * 1_073_741_824); // 4 GiB
+        let gpu2 = fake_gpu("GPU B", 4 * 1_073_741_824); // 4 GiB
+        let info = collect_host_info(&[gpu1, gpu2]);
+        assert_eq!(info.host_gpu_count, Some(2));
+        assert_eq!(info.host_gpu_vram_mib, Some(8192)); // 8 GiB total
+    }
+
+    // T-HOST-04: hostname is non-empty on any standard Linux host.
+    #[test]
+    fn test_collect_host_info_hostname_present() {
+        let info = collect_host_info(&[]);
+        assert!(
+            info.host_name.as_deref().map(|s| !s.is_empty()).unwrap_or(false),
+            "host_name should be a non-empty string on a standard Linux host"
+        );
+    }
+
+    // T-HOST-05: host_vcpus is present and positive.
+    #[test]
+    fn test_collect_host_info_vcpus_positive() {
+        let info = collect_host_info(&[]);
+        let vcpus = info.host_vcpus.unwrap_or(0);
+        assert!(vcpus > 0, "host_vcpus must be > 0, got {:?}", info.host_vcpus);
+    }
+
+    // T-HOST-06: spawn_cloud_discovery resolves without panic.
+    // Cloud probes time out after 2 s each; on a non-cloud machine this fast-paths.
+    #[test]
+    fn test_spawn_cloud_discovery_joins_without_panic() {
+        let handle = spawn_cloud_discovery();
+        let _cloud = handle.join().expect("cloud discovery thread panicked");
+        // Result may be default (no cloud) or populated (running on a cloud VM).
+        // Either outcome is valid; the test only checks for no panic.
+    }
+}

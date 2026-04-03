@@ -30,6 +30,9 @@ document:
 test:
     cargo test
 
+report_coverage:
+	cargo llvm-cov --bins --html --open -- --test-threads=1
+
 
 ## Stub for possisble future use:
 ## # Install Python resource-tracker via uv

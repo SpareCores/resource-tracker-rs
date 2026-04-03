@@ -46,7 +46,7 @@ fn shutdown(
     sentinel:      Option<&SentinelClient>,
     run_ctx:       Option<Arc<Mutex<RunContext>>>,
     shutdown_flag: Option<Arc<AtomicBool>>,
-    upload_handle: Option<std::thread::JoinHandle<Vec<String>>>,
+    upload_handle: Option<std::thread::JoinHandle<()>>,
     remaining:     Vec<Sample>,
     interval_secs: u64,
 ) -> ! {
@@ -54,10 +54,11 @@ fn shutdown(
         (sentinel, run_ctx, shutdown_flag, upload_handle)
     {
         // Signal the upload thread to flush and stop, then wait for it.
+        // The upload thread notices the flag within 250 ms (tick interval).
         flag.store(true, Ordering::Relaxed);
-        let uploaded_uris = handle.join().unwrap_or_default();
+        let _ = handle.join(); // join for clean shutdown; uploaded URIs not sent to /finish
 
-        // Any samples collected after the last batch upload go as local CSV.
+        // Any samples collected after the last batch upload go as inline CSV.
         let remaining_csv = if !remaining.is_empty() {
             Some(samples_to_csv(&remaining, interval_secs))
         } else {
@@ -71,7 +72,6 @@ fn shutdown(
             &client.token,
             &ctx,
             Some(exit_code),
-            &uploaded_uris,
             remaining_csv,
         ) {
             eprintln!("warn: sentinel close_run failed: {e}");
@@ -112,7 +112,7 @@ fn main() {
     // Emit one line of metric output to the selected sink.
     // quiet=true  -> no-op
     // output_file -> write to file and flush (so `tail -f` works)
-    // default     -> println! to stdout
+    // default     -> eprintln! to stderr (keeps stdout clean for the tracked app)
     macro_rules! emit {
         ($($arg:tt)*) => {
             if !config.quiet {
@@ -120,7 +120,7 @@ fn main() {
                     let _ = writeln!(f, $($arg)*);
                     let _ = f.flush();
                 } else {
-                    println!($($arg)*);
+                    eprintln!($($arg)*);
                 }
             }
         }
@@ -233,7 +233,7 @@ fn main() {
             .unwrap_or_default()
             .as_secs();
 
-        let sample = Sample {
+        let mut sample = Sample {
             timestamp_secs,
             job_name:    config.metadata.job_name.clone(),
             tracked_pid: config.pid,
@@ -243,6 +243,17 @@ fn main() {
             disk:        disk.collect().unwrap_or_default(),
             gpu:         gpu.collect().unwrap_or_default(),
         };
+
+        // Augment with per-process GPU stats using the PID tree from CpuCollector.
+        if config.pid.is_some() && !sample.cpu.process_tree_pids.is_empty() {
+            let pids_u32: Vec<u32> = sample.cpu.process_tree_pids
+                .iter()
+                .filter_map(|&p| u32::try_from(p).ok())
+                .collect();
+            let (vram_mib, gpu_utilized) = gpu.process_gpu_info(&pids_u32);
+            sample.cpu.process_gpu_vram_mib = vram_mib;
+            sample.cpu.process_gpu_utilized = gpu_utilized;
+        }
 
         // Emit to selected output sink.
         match config.format {

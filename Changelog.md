@@ -2,6 +2,109 @@
 
 ## [Unreleased]
 
+### CLI ordering fix + command field in start_run payload (2026-04-03)
+
+#### `src/config.rs` -- --job-name moved to metadata section
+- `job_name` field moved in `Cli` struct from the "Core flags" section to the
+  metadata section, between `project_name` and `stage_name`.  The `-n` shorthand
+  is retained.  This fixes `--help` display order so `--job-name` appears
+  naturally between `--project-name` and `--stage-name`.
+- Added `command: Vec<String>` field to `JobMetadata`.  Populated from
+  `cli.command` in `Config::load()` so the shell-wrapper command is available
+  for API registration without requiring a separate parameter thread.
+
+#### `src/sentinel/run.rs` -- command array in /runs payload
+- Added `command: &'a [String]` field to `MetadataPayload` with
+  `#[serde(skip_serializing_if = "slice_is_empty")]`.
+- `start_run` now sends the wrapped command as a JSON array in the POST body,
+  e.g. `"command":["stress","--cpu","4","--timeout","63s"]`.
+  The field is absent when not in shell-wrapper mode (empty slice).
+
+---
+
+### Unit test coverage: 41.98% -> 80.24% (2026-04-02)
+
+Added unit tests across all collector and sentinel modules to bring
+`cargo llvm-cov --bins` line coverage from 41.98% to 80.24% (91 tests total).
+
+#### New test modules added
+
+- **`collector/memory.rs`** (was 0%): 5 tests for `MemoryCollector::collect()` --
+  total_mib > 0, used_pct in 0..100, free_mib <= total_mib, swap consistency,
+  repeatability.
+- **`collector/network.rs`** (was 0%): 4 tests -- first-call rates 0.0, second-call
+  rates >= 0.0, no loopback / sorted, cumulative totals non-decreasing.
+- **`collector/host.rs`** (was 0%): 6 tests -- no-GPU returns None GPU fields,
+  one/two GPU field population and VRAM summing, hostname non-empty, vcpus > 0,
+  `spawn_cloud_discovery` joins without panic.
+- **`collector/disk.rs`** (was 24%): 5 new tests -- first-call rates 0.0,
+  second-call rates >= 0.0, sorted by device, totals non-decreasing,
+  `read_device_info` non-existent device returns all-None fields.
+- **`collector/cpu.rs`** (was 31%): 6 new tests -- PID-tracking produces Some for
+  all process fields, `process_tree_rss_mib` > 0 for self, `process_tree_ticks`
+  contains root PID, second collect >= 0 cores, no-PID second collect all None,
+  process_count > 0.
+- **`collector/gpu.rs`** (was 14%): 4 new tests -- `collect()` returns Ok,
+  identity fields non-empty, utilization_pct in 0..100, vram_used <= vram_total.
+
+#### Expanded test coverage in existing modules
+
+- **`config.rs`** (was 0%): 5 tests -- TOML deserialization, `TomlConfig::default()`,
+  `JobMetadata::default()`, `OutputFormat` equality, unknown-key handling.
+- **`sentinel/mod.rs`** (was 65%, now 100%): 2 new tests -- valid token returns
+  Some with correct defaults, `SENTINEL_API_URL` env var overrides base URL.
+- **`sentinel/run.rs`** (was 73%, now 95%): 8 new tests -- `base64_encode` RFC 4648
+  vectors and round-trip, `days_since_epoch` invalid inputs, `parse_iso8601_secs`
+  UTC offset and too-few-components, `slice_is_empty` helper, `refresh_credentials`
+  mock-server test, `start_run` mock-server test.
+- **`sentinel/upload.rs`** (was 63%, now 89%): 2 new tests -- non-empty batch with
+  invalid URI exercises CSV/gzip path then exits on shutdown; S3-failure path
+  exercises retry logic (note: takes ~7 s due to 2+4 s retry back-off sleeps).
+
+#### Uncovered lines (not achievable with unit tests)
+
+- `main.rs` (171 lines, 0%): binary entry point; covered by smoke tests.
+- `collector/gpu.rs` AMD+NVML paths (221 lines): require physical GPU hardware.
+- `config.rs` `Config::load()` (45 lines): uses `clap::Parser::parse()` which
+  reads `std::env::args()` and rejects test-runner flags.
+
+---
+
+### close_run 422 fix + upload thread shutdown delay fix (2026-04-03)
+
+#### `src/sentinel/run.rs` -- /finish endpoint body shape corrected
+- Removed `run_id` from `CloseRunRequest` body; it belongs in the URL path
+  (`/runs/{run_id}/finish`) only.  Sending it in the body caused a 422.
+- Removed `DataSource::S3` variant from close_run.  The /finish endpoint does
+  not accept `data_source: "s3"`; S3 batches uploaded during the run are
+  already associated with the run server-side by run_id.
+- `close_run` now always sends `data_source: "inline"` with base64-encoded
+  remaining (unflushed) samples as `data_csv`.
+- Removed `uploaded_uris` parameter from `close_run` (no longer used in body).
+- Tests updated: `test_close_run_request_omits_run_id`,
+  `test_close_run_data_source_inline` (replaces previous s3 variant tests).
+- New test `test_close_run_posts_to_finish_endpoint`: mock TCP server captures
+  the raw HTTP request and asserts URL contains run_id, body omits run_id,
+  `data_source=inline`, no `s3` field, `data_csv` present, correct run_status
+  and exit_code.
+
+#### `src/sentinel/upload.rs` -- upload thread shuts down within 250 ms
+- Replaced `std::thread::sleep(upload_interval)` with a `take_while` / `for_each`
+  loop of 250 ms ticks that checks the shutdown flag on each tick.  Previously,
+  a tracked app finishing before the upload interval elapsed (e.g. 63 s with a
+  60 s interval) caused the resource-tracker to wait up to 60 s for the thread
+  to wake before exiting.  Now it exits within ~250 ms of the flag being set.
+- Thread return type changed from `JoinHandle<Vec<String>>` to `JoinHandle<()>`;
+  uploaded URIs are no longer returned (they are not sent to /finish).
+- New test `test_upload_thread_shuts_down_promptly`: spawns uploader with a 60 s
+  interval, sets the shutdown flag immediately, asserts join completes in < 2 s.
+
+#### `src/main.rs` -- shutdown() updated
+- `upload_handle` type updated to `JoinHandle<()>`; join result discarded.
+- Removed `uploaded_uris` from `close_run` call.
+
+---
+
 ### --quiet / --output flags + output routing tests (2026-04-02)
 
 #### `src/config.rs` -- new output control flags

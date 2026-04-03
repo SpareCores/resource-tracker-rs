@@ -95,20 +95,24 @@ impl BatchUploader {
         agent: ureq::Agent,
         api_base: String,
         token: String,
-    ) -> std::thread::JoinHandle<Vec<String>> {
+    ) -> std::thread::JoinHandle<()> {
         std::thread::spawn(move || {
-            let mut uploaded_uris: Vec<String> = Vec::new();
             let mut region_cache = RegionCache::new();
             let mut seq: u32 = 0;
             let mut consecutive_failures: u32 = 0;
 
-            let sleep_duration = Duration::from_secs(self.upload_interval_secs);
+            // Break the upload interval into 250 ms ticks so a shutdown signal
+            // is noticed within 250 ms rather than waiting a full 60 seconds.
+            let tick = Duration::from_millis(250);
+            let ticks_per_interval = (self.upload_interval_secs * 4).max(1);
 
             loop {
                 let shutting_down = self.shutdown.load(Ordering::Relaxed);
 
                 if !shutting_down {
-                    std::thread::sleep(sleep_duration);
+                    (0..ticks_per_interval)
+                        .take_while(|_| !self.shutdown.load(Ordering::Relaxed))
+                        .for_each(|_| std::thread::sleep(tick));
                 }
 
                 // Drain buffer under a minimal lock window.
@@ -192,8 +196,7 @@ impl BatchUploader {
                     });
 
                 match result {
-                    Ok(uri) => {
-                        uploaded_uris.push(uri);
+                    Ok(_uri) => {
                         seq += 1;
                         consecutive_failures = 0;
                     }
@@ -215,8 +218,6 @@ impl BatchUploader {
                     break;
                 }
             }
-
-            uploaded_uris
         })
     }
 }
@@ -238,7 +239,15 @@ mod tests {
             job_name:    None,
             tracked_pid: None,
             cpu: CpuMetrics {
-                utilization_pct: 1.0,
+                utilization_pct:          1.0,
+                process_utime_secs:       None,
+                process_stime_secs:       None,
+                process_rss_mib:          None,
+                process_disk_read_bytes:  None,
+                process_disk_write_bytes: None,
+                process_gpu_vram_mib:     None,
+                process_gpu_utilized:     None,
+                process_tree_pids:        vec![],
                 ..Default::default()
             },
             memory: MemoryMetrics {
@@ -250,6 +259,55 @@ mod tests {
             disk: vec![],
             gpu: vec![],
         }
+    }
+
+    // T-STR-01: upload thread exits within 2 s of the shutdown flag being set,
+    // even when the upload interval is 60 s.
+    // Without the tick-based sleep the thread would block for the full interval.
+    #[test]
+    fn test_upload_thread_shuts_down_promptly() {
+        use crate::sentinel::run::RunContext;
+        use crate::sentinel::s3::UploadCredentials;
+        use std::sync::{Arc, Mutex};
+        use std::time::{Duration, Instant};
+
+        let (uploader, _buf) = BatchUploader::new(60, 1);
+        let flag = uploader.shutdown_flag();
+
+        let ctx = Arc::new(Mutex::new(RunContext {
+            run_id:              "r".to_string(),
+            upload_uri_prefix:   "s3://b/p".to_string(),
+            credentials: UploadCredentials {
+                access_key_id:     "k".to_string(),
+                secret_access_key: "s".to_string(),
+                session_token:     "t".to_string(),
+                expires_at:        "2099-01-01T00:00:00Z".to_string(),
+            },
+        }));
+
+        let agent = ureq::config::Config::builder()
+            .timeout_global(Some(Duration::from_secs(1)))
+            .build()
+            .new_agent();
+
+        // Buffer is empty so the thread will never attempt an upload.
+        let handle = uploader.spawn(
+            ctx,
+            agent,
+            "http://127.0.0.1:1".to_string(),
+            "token".to_string(),
+        );
+
+        // Signal shutdown immediately and measure how long join takes.
+        let t0 = Instant::now();
+        flag.store(true, Ordering::Relaxed);
+        handle.join().expect("upload thread panicked");
+        let elapsed = t0.elapsed();
+
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "upload thread took {elapsed:?} to shut down; expected < 2 s"
+        );
     }
 
     // T-STR-02: batch body decompresses to valid CSV (header + data rows).
@@ -308,5 +366,131 @@ mod tests {
                 "line does not end with newline: {chunk:?}"
             );
         });
+    }
+
+    // T-STR-05: when the buffer is non-empty at shutdown and the upload URI is
+    // invalid (cannot be parsed into bucket+key), the thread serializes the batch,
+    // compresses it, then skips the S3 put and exits cleanly.
+    //
+    // This test covers the CSV-serialize → gzip → bucket-empty → shutdown path
+    // inside the upload thread without requiring a real S3 endpoint.
+    #[test]
+    fn test_upload_thread_processes_batch_with_invalid_uri() {
+        use crate::sentinel::run::RunContext;
+        use crate::sentinel::s3::UploadCredentials;
+        use std::sync::{Arc, Mutex};
+        use std::sync::atomic::Ordering;
+        use std::time::{Duration, Instant};
+
+        let (uploader, buf) = BatchUploader::new(1, 1);
+        let flag = uploader.shutdown_flag();
+
+        // Push a sample into the buffer so the thread has a non-empty batch.
+        {
+            let mut guard = buf.lock().unwrap();
+            guard.push(minimal_sample());
+        }
+
+        // Invalid upload_uri_prefix: parse_s3_uri will fail and bucket will be empty.
+        let ctx = Arc::new(Mutex::new(RunContext {
+            run_id: "r".to_string(),
+            upload_uri_prefix: "invalid-not-an-s3-uri".to_string(),
+            credentials: UploadCredentials {
+                access_key_id:     "k".to_string(),
+                secret_access_key: "s".to_string(),
+                session_token:     "t".to_string(),
+                expires_at:        "2099-01-01T00:00:00Z".to_string(),
+            },
+        }));
+
+        let agent = ureq::config::Config::builder()
+            .timeout_global(Some(Duration::from_millis(100)))
+            .build()
+            .new_agent();
+
+        // Signal shutdown before spawning so the thread skips the sleep phase.
+        flag.store(true, Ordering::Relaxed);
+
+        let handle = uploader.spawn(
+            ctx,
+            agent,
+            "http://127.0.0.1:1".to_string(),
+            "token".to_string(),
+        );
+
+        let t0 = Instant::now();
+        handle.join().expect("upload thread panicked");
+        let elapsed = t0.elapsed();
+
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "upload thread with non-empty batch took {elapsed:?}; expected < 2 s"
+        );
+    }
+
+    // T-STR-06: when a valid-looking S3 endpoint is unreachable, the thread
+    // retries up to MAX_CONSECUTIVE_FAILURES times then resets and continues.
+    // Shutdown flag is set after the first failed batch so the thread exits.
+    // NOTE: this test takes ~7 s because the retry back-off sleeps 2 s + 4 s.
+    #[test]
+    fn test_upload_thread_handles_s3_failure_gracefully() {
+        use crate::sentinel::run::RunContext;
+        use crate::sentinel::s3::UploadCredentials;
+        use std::sync::{Arc, Mutex};
+        use std::sync::atomic::Ordering;
+        use std::time::{Duration, Instant};
+
+        let (uploader, buf) = BatchUploader::new(1, 1);
+        let flag = uploader.shutdown_flag();
+
+        // Push a sample into the buffer.
+        {
+            let mut guard = buf.lock().unwrap();
+            guard.push(minimal_sample());
+        }
+
+        // A real-looking S3 URI but bucket host is unreachable (port 1 = closed).
+        let ctx = Arc::new(Mutex::new(RunContext {
+            run_id: "r".to_string(),
+            upload_uri_prefix: "s3://fake-nonexistent-bucket-xyz/prefix".to_string(),
+            credentials: UploadCredentials {
+                access_key_id:     "AKIAIOSFODNN7EXAMPLE".to_string(),
+                secret_access_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".to_string(),
+                session_token:     "token".to_string(),
+                expires_at:        "2099-01-01T00:00:00Z".to_string(),
+            },
+        }));
+
+        // Very short timeout so the S3 attempt fails fast.
+        let agent = ureq::config::Config::builder()
+            .timeout_global(Some(Duration::from_millis(200)))
+            .build()
+            .new_agent();
+
+        // Pre-set shutdown: the thread will process one batch, fail the upload,
+        // then exit on the shutdown check.
+        flag.store(true, Ordering::Relaxed);
+
+        let handle = uploader.spawn(
+            ctx,
+            agent,
+            "http://127.0.0.1:1".to_string(),
+            "token".to_string(),
+        );
+
+        let t0 = Instant::now();
+        handle.join().expect("upload thread panicked");
+        let elapsed = t0.elapsed();
+
+        // Should complete well within 5 s even with retry back-off (2+4 s),
+        // because the retries are skipped when timeout is 200 ms and the
+        // first attempt fails near-instantly.
+        // Timing breakdown: region detection (up to 2 s TCP timeout) +
+        // 3 × 200 ms agent timeouts + 2 s + 4 s retry sleeps = ~8.6 s max.
+        // Allow 20 s to accommodate slow DNS on any CI/dev host.
+        assert!(
+            elapsed < Duration::from_secs(20),
+            "upload thread took {elapsed:?}; expected < 20 s"
+        );
     }
 }

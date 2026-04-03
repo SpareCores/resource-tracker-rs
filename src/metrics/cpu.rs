@@ -31,4 +31,38 @@ pub struct CpuMetrics {
     /// Does not include the root process itself.
     /// None when no process PID is being tracked.
     pub process_child_count: Option<u32>,
+    /// User-mode CPU seconds consumed by the process tree this interval.
+    /// Sum of utime tick deltas / ticks_per_second across all tree members.
+    /// None when no PID is tracked.
+    pub process_utime_secs: Option<f64>,
+    /// System-mode CPU seconds consumed by the process tree this interval.
+    /// Sum of stime tick deltas / ticks_per_second across all tree members.
+    /// None when no PID is tracked.
+    pub process_stime_secs: Option<f64>,
+    /// Resident set size of the process tree (sum of VmRSS from /proc/pid/status)
+    /// in MiB, sampled at each interval (not a delta).
+    /// None when no PID is tracked.
+    pub process_rss_mib: Option<u64>,
+    /// Disk bytes actually read from storage by the process tree this interval.
+    /// Delta of /proc/pid/io read_bytes across all tree members.
+    /// None when no PID is tracked or /proc/pid/io is unreadable.
+    pub process_disk_read_bytes: Option<u64>,
+    /// Disk bytes actually written to storage by the process tree this interval.
+    /// Delta of /proc/pid/io write_bytes across all tree members.
+    /// None when no PID is tracked or /proc/pid/io is unreadable.
+    pub process_disk_write_bytes: Option<u64>,
+    /// Total VRAM consumed by the tracked process tree across all GPUs (MiB).
+    /// NVIDIA: sum of used_gpu_memory from NVML running-process lists.
+    /// AMD: sum of drm-memory-vram from /proc/pid/fdinfo for matched devices.
+    /// None when no PID is tracked or no GPU is present on the host.
+    pub process_gpu_vram_mib: Option<f64>,
+    /// Number of GPUs on which at least one process in the tracked tree has
+    /// allocated VRAM or appears in the running-process list.
+    /// None when no PID is tracked or no GPU is present on the host.
+    pub process_gpu_utilized: Option<u32>,
+    /// PIDs in the tracked process tree (root + all descendants).
+    /// Populated by CpuCollector; used by main.rs to query per-process GPU stats.
+    /// Skipped in JSON/CSV output -- internal routing field only.
+    #[serde(skip)]
+    pub process_tree_pids: Vec<i32>,
 }

@@ -88,4 +88,30 @@ mod tests {
         unsafe { std::env::remove_var("SENTINEL_API_TOKEN"); }
         assert!(result.is_none(), "expected None when SENTINEL_API_TOKEN is empty string");
     }
+
+    // T-STR-07: a non-empty token returns Some with the correct token and default URL.
+    #[test]
+    fn test_valid_token_returns_some_with_defaults() {
+        // SAFETY: single-threaded test; no concurrent env access.
+        unsafe { std::env::set_var("SENTINEL_API_TOKEN", "my-test-token"); }
+        unsafe { std::env::remove_var("SENTINEL_API_URL"); }
+        let result = SentinelClient::from_env();
+        unsafe { std::env::remove_var("SENTINEL_API_TOKEN"); }
+        let client = result.expect("expected Some when SENTINEL_API_TOKEN is non-empty");
+        assert_eq!(client.token, "my-test-token");
+        assert_eq!(client.api_base, DEFAULT_API_BASE);
+    }
+
+    // T-STR-08: SENTINEL_API_URL overrides the default API base URL.
+    #[test]
+    fn test_api_url_env_override() {
+        // SAFETY: single-threaded test; no concurrent env access.
+        unsafe { std::env::set_var("SENTINEL_API_TOKEN", "tok"); }
+        unsafe { std::env::set_var("SENTINEL_API_URL", "http://localhost:9999"); }
+        let result = SentinelClient::from_env();
+        unsafe { std::env::remove_var("SENTINEL_API_TOKEN"); }
+        unsafe { std::env::remove_var("SENTINEL_API_URL"); }
+        let client = result.expect("expected Some when token is set");
+        assert_eq!(client.api_base, "http://localhost:9999");
+    }
 }

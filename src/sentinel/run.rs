@@ -201,31 +201,23 @@ struct MetadataPayload<'a> {
     tags: &'a [String],
     #[serde(skip_serializing_if = "Option::is_none")]
     pid: Option<i32>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(tag = "data_source", rename_all = "snake_case")]
-enum DataSource {
-    S3 {
-        data_uris: Vec<String>,
-    },
-    /// Inline base64-encoded CSV.
-    /// The HTTP body carrying this is gzip-compressed at the transport level
-    /// (`Content-Encoding: gzip`), so no inner gzip on the field itself.
-    /// Matches Python `DataSource.inline` / `finish_run(data_source="inline", data_csv=...)`.
-    Inline {
-        data_csv: String,
-    },
+    /// Shell-wrapper command as a JSON array, e.g. ["stress","--cpu","4"].
+    /// Omitted when not running in shell-wrapper mode.
+    #[serde(skip_serializing_if = "slice_is_empty")]
+    command: &'a [String],
 }
 
 #[derive(Debug, Serialize)]
 struct CloseRunRequest {
-    run_id: String,
+    // run_id is in the URL path (/runs/{run_id}/finish); do not repeat in body.
     #[serde(skip_serializing_if = "Option::is_none")]
     exit_code: Option<i32>,
     run_status: &'static str,
-    #[serde(flatten)]
-    data: DataSource,
+    // Always inline: remaining (unflushed) samples only.
+    // Earlier batches were already uploaded to S3 and are associated with the
+    // run by run_id server-side; the /finish endpoint does not accept s3 URIs.
+    data_source: &'static str,
+    data_csv: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -260,6 +252,7 @@ pub fn start_run(
             container_image: metadata.container_image.as_deref(),
             tags: &metadata.tags,
             pid,
+            command: &metadata.command,
         },
         host,
         cloud,
@@ -345,17 +338,16 @@ pub fn refresh_credentials(
 
 /// POST to `/runs/{run_id}/finish` to mark the run complete.
 ///
-/// `uploaded_uris`: S3 URIs of all successfully uploaded batches.  When empty,
-/// `remaining_csv` is base64-encoded and placed in `data_source = "inline"`.
-/// The whole JSON body is gzip-compressed with `Content-Encoding: gzip`,
-/// matching the Python `finish_run` behaviour.
+/// `remaining_csv`: samples collected after the last S3 batch upload.
+/// These are base64-encoded and sent inline; earlier batches already uploaded
+/// to S3 are associated with the run server-side by run_id -- they do not need
+/// to be listed here.
 pub fn close_run(
     agent: &ureq::Agent,
     api_base: &str,
     token: &str,
     ctx: &RunContext,
     exit_code: Option<i32>,
-    uploaded_uris: &[String],
     remaining_csv: Option<String>,
 ) -> Result<(), String> {
     // Python RunStatus: "finished" for success/clean exit, "failed" for non-zero.
@@ -365,25 +357,17 @@ pub fn close_run(
         Some(_) => "failed",
     };
 
-    let data = if !uploaded_uris.is_empty() {
-        DataSource::S3 {
-            data_uris: uploaded_uris.to_vec(),
-        }
-    } else {
-        // Base64-encode the raw CSV.  The whole HTTP body is gzip-compressed
-        // below, so no inner gzip here.  Matches Python:
-        //   payload["data_csv"] = b64encode(data_csv).decode("ascii")
-        let encoded = remaining_csv
-            .map(|csv| base64_encode(csv.as_bytes()))
-            .unwrap_or_default();
-        DataSource::Inline { data_csv: encoded }
-    };
+    // Base64-encode the remaining samples CSV.  Matches Python:
+    //   payload["data_csv"] = b64encode(data_csv).decode("ascii")
+    let data_csv = remaining_csv
+        .map(|csv| base64_encode(csv.as_bytes()))
+        .unwrap_or_default();
 
     let payload = CloseRunRequest {
-        run_id: ctx.run_id.clone(),
         exit_code,
         run_status,
-        data,
+        data_source: "inline",
+        data_csv,
     };
 
     let url = format!("{api_base}/runs/{}/finish", ctx.run_id);
@@ -474,48 +458,451 @@ mod tests {
         );
     }
 
-    // T-EOR-02: close_run request body contains run_id matching the start_run response.
-    // Verified by serializing a CloseRunRequest and checking the JSON payload.
+    // T-EOR-01: close_run POSTs to /runs/{run_id}/finish with the correct shape.
+    // Verifies: run_id in URL (not body), data_source=inline, data_csv present,
+    // no "s3" field, run_status and exit_code present.
     #[test]
-    fn test_close_run_request_contains_run_id() {
-        let req = CloseRunRequest {
-            run_id: "run-abc-123".to_string(),
-            exit_code: Some(0),
-            run_status: "finished",
-            data: DataSource::Inline {
-                data_csv: "aGVhZGVyCnJvdwo=".to_string(),
+    fn test_close_run_posts_to_finish_endpoint() {
+        use std::io::{Read as _, Write as _};
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (tx, rx) = mpsc::channel::<Vec<u8>>();
+
+        std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                // Read headers + body in a loop until Content-Length bytes are present.
+                let mut buf = Vec::<u8>::new();
+                let mut tmp = [0u8; 4096];
+                loop {
+                    let n = stream.read(&mut tmp).unwrap_or(0);
+                    if n == 0 { break; }
+                    buf.extend_from_slice(&tmp[..n]);
+                    // Find header/body separator.
+                    if let Some(sep) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                        let header_str = String::from_utf8_lossy(&buf[..sep]).to_ascii_lowercase();
+                        let cl = header_str
+                            .lines()
+                            .find_map(|l| {
+                                l.trim()
+                                    .strip_prefix("content-length:")
+                                    .and_then(|v| v.trim().parse::<usize>().ok())
+                            })
+                            .unwrap_or(0);
+                        if buf.len() >= sep + 4 + cl { break; }
+                    }
+                }
+                tx.send(buf).ok();
+                stream
+                    .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}")
+                    .ok();
+            }
+        });
+
+        let agent = ureq::config::Config::builder()
+            .timeout_global(Some(Duration::from_secs(30)))
+            .build()
+            .new_agent();
+
+        let ctx = RunContext {
+            run_id: "run-abc-999".to_string(),
+            upload_uri_prefix: "s3://b/p".to_string(),
+            credentials: UploadCredentials {
+                access_key_id:     "k".to_string(),
+                secret_access_key: "s".to_string(),
+                session_token:     "t".to_string(),
+                expires_at:        "2099-01-01T00:00:00Z".to_string(),
             },
         };
-        let json = serde_json::to_string(&req).expect("serialize failed");
+
+        let result = close_run(
+            &agent,
+            &format!("http://127.0.0.1:{port}"),
+            "test-token",
+            &ctx,
+            Some(0),
+            Some("header\nrow1\n".to_string()),
+        );
+        assert!(result.is_ok(), "close_run failed: {result:?}");
+
+        let raw = rx.recv().expect("mock server did not receive request");
+        let raw_str = String::from_utf8_lossy(&raw);
+
+        // run_id belongs in the URL path, not the JSON body.
         assert!(
-            json.contains("\"run_id\":\"run-abc-123\""),
-            "run_id absent from close_run payload: {json}"
+            raw_str.contains("/runs/run-abc-999/finish"),
+            "URL must include /runs/{{run_id}}/finish: {raw_str}"
+        );
+        assert!(
+            !raw_str.contains("\"run_id\""),
+            "run_id must not appear in the JSON body: {raw_str}"
+        );
+
+        // data_source must be "inline"; no "s3" field anywhere.
+        assert!(
+            raw_str.contains("\"data_source\":\"inline\""),
+            "expected data_source=inline in body: {raw_str}"
+        );
+        assert!(
+            !raw_str.contains("\"s3\""),
+            "s3 must not appear in body: {raw_str}"
+        );
+
+        // data_csv must be present (base64 of the remaining CSV).
+        assert!(
+            raw_str.contains("\"data_csv\""),
+            "data_csv absent from body: {raw_str}"
+        );
+
+        // run_status and exit_code must be present.
+        assert!(
+            raw_str.contains("\"run_status\":\"finished\""),
+            "run_status absent or wrong: {raw_str}"
+        );
+        assert!(
+            raw_str.contains("\"exit_code\":0"),
+            "exit_code absent or wrong: {raw_str}"
         );
     }
 
-    // T-EOR-03: data_source is "inline" when no S3 uploads occurred.
+    // T-EOR-02: close_run body does NOT contain run_id (it is already in the URL path).
     #[test]
-    fn test_close_run_data_source_inline_when_no_uploads() {
-        let data = DataSource::Inline {
-            data_csv: "base64encodedgzip==".to_string(),
+    fn test_close_run_request_omits_run_id() {
+        let req = CloseRunRequest {
+            exit_code: Some(0),
+            run_status: "finished",
+            data_source: "inline",
+            data_csv: "aGVhZGVyCnJvdwo=".to_string(),
         };
-        let json = serde_json::to_string(&data).expect("serialize failed");
+        let json = serde_json::to_string(&req).expect("serialize failed");
+        assert!(
+            !json.contains("\"run_id\""),
+            "run_id must not appear in close_run body (it is in the URL): {json}"
+        );
+    }
+
+    // T-EOR-03: data_source is always "inline" and data_csv is present.
+    #[test]
+    fn test_close_run_data_source_inline() {
+        let req = CloseRunRequest {
+            exit_code: Some(0),
+            run_status: "finished",
+            data_source: "inline",
+            data_csv: "base64csv==".to_string(),
+        };
+        let json = serde_json::to_string(&req).expect("serialize failed");
         assert!(
             json.contains("\"data_source\":\"inline\""),
             "data_source is not 'inline': {json}"
         );
+        assert!(
+            json.contains("\"data_csv\":\"base64csv==\""),
+            "data_csv absent from payload: {json}"
+        );
     }
 
-    // T-EOR-04: data_source is "s3" when at least one S3 upload succeeded.
+    // base64_encode: RFC 4648 test vectors (Section 10).
     #[test]
-    fn test_close_run_data_source_s3_when_uploads_present() {
-        let data = DataSource::S3 {
-            data_uris: vec!["s3://my-bucket/run/000001.csv.gz".to_string()],
+    fn test_base64_encode_rfc4648_vectors() {
+        assert_eq!(base64_encode(b""), "");
+        assert_eq!(base64_encode(b"f"), "Zg==");
+        assert_eq!(base64_encode(b"fo"), "Zm8=");
+        assert_eq!(base64_encode(b"foo"), "Zm9v");
+        assert_eq!(base64_encode(b"foob"), "Zm9vYg==");
+        assert_eq!(base64_encode(b"fooba"), "Zm9vYmE=");
+        assert_eq!(base64_encode(b"foobar"), "Zm9vYmFy");
+    }
+
+    // base64_encode: encoding and decoding round-trip is valid base64.
+    #[test]
+    fn test_base64_encode_csv_roundtrip() {
+        let csv = "timestamp,value\n1000,42\n1001,99\n";
+        let encoded = base64_encode(csv.as_bytes());
+        // All chars in the output must be valid base64 characters.
+        encoded.chars().for_each(|c| {
+            assert!(
+                c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=',
+                "invalid base64 char '{c}' in: {encoded}"
+            );
+        });
+    }
+
+    // days_since_epoch: invalid month/day/year return None.
+    #[test]
+    fn test_days_since_epoch_invalid_inputs() {
+        assert_eq!(days_since_epoch(1970, 0, 1), None, "month 0 is invalid");
+        assert_eq!(days_since_epoch(1970, 13, 1), None, "month 13 is invalid");
+        assert_eq!(days_since_epoch(1970, 1, 0), None, "day 0 is invalid");
+        assert_eq!(days_since_epoch(1970, 1, 32), None, "day 32 is invalid");
+        assert_eq!(days_since_epoch(1969, 12, 31), None, "year before 1970 is invalid");
+    }
+
+    // parse_iso8601_secs: +00:00 suffix is handled the same as Z.
+    #[test]
+    fn test_parse_iso8601_secs_with_utc_offset() {
+        let with_z    = parse_iso8601_secs("2026-04-01T00:00:00Z");
+        let with_plus = parse_iso8601_secs("2026-04-01T00:00:00+00:00");
+        assert_eq!(with_z, with_plus, "+00:00 and Z must parse to the same timestamp");
+    }
+
+    // parse_iso8601_secs: fewer than 6 numeric components returns None.
+    #[test]
+    fn test_parse_iso8601_secs_too_few_components() {
+        assert_eq!(parse_iso8601_secs("2026-04-01"), None, "date-only string must return None");
+        assert_eq!(parse_iso8601_secs("not-a-date"), None);
+    }
+
+    // slice_is_empty helper is used by serde skip_serializing_if.
+    #[test]
+    fn test_slice_is_empty_helper() {
+        let empty: &[String] = &[];
+        let nonempty: &[String] = &["tag".to_string()];
+        assert!(slice_is_empty(&&*empty),   "empty slice should return true");
+        assert!(!slice_is_empty(&&*nonempty), "nonempty slice should return false");
+    }
+
+    // T-EOR-05: refresh_credentials updates ctx.credentials in place on success.
+    #[test]
+    fn test_refresh_credentials_updates_context() {
+        use std::io::{Read as _, Write as _};
+        use std::time::Duration;
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        let response_body = r#"{"upload_credentials":{"access_key":"NEW_AK","secret_key":"NEW_SK","session_token":"NEW_ST","expiration":"2099-06-01T00:00:00Z"}}"#;
+        let http_response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+            response_body.len(),
+            response_body
+        );
+
+        std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut tmp = [0u8; 4096];
+                let _ = stream.read(&mut tmp);
+                stream.write_all(http_response.as_bytes()).ok();
+            }
+        });
+
+        let agent = ureq::config::Config::builder()
+            .timeout_global(Some(Duration::from_secs(30)))
+            .build()
+            .new_agent();
+
+        let mut ctx = RunContext {
+            run_id:              "run-123".to_string(),
+            upload_uri_prefix:   "s3://b/p".to_string(),
+            credentials: UploadCredentials {
+                access_key_id:     "OLD_AK".to_string(),
+                secret_access_key: "OLD_SK".to_string(),
+                session_token:     "OLD_ST".to_string(),
+                expires_at:        "2099-01-01T00:00:00Z".to_string(),
+            },
         };
-        let json = serde_json::to_string(&data).expect("serialize failed");
+
+        let result = refresh_credentials(
+            &agent,
+            &format!("http://127.0.0.1:{port}"),
+            "test-token",
+            &mut ctx,
+        );
+        assert!(result.is_ok(), "refresh_credentials failed: {:?}", result.err());
+        assert_eq!(ctx.credentials.access_key_id,     "NEW_AK");
+        assert_eq!(ctx.credentials.secret_access_key, "NEW_SK");
+        assert_eq!(ctx.credentials.session_token,     "NEW_ST");
+        assert_eq!(ctx.credentials.expires_at,        "2099-06-01T00:00:00Z");
+    }
+
+    // T-EOR-04: start_run POSTs to /runs and parses the response correctly.
+    #[test]
+    fn test_start_run_posts_to_runs_endpoint() {
+        use std::io::{Read as _, Write as _};
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (tx, rx) = mpsc::channel::<Vec<u8>>();
+
+        // Minimal valid StartRunResponse JSON.
+        let response_body = r#"{"run_id":"run-xyz","upload_uri_prefix":"s3://b/p","upload_credentials":{"access_key":"AK","secret_key":"SK","session_token":"ST","expiration":"2099-01-01T00:00:00Z"}}"#;
+        let http_response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+            response_body.len(),
+            response_body
+        );
+
+        std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = Vec::<u8>::new();
+                let mut tmp = [0u8; 4096];
+                loop {
+                    let n = stream.read(&mut tmp).unwrap_or(0);
+                    if n == 0 { break; }
+                    buf.extend_from_slice(&tmp[..n]);
+                    if let Some(sep) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                        let header_str = String::from_utf8_lossy(&buf[..sep]).to_ascii_lowercase();
+                        let cl = header_str.lines()
+                            .find_map(|l| l.trim().strip_prefix("content-length:")
+                                .and_then(|v| v.trim().parse::<usize>().ok()))
+                            .unwrap_or(0);
+                        if buf.len() >= sep + 4 + cl { break; }
+                    }
+                }
+                tx.send(buf).ok();
+                stream.write_all(http_response.as_bytes()).ok();
+            }
+        });
+
+        let agent = ureq::config::Config::builder()
+            .timeout_global(Some(Duration::from_secs(30)))
+            .build()
+            .new_agent();
+
+        let meta = crate::config::JobMetadata {
+            job_name: Some("test-job".to_string()),
+            ..Default::default()
+        };
+        let host  = crate::metrics::HostInfo::default();
+        let cloud = crate::metrics::CloudInfo::default();
+
+        let result = start_run(
+            &agent,
+            &format!("http://127.0.0.1:{port}"),
+            "test-token",
+            &meta,
+            Some(42),
+            &host,
+            &cloud,
+        );
+        assert!(result.is_ok(), "start_run failed: {:?}", result.err());
+
+        let ctx = result.unwrap();
+        assert_eq!(ctx.run_id, "run-xyz");
+        assert_eq!(ctx.upload_uri_prefix, "s3://b/p");
+        assert_eq!(ctx.credentials.access_key_id, "AK");
+
+        let raw = rx.recv().expect("mock server did not receive request");
+        let raw_str = String::from_utf8_lossy(&raw);
+        assert!(raw_str.contains("POST /runs"), "must POST to /runs: {raw_str}");
+        assert!(raw_str.contains("\"job_name\":\"test-job\""), "job_name missing: {raw_str}");
+        assert!(raw_str.contains("\"pid\":42"), "pid missing: {raw_str}");
+    }
+
+    // T-CMD-01: when start_run is called with a non-empty command (shell-wrapper mode),
+    // the JSON body must contain a "command" array matching the wrapped command tokens.
+    // This mirrors: SENTINEL_API_TOKEN=... resource-tracker-rs --output /tmp/log \
+    //   stress --cpu 4 --vm 1 --vm-bytes 12024M --timeout 63s
+    #[test]
+    fn test_start_run_includes_command_array_in_payload() {
+        use std::io::{Read as _, Write as _};
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (tx, rx) = mpsc::channel::<Vec<u8>>();
+
+        let response_body = r#"{"run_id":"r1","upload_uri_prefix":"s3://b/p","upload_credentials":{"access_key":"AK","secret_key":"SK","session_token":"ST","expiration":"2099-01-01T00:00:00Z"}}"#;
+        let http_response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+            response_body.len(),
+            response_body
+        );
+
+        std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = Vec::<u8>::new();
+                let mut tmp = [0u8; 4096];
+                loop {
+                    let n = stream.read(&mut tmp).unwrap_or(0);
+                    if n == 0 { break; }
+                    buf.extend_from_slice(&tmp[..n]);
+                    if let Some(sep) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                        let header_str = String::from_utf8_lossy(&buf[..sep]).to_ascii_lowercase();
+                        let cl = header_str.lines()
+                            .find_map(|l| l.trim().strip_prefix("content-length:")
+                                .and_then(|v| v.trim().parse::<usize>().ok()))
+                            .unwrap_or(0);
+                        if buf.len() >= sep + 4 + cl { break; }
+                    }
+                }
+                tx.send(buf).ok();
+                stream.write_all(http_response.as_bytes()).ok();
+            }
+        });
+
+        let agent = ureq::config::Config::builder()
+            .timeout_global(Some(Duration::from_secs(30)))
+            .build()
+            .new_agent();
+
+        // Simulate: resource-tracker-rs --output /tmp/resource-tracker-logs \
+        //   stress --cpu 4 --vm 1 --vm-bytes 12024M --timeout 63s
+        let wrapped_command: Vec<String> = vec![
+            "stress", "--cpu", "4", "--vm", "1",
+            "--vm-bytes", "12024M", "--timeout", "63s",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+
+        let meta = crate::config::JobMetadata {
+            command: wrapped_command.clone(),
+            ..Default::default()
+        };
+        let host  = crate::metrics::HostInfo::default();
+        let cloud = crate::metrics::CloudInfo::default();
+
+        let result = start_run(
+            &agent,
+            &format!("http://127.0.0.1:{port}"),
+            "test-token",
+            &meta,
+            None,
+            &host,
+            &cloud,
+        );
+        assert!(result.is_ok(), "start_run failed: {:?}", result.err());
+
+        let raw = rx.recv().expect("mock server did not receive request");
+        let raw_str = String::from_utf8_lossy(&raw);
+
+        // The body must contain the command as a JSON array.
+        let expected = r#""command":["stress","--cpu","4","--vm","1","--vm-bytes","12024M","--timeout","63s"]"#;
         assert!(
-            json.contains("\"data_source\":\"s3\""),
-            "data_source is not 's3': {json}"
+            raw_str.contains(expected),
+            "command array not found in payload.\nExpected: {expected}\nGot body: {raw_str}"
+        );
+    }
+
+    // T-CMD-02: when start_run is called without a wrapped command (standalone mode),
+    // the "command" field must be absent from the JSON body.
+    #[test]
+    fn test_start_run_omits_command_when_standalone() {
+        let req_payload = MetadataPayload {
+            job_name:        None,
+            project_name:    None,
+            stage_name:      None,
+            task_name:       None,
+            team:            None,
+            env:             None,
+            language:        None,
+            orchestrator:    None,
+            executor:        None,
+            external_run_id: None,
+            container_image: None,
+            tags:            &[],
+            pid:             None,
+            command:         &[],  // empty = standalone mode
+        };
+        let json = serde_json::to_string(&req_payload).expect("serialize failed");
+        assert!(
+            !json.contains("\"command\""),
+            "command must be absent from payload in standalone mode: {json}"
         );
     }
 }

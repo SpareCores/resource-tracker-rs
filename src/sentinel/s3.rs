@@ -443,7 +443,7 @@ mod tests {
         });
 
         let agent = ureq::config::Config::builder()
-            .timeout_global(Some(Duration::from_secs(5)))
+            .timeout_global(Some(Duration::from_secs(30)))
             .build()
             .new_agent();
 

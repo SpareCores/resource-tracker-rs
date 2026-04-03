@@ -160,3 +160,95 @@ impl NetworkCollector {
         Ok(metrics)
     }
 }
+
+// ---------------------------------------------------------------------------
+// Unit tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // T-NET-01: first collect() returns Ok; all rates are 0.0 (no prior snapshot).
+    #[test]
+    fn test_network_first_collect_rates_zero() {
+        let mut collector = NetworkCollector::new();
+        let metrics = collector.collect().expect("first collect() failed");
+        metrics.iter().for_each(|m| {
+            assert_eq!(
+                m.rx_bytes_per_sec, 0.0,
+                "rx_bytes_per_sec must be 0.0 on first collect for {}",
+                m.interface
+            );
+            assert_eq!(
+                m.tx_bytes_per_sec, 0.0,
+                "tx_bytes_per_sec must be 0.0 on first collect for {}",
+                m.interface
+            );
+        });
+    }
+
+    // T-NET-02: second collect() returns Ok; all rates are >= 0.0.
+    #[test]
+    fn test_network_second_collect_rates_nonneg() {
+        let mut collector = NetworkCollector::new();
+        let _ = collector.collect().expect("first collect() failed");
+        let metrics = collector.collect().expect("second collect() failed");
+        metrics.iter().for_each(|m| {
+            assert!(
+                m.rx_bytes_per_sec >= 0.0,
+                "rx_bytes_per_sec must be >= 0.0 for {}",
+                m.interface
+            );
+            assert!(
+                m.tx_bytes_per_sec >= 0.0,
+                "tx_bytes_per_sec must be >= 0.0 for {}",
+                m.interface
+            );
+        });
+    }
+
+    // T-NET-03: loopback ("lo") is excluded; results are sorted alphabetically.
+    #[test]
+    fn test_network_no_loopback_sorted() {
+        let mut collector = NetworkCollector::new();
+        let metrics = collector.collect().expect("collect() failed");
+        metrics.iter().for_each(|m| {
+            assert_ne!(m.interface, "lo", "loopback must not appear in results");
+        });
+        let names: Vec<&str> = metrics.iter().map(|m| m.interface.as_str()).collect();
+        let mut sorted = names.clone();
+        sorted.sort();
+        assert_eq!(names, sorted, "interfaces must be sorted alphabetically");
+    }
+
+    // T-NET-04: cumulative totals are non-decreasing between two consecutive calls.
+    #[test]
+    fn test_network_totals_nondecreasing() {
+        let mut collector = NetworkCollector::new();
+        let first = collector.collect().expect("first collect() failed");
+        let second = collector.collect().expect("second collect() failed");
+        let first_map: std::collections::HashMap<&str, (u64, u64)> = first
+            .iter()
+            .map(|m| (m.interface.as_str(), (m.rx_bytes_total, m.tx_bytes_total)))
+            .collect();
+        second.iter().for_each(|m| {
+            if let Some(&(prev_rx, prev_tx)) = first_map.get(m.interface.as_str()) {
+                assert!(
+                    m.rx_bytes_total >= prev_rx,
+                    "rx_bytes_total decreased for {}: {} < {}",
+                    m.interface,
+                    m.rx_bytes_total,
+                    prev_rx
+                );
+                assert!(
+                    m.tx_bytes_total >= prev_tx,
+                    "tx_bytes_total decreased for {}: {} < {}",
+                    m.interface,
+                    m.tx_bytes_total,
+                    prev_tx
+                );
+            }
+        });
+    }
+}

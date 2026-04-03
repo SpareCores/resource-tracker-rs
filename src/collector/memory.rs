@@ -63,3 +63,72 @@ impl MemoryCollector {
         })
     }
 }
+
+// ---------------------------------------------------------------------------
+// Unit tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // T-MEM-01: collect() succeeds on a Linux host and total_mib > 0.
+    #[test]
+    fn test_memory_collect_ok_and_total_positive() {
+        let m = MemoryCollector::new().collect().expect("collect() must succeed on Linux");
+        assert!(m.total_mib > 0, "total_mib must be > 0, got {}", m.total_mib);
+    }
+
+    // T-MEM-02: used_pct is in 0..=100.
+    #[test]
+    fn test_memory_used_pct_in_range() {
+        let m = MemoryCollector::new().collect().expect("collect() failed");
+        assert!(
+            m.used_pct >= 0.0 && m.used_pct <= 100.0,
+            "used_pct out of range: {}",
+            m.used_pct
+        );
+    }
+
+    // T-MEM-03: free_mib and available_mib do not exceed total_mib.
+    #[test]
+    fn test_memory_free_and_available_le_total() {
+        let m = MemoryCollector::new().collect().expect("collect() failed");
+        assert!(
+            m.free_mib <= m.total_mib,
+            "free_mib {} > total_mib {}",
+            m.free_mib,
+            m.total_mib
+        );
+        assert!(
+            m.available_mib <= m.total_mib,
+            "available_mib {} > total_mib {}",
+            m.available_mib,
+            m.total_mib
+        );
+    }
+
+    // T-MEM-04: swap fields are internally consistent.
+    #[test]
+    fn test_memory_swap_fields_consistent() {
+        let m = MemoryCollector::new().collect().expect("collect() failed");
+        assert!(
+            m.swap_used_mib <= m.swap_total_mib,
+            "swap_used_mib {} > swap_total_mib {}",
+            m.swap_used_mib,
+            m.swap_total_mib
+        );
+        if m.swap_total_mib == 0 {
+            assert_eq!(m.swap_used_mib, 0, "swap_used_mib must be 0 when swap_total_mib is 0");
+            assert_eq!(m.swap_used_pct, 0.0, "swap_used_pct must be 0.0 when swap_total_mib is 0");
+        }
+    }
+
+    // T-MEM-05: collect() is deterministic (two calls both succeed).
+    #[test]
+    fn test_memory_collect_is_repeatable() {
+        let c = MemoryCollector::new();
+        let _ = c.collect().expect("first collect() failed");
+        let _ = c.collect().expect("second collect() failed");
+    }
+}

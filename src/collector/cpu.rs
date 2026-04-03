@@ -62,10 +62,10 @@ fn util_pct_from_ticks(
 // Process-tree helpers
 // ---------------------------------------------------------------------------
 
-/// Returns a map of { pid to utime+stime } for every process in the tree
+/// Returns a map of { pid to (utime, stime) } for every process in the tree
 /// rooted at `root_pid` (root included).  Processes that have already exited
 /// are silently skipped: this is a TOCTOU race we accept.
-fn process_tree_ticks(root_pid: i32) -> HashMap<i32, u64> {
+fn process_tree_ticks(root_pid: i32) -> HashMap<i32, (u64, u64)> {
     // Collect all readable processes in one pass.
     let all: Vec<_> = match all_processes() {
         Ok(iter) => iter.filter_map(|r| r.ok()).collect(),
@@ -80,15 +80,15 @@ fn process_tree_ticks(root_pid: i32) -> HashMap<i32, u64> {
         }
     });
 
-    // Build a pid to ticks lookup.
-    let ticks_for: HashMap<i32, u64> = all
+    // Build a pid to (utime, stime) lookup.
+    let ticks_for: HashMap<i32, (u64, u64)> = all
         .iter()
         .filter_map(|proc| {
-            proc.stat().ok().map(|s| (proc.pid, s.utime + s.stime))
+            proc.stat().ok().map(|s| (proc.pid, (s.utime, s.stime)))
         })
         .collect();
 
-    // BFS from root_pid, collecting ticks for every reachable node.
+    // BFS from root_pid, collecting (utime, stime) for every reachable node.
     let mut result = HashMap::new();
     let mut queue = vec![root_pid];
     while let Some(pid) = queue.pop() {
@@ -102,6 +102,34 @@ fn process_tree_ticks(root_pid: i32) -> HashMap<i32, u64> {
     result
 }
 
+/// Sum of VmRSS (kB) across all given PIDs, converted to MiB.
+/// Processes that have exited or whose /proc/pid/status is unreadable are skipped.
+fn process_tree_rss_mib(pids: &[i32]) -> u64 {
+    let total_kib: u64 = pids
+        .iter()
+        .filter_map(|&pid| {
+            procfs::process::Process::new(pid)
+                .ok()
+                .and_then(|p| p.status().ok())
+                .and_then(|s| s.vmrss)
+        })
+        .sum();
+    total_kib / 1024
+}
+
+/// Per-process cumulative disk I/O bytes from /proc/pid/io.
+/// Returns { pid -> (read_bytes, write_bytes) }.
+/// PIDs whose /proc/pid/io is unreadable (e.g. different UID without ptrace)
+/// are silently omitted -- the delta for those PIDs will be 0.
+fn process_tree_io(pids: &[i32]) -> HashMap<i32, (u64, u64)> {
+    pids.iter()
+        .filter_map(|&pid| {
+            let io = procfs::process::Process::new(pid).ok()?.io().ok()?;
+            Some((pid, (io.read_bytes, io.write_bytes)))
+        })
+        .collect()
+}
+
 // ---------------------------------------------------------------------------
 // Snapshot + Collector
 // ---------------------------------------------------------------------------
@@ -113,9 +141,12 @@ struct Snapshot {
     per_core: Vec<CpuTime>,
     /// Wall-clock time of this snapshot, used to normalize process tick deltas.
     instant: Instant,
-    /// { pid to utime+stime } for root process + all descendants. Empty when
-    /// no PID is being tracked.
-    proc_ticks: HashMap<i32, u64>,
+    /// { pid -> (utime, stime) } for root process + all descendants.
+    /// Empty when no PID is being tracked.
+    proc_ticks: HashMap<i32, (u64, u64)>,
+    /// { pid -> (read_bytes, write_bytes) } from /proc/pid/io.
+    /// Empty when no PID is tracked or /proc/pid/io is unreadable.
+    proc_io: HashMap<i32, (u64, u64)>,
 }
 
 pub struct CpuCollector {
@@ -157,11 +188,28 @@ impl CpuCollector {
             None       => HashMap::new(),
         };
 
+        // Read process I/O and RSS only when tracking a PID.
+        let proc_io = if self.pid.is_some() {
+            let pids: Vec<i32> = proc_ticks.keys().copied().collect();
+            process_tree_io(&pids)
+        } else {
+            HashMap::new()
+        };
+
+        // RSS is instantaneous (not a delta), so compute it before storing prev.
+        let process_rss_mib = if self.pid.is_some() {
+            let pids: Vec<i32> = proc_ticks.keys().copied().collect();
+            Some(process_tree_rss_mib(&pids))
+        } else {
+            None
+        };
+
         let curr = Snapshot {
             total: stats.total,
             per_core: stats.cpu_time,
             instant: now,
             proc_ticks,
+            proc_io,
         };
 
         let metrics = match &self.prev {
@@ -173,10 +221,18 @@ impl CpuCollector {
                 utime_secs: 0.0,
                 stime_secs: 0.0,
                 process_count,
-                process_cores_used: self.pid.map(|_| 0.0),
-                process_child_count: self.pid.map(|_| {
+                process_cores_used:      self.pid.map(|_| 0.0),
+                process_child_count:     self.pid.map(|_| {
                     u32::try_from(curr.proc_ticks.len().saturating_sub(1)).unwrap_or(0)
                 }),
+                process_utime_secs:      self.pid.map(|_| 0.0),
+                process_stime_secs:      self.pid.map(|_| 0.0),
+                process_rss_mib,
+                process_disk_read_bytes:  self.pid.map(|_| 0),
+                process_disk_write_bytes: self.pid.map(|_| 0),
+                process_gpu_vram_mib:     None, // filled by main.rs after GPU query
+                process_gpu_utilized:     None,
+                process_tree_pids: curr.proc_ticks.keys().copied().collect(),
             },
 
             Some(prev) => {
@@ -196,20 +252,50 @@ impl CpuCollector {
                     .map(|(p, c)| core_util_pct(p, c))
                     .collect();
 
-                // Fractional cores = total tick delta / (elapsed_s × ticks_per_s)
+                // Fractional cores = total (utime+stime) tick delta / (elapsed × tps)
                 let process_cores_used = self.pid.map(|_| {
                     let elapsed = (curr.instant - prev.instant).as_secs_f64().max(0.001);
-
-                    let delta: u64 = curr.proc_ticks.iter().map(|(pid, &curr_ticks)| {
-                        let prev_ticks = prev.proc_ticks.get(pid).copied().unwrap_or(curr_ticks);
-                        curr_ticks.saturating_sub(prev_ticks)
+                    let delta: u64 = curr.proc_ticks.iter().map(|(pid, &(cu, cs))| {
+                        let (pu, ps) = prev.proc_ticks.get(pid).copied().unwrap_or((cu, cs));
+                        cu.saturating_sub(pu) + cs.saturating_sub(ps)
                     }).sum();
-
                     (delta as f64 / (elapsed * tps)).max(0.0)
                 });
 
                 let process_child_count = self.pid.map(|_| {
                     u32::try_from(curr.proc_ticks.len().saturating_sub(1)).unwrap_or(0)
+                });
+
+                // Per-tree utime and stime deltas (seconds this interval).
+                let process_utime_secs = self.pid.map(|_| {
+                    let delta: u64 = curr.proc_ticks.iter().map(|(pid, &(cu, _))| {
+                        let pu = prev.proc_ticks.get(pid).map(|&(u, _)| u).unwrap_or(cu);
+                        cu.saturating_sub(pu)
+                    }).sum();
+                    delta as f64 / tps
+                });
+
+                let process_stime_secs = self.pid.map(|_| {
+                    let delta: u64 = curr.proc_ticks.iter().map(|(pid, &(_, cs))| {
+                        let ps = prev.proc_ticks.get(pid).map(|&(_, s)| s).unwrap_or(cs);
+                        cs.saturating_sub(ps)
+                    }).sum();
+                    delta as f64 / tps
+                });
+
+                // Per-interval disk I/O deltas across the process tree.
+                let process_disk_read_bytes = self.pid.map(|_| {
+                    curr.proc_io.iter().map(|(pid, &(cr, _))| {
+                        let pr = prev.proc_io.get(pid).map(|&(r, _)| r).unwrap_or(cr);
+                        cr.saturating_sub(pr)
+                    }).sum::<u64>()
+                });
+
+                let process_disk_write_bytes = self.pid.map(|_| {
+                    curr.proc_io.iter().map(|(pid, &(_, cw))| {
+                        let pw = prev.proc_io.get(pid).map(|&(_, w)| w).unwrap_or(cw);
+                        cw.saturating_sub(pw)
+                    }).sum::<u64>()
                 });
 
                 CpuMetrics {
@@ -220,6 +306,14 @@ impl CpuCollector {
                     process_count,
                     process_cores_used,
                     process_child_count,
+                    process_utime_secs,
+                    process_stime_secs,
+                    process_rss_mib,
+                    process_disk_read_bytes,
+                    process_disk_write_bytes,
+                    process_gpu_vram_mib:  None, // filled by main.rs after GPU query
+                    process_gpu_utilized:  None,
+                    process_tree_pids: curr.proc_ticks.keys().copied().collect(),
                 }
             }
         };
@@ -319,5 +413,76 @@ mod tests {
             "stime_secs must be 0.0 on first collect, got {}",
             metrics.stime_secs
         );
+    }
+
+    // T-CPU-07: first collect() with PID tracking returns Some for process fields.
+    #[test]
+    fn test_first_collect_with_pid_returns_some_process_fields() {
+        let pid = i32::try_from(std::process::id()).expect("PID too large");
+        let mut collector = CpuCollector::new(Some(pid));
+        let m = collector.collect().expect("collect() failed");
+        assert!(m.process_cores_used.is_some(),    "process_cores_used must be Some when PID is tracked");
+        assert!(m.process_child_count.is_some(),   "process_child_count must be Some when PID is tracked");
+        assert!(m.process_rss_mib.is_some(),       "process_rss_mib must be Some when PID is tracked");
+        assert!(m.process_utime_secs.is_some(),    "process_utime_secs must be Some when PID is tracked");
+        assert!(m.process_stime_secs.is_some(),    "process_stime_secs must be Some when PID is tracked");
+        assert!(m.process_disk_read_bytes.is_some(),  "process_disk_read_bytes must be Some when PID is tracked");
+        assert!(m.process_disk_write_bytes.is_some(), "process_disk_write_bytes must be Some when PID is tracked");
+    }
+
+    // T-CPU-08: process_tree_rss_mib returns a positive value for the running test process.
+    #[test]
+    fn test_process_tree_rss_mib_nonzero_for_self() {
+        let pid = i32::try_from(std::process::id()).expect("PID too large");
+        let rss = process_tree_rss_mib(&[pid]);
+        assert!(rss > 0, "RSS for the current process should be > 0, got {rss}");
+    }
+
+    // T-CPU-09: process_tree_ticks contains the root PID.
+    // PID 1 (init/systemd) is used because it is always present and readable
+    // on any Linux host. Using std::process::id() is unreliable under
+    // llvm-cov instrumentation: the instrumented binary's own /proc entry
+    // can be transiently unreadable when many tests run in parallel.
+    #[test]
+    fn test_process_tree_ticks_contains_root_pid() {
+        let ticks = process_tree_ticks(1);
+        assert!(
+            ticks.contains_key(&1),
+            "process_tree_ticks(1) must contain PID 1 (init/systemd is always present)"
+        );
+    }
+
+    // T-CPU-10: second collect() with PID tracking produces non-negative cores.
+    #[test]
+    fn test_second_collect_with_pid_nonneg_cores() {
+        let pid = i32::try_from(std::process::id()).expect("PID too large");
+        let mut collector = CpuCollector::new(Some(pid));
+        let _ = collector.collect().expect("first collect() failed");
+        let m = collector.collect().expect("second collect() failed");
+        let cores = m.process_cores_used.expect("process_cores_used must be Some");
+        assert!(cores >= 0.0, "process_cores_used must be >= 0.0, got {cores}");
+    }
+
+    // T-CPU-11: second collect() with no PID still returns None for all process fields.
+    #[test]
+    fn test_second_collect_no_pid_all_process_fields_none() {
+        let mut collector = CpuCollector::new(None);
+        let _ = collector.collect().expect("first collect() failed");
+        let m = collector.collect().expect("second collect() failed");
+        assert!(m.process_cores_used.is_none(),       "process_cores_used must be None when not tracking");
+        assert!(m.process_child_count.is_none(),      "process_child_count must be None when not tracking");
+        assert!(m.process_rss_mib.is_none(),          "process_rss_mib must be None when not tracking");
+        assert!(m.process_utime_secs.is_none(),       "process_utime_secs must be None when not tracking");
+        assert!(m.process_stime_secs.is_none(),       "process_stime_secs must be None when not tracking");
+        assert!(m.process_disk_read_bytes.is_none(),  "process_disk_read_bytes must be None when not tracking");
+        assert!(m.process_disk_write_bytes.is_none(), "process_disk_write_bytes must be None when not tracking");
+    }
+
+    // T-CPU-12: process_count > 0 (at least one process is always visible).
+    #[test]
+    fn test_process_count_positive() {
+        let mut collector = CpuCollector::new(None);
+        let m = collector.collect().expect("collect() failed");
+        assert!(m.process_count > 0, "process_count must be > 0, got {}", m.process_count);
     }
 }

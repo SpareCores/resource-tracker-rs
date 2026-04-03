@@ -15,19 +15,20 @@ const TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Spawn the binary with `args`, collect up to `n` stdout lines, then kill it.
 /// Returns however many lines arrived before TIMEOUT.
+/// Metrics are written to stderr (stdout is reserved for the tracked app).
 fn collect_lines(args: &[&str], n: usize) -> Vec<String> {
     let mut child = Command::new(BINARY)
         .args(args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
         .expect("failed to spawn resource-tracker-rs binary");
 
-    let stdout = child.stdout.take().unwrap();
+    let stderr = child.stderr.take().unwrap();
     let (tx, rx) = mpsc::channel();
 
     thread::spawn(move || {
-        let reader = BufReader::new(stdout);
+        let reader = BufReader::new(stderr);
         for line in reader.lines().take(n) {
             if tx.send(line.unwrap_or_default()).is_err() {
                 break;
@@ -451,6 +452,42 @@ fn test_csv_gpu_fields_nonneg() {
     let _ = utilized; // u32 is always >= 0
 }
 
+// T-GPU-P4: process_gpu_vram_mib and process_gpu_utilized are present in the
+// CSV header and, when a PID is tracked, their values are either empty (CPU-only
+// host) or non-negative numbers.  process_gpu_usage is always empty.
+#[test]
+fn test_csv_process_gpu_columns_parse() {
+    // Track the tracker's own PID so process columns are populated.
+    let pid_str = std::process::id().to_string();
+    let lines = collect_lines(
+        &["--interval", "1", "--format", "csv", "--pid", &pid_str],
+        2,
+    );
+    assert!(lines.len() >= 2, "expected at least 2 CSV lines");
+    let headers: Vec<&str> = lines[0].split(',').collect();
+    let row:     Vec<&str> = lines[1].split(',').collect();
+    let col = csv_row_col(&headers, &row);
+
+    // process_gpu_usage must always be empty (NVML per-process util unavailable).
+    assert_eq!(col("process_gpu_usage"), "",
+        "process_gpu_usage must always be empty");
+
+    // process_gpu_vram_mib: empty on CPU-only hosts, non-negative f64 on GPU hosts.
+    let vram_str = col("process_gpu_vram_mib");
+    if !vram_str.is_empty() {
+        let v: f64 = vram_str.parse()
+            .unwrap_or_else(|_| panic!("process_gpu_vram_mib not a number: {vram_str:?}"));
+        assert!(v >= 0.0, "process_gpu_vram_mib must be >= 0, got {v}");
+    }
+
+    // process_gpu_utilized: empty on CPU-only hosts, non-negative u32 on GPU hosts.
+    let utilized_str = col("process_gpu_utilized");
+    if !utilized_str.is_empty() {
+        let _u: u32 = utilized_str.parse()
+            .unwrap_or_else(|_| panic!("process_gpu_utilized not a u32: {utilized_str:?}"));
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Shell-wrapper mode (Priority 2)
 // ---------------------------------------------------------------------------
@@ -537,15 +574,15 @@ fn test_tracker_env_vars_accepted() {
         .env("TRACKER_EXECUTOR",     "k8s")
         .env("TRACKER_EXTERNAL_RUN_ID", "ext-42")
         .env("TRACKER_CONTAINER_IMAGE", "img:tag")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
         .expect("failed to spawn binary");
 
-    let stdout = child.stdout.take().unwrap();
+    let stderr = child.stderr.take().unwrap();
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
-        let reader = BufReader::new(stdout);
+        let reader = BufReader::new(stderr);
         reader.lines().take(1).for_each(|line| {
             let _ = tx.send(line.unwrap_or_default());
         });
@@ -941,19 +978,19 @@ fn test_missing_toml_config_falls_back_to_defaults() {
 fn test_sigterm_exits_zero() {
     let mut child = Command::new(BINARY)
         .args(["--interval", "1"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
         .expect("failed to spawn binary");
 
     // Wait for the first sample to confirm the binary is running.
-    // The reader thread continues draining stdout after sending the first line
+    // The reader thread continues draining stderr after sending the first line
     // so the pipe stays open; dropping it after .take(1) would cause the binary's
-    // next println! to panic (broken pipe -> exit 101).
-    let stdout = child.stdout.take().unwrap();
+    // next eprintln! to get a broken pipe (SIGPIPE / write error) on some platforms.
+    let stderr = child.stderr.take().unwrap();
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
-        let reader = BufReader::new(stdout);
+        let reader = BufReader::new(stderr);
         let mut sent = false;
         reader.lines().for_each(|line| {
             if !sent {
@@ -1033,11 +1070,12 @@ fn test_write_s3_batch_to_disk() {
 /// Spawn the binary, let it run for `duration`, kill it, and return every
 /// non-empty line that appeared on stdout.  Used by output-sink tests where
 /// `collect_lines` would block up to 10 s waiting for a line that never arrives.
+/// Metrics are written to stderr; stdout is reserved for the tracked app.
 fn run_for(args: &[&str], duration: Duration) -> Vec<String> {
     let mut child = Command::new(BINARY)
         .args(args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
         .expect("failed to spawn binary");
 
@@ -1045,7 +1083,7 @@ fn run_for(args: &[&str], duration: Duration) -> Vec<String> {
     child.kill().ok();
 
     let out = child.wait_with_output().expect("wait_with_output failed");
-    String::from_utf8_lossy(&out.stdout)
+    String::from_utf8_lossy(&out.stderr)
         .lines()
         .filter(|l| !l.is_empty())
         .map(|l| l.to_string())
@@ -1053,13 +1091,13 @@ fn run_for(args: &[&str], duration: Duration) -> Vec<String> {
 }
 
 /// Spawn the binary with `env_key=env_val` set, let it run for `duration`,
-/// kill it, and return stdout lines.
+/// kill it, and return stderr lines.
 fn run_for_with_env(args: &[&str], env_key: &str, env_val: &str, duration: Duration) -> Vec<String> {
     let mut child = Command::new(BINARY)
         .args(args)
         .env(env_key, env_val)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
         .expect("failed to spawn binary");
 
@@ -1067,7 +1105,7 @@ fn run_for_with_env(args: &[&str], env_key: &str, env_val: &str, duration: Durat
     child.kill().ok();
 
     let out = child.wait_with_output().expect("wait_with_output failed");
-    String::from_utf8_lossy(&out.stdout)
+    String::from_utf8_lossy(&out.stderr)
         .lines()
         .filter(|l| !l.is_empty())
         .map(|l| l.to_string())
@@ -1086,37 +1124,40 @@ fn tmp_path(suffix: &str) -> String {
         .into_owned()
 }
 
-/// --quiet suppresses all stdout output.
+/// --quiet suppresses metric output (JSON/CSV lines) on stderr.
+/// Non-metric warnings may still appear; we only assert no metric data.
 #[test]
-fn test_quiet_produces_no_stdout() {
+fn test_quiet_produces_no_stderr() {
     let lines = run_for(&["--quiet", "--interval", "1"], OUTPUT_TEST_WAIT);
-    assert!(
-        lines.is_empty(),
-        "--quiet should produce no stdout, got {} line(s): {:?}",
-        lines.len(), lines
-    );
+    lines.iter().for_each(|l| {
+        let first = l.chars().next().unwrap_or(' ');
+        assert!(
+            first != '{' && !first.is_ascii_digit(),
+            "--quiet should suppress metric output, but got: {l:?}"
+        );
+    });
 }
 
-/// Without --quiet the binary does produce stdout (sanity control for the above).
+/// Without --quiet the binary does produce stderr metrics (sanity control for the above).
 #[test]
-fn test_no_quiet_produces_stdout() {
+fn test_no_quiet_produces_stderr() {
     let lines = run_for(&["--interval", "1"], OUTPUT_TEST_WAIT);
     assert!(
         !lines.is_empty(),
-        "expected stdout output without --quiet"
+        "expected stderr metric output without --quiet"
     );
 }
 
-/// --output FILE writes JSON to the file and nothing to stdout.
+/// --output FILE writes JSON to the file and nothing to stderr.
 #[test]
 fn test_output_file_json() {
     let path = tmp_path("out.json");
-    let stdout_lines = run_for(&["--output", &path, "--interval", "1"], OUTPUT_TEST_WAIT);
+    let stderr_lines = run_for(&["--output", &path, "--interval", "1"], OUTPUT_TEST_WAIT);
 
     assert!(
-        stdout_lines.is_empty(),
-        "--output should suppress stdout, got {} line(s)",
-        stdout_lines.len()
+        stderr_lines.is_empty(),
+        "--output should suppress stderr, got {} line(s)",
+        stderr_lines.len()
     );
 
     let content = std::fs::read_to_string(&path)
@@ -1129,19 +1170,19 @@ fn test_output_file_json() {
         .unwrap_or_else(|e| panic!("first line of output file is not valid JSON: {e}\n{}", lines[0]));
 }
 
-/// --output FILE with --format csv writes header + rows to the file, nothing to stdout.
+/// --output FILE with --format csv writes header + rows to the file, nothing to stderr.
 #[test]
 fn test_output_file_csv() {
     let path = tmp_path("out.csv");
-    let stdout_lines = run_for(
+    let stderr_lines = run_for(
         &["--output", &path, "--format", "csv", "--interval", "1"],
         OUTPUT_TEST_WAIT,
     );
 
     assert!(
-        stdout_lines.is_empty(),
-        "--output should suppress stdout in CSV mode, got {} line(s)",
-        stdout_lines.len()
+        stderr_lines.is_empty(),
+        "--output should suppress stderr in CSV mode, got {} line(s)",
+        stderr_lines.len()
     );
 
     let content = std::fs::read_to_string(&path)
@@ -1156,7 +1197,8 @@ fn test_output_file_csv() {
     );
 }
 
-/// TRACKER_QUIET=1 env var behaves the same as --quiet.
+/// TRACKER_QUIET=1 env var suppresses metric output (JSON/CSV lines).
+/// Non-metric warnings may still appear on stderr; we only assert no metric data.
 #[test]
 fn test_tracker_quiet_env_var() {
     let lines = run_for_with_env(
@@ -1164,27 +1206,30 @@ fn test_tracker_quiet_env_var() {
         "TRACKER_QUIET", "1",
         OUTPUT_TEST_WAIT,
     );
-    assert!(
-        lines.is_empty(),
-        "TRACKER_QUIET=1 should suppress stdout, got {} line(s)",
-        lines.len()
-    );
+    // Metric lines start with '{' (JSON) or a digit (CSV timestamp).
+    lines.iter().for_each(|l| {
+        let first = l.chars().next().unwrap_or(' ');
+        assert!(
+            first != '{' && !first.is_ascii_digit(),
+            "TRACKER_QUIET=1 should suppress metric output, but got: {l:?}"
+        );
+    });
 }
 
 /// TRACKER_OUTPUT env var behaves the same as --output.
 #[test]
 fn test_tracker_output_env_var() {
     let path = tmp_path("env_out.json");
-    let stdout_lines = run_for_with_env(
+    let stderr_lines = run_for_with_env(
         &["--interval", "1"],
         "TRACKER_OUTPUT", &path,
         OUTPUT_TEST_WAIT,
     );
 
     assert!(
-        stdout_lines.is_empty(),
-        "TRACKER_OUTPUT should suppress stdout, got {} line(s)",
-        stdout_lines.len()
+        stderr_lines.is_empty(),
+        "TRACKER_OUTPUT should suppress stderr, got {} line(s)",
+        stderr_lines.len()
     );
 
     let content = std::fs::read_to_string(&path)
