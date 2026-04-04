@@ -28,7 +28,13 @@ document:
     xdg-open target/doc/resource_tracker_rs/index.html &
 
 test:
-    cargo test
+    cargo test -- --test-threads=1
+
+real_test1: build_release
+	./target/release/resource-tracker-rs  --format csv
+
+real_test2: build_release
+	./target/release/resource-tracker-rs --format csv Rscript stress.r
 
 report_coverage:
 	cargo llvm-cov --bins --html --open -- --test-threads=1

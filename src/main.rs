@@ -46,20 +46,25 @@ fn shutdown(
     sentinel:      Option<&SentinelClient>,
     run_ctx:       Option<Arc<Mutex<RunContext>>>,
     shutdown_flag: Option<Arc<AtomicBool>>,
-    upload_handle: Option<std::thread::JoinHandle<()>>,
+    upload_handle: Option<std::thread::JoinHandle<Vec<String>>>,
     remaining:     Vec<Sample>,
     interval_secs: u64,
 ) -> ! {
     if let (Some(client), Some(ctx_arc), Some(flag), Some(handle)) =
         (sentinel, run_ctx, shutdown_flag, upload_handle)
     {
-        // Signal the upload thread to flush and stop, then wait for it.
-        // The upload thread notices the flag within 250 ms (tick interval).
+        // Signal the upload thread to flush its buffer to S3, then wait for it.
+        // The thread performs one final S3 upload of any remaining buffered samples
+        // before it exits, and returns the list of all successfully uploaded URIs.
         flag.store(true, Ordering::Relaxed);
-        let _ = handle.join(); // join for clean shutdown; uploaded URIs not sent to /finish
+        let uploaded_uris = handle.join().unwrap_or_default();
 
-        // Any samples collected after the last batch upload go as inline CSV.
-        let remaining_csv = if !remaining.is_empty() {
+        // Route selection:
+        //   S3 route   -- at least one batch was uploaded; uploaded_uris is non-empty.
+        //                 The final flush is already included in uploaded_uris.
+        //   Inline route -- no S3 uploads (short run or all S3 failures); send all
+        //                   collected samples as a raw CSV string.
+        let remaining_csv = if uploaded_uris.is_empty() && !remaining.is_empty() {
             Some(samples_to_csv(&remaining, interval_secs))
         } else {
             None
@@ -73,6 +78,7 @@ fn shutdown(
             &ctx,
             Some(exit_code),
             remaining_csv,
+            &uploaded_uris,
         ) {
             eprintln!("warn: sentinel close_run failed: {e}");
         }
@@ -244,16 +250,22 @@ fn main() {
             gpu:         gpu.collect().unwrap_or_default(),
         };
 
-        // Augment with per-process GPU stats using the PID tree from CpuCollector.
-        if config.pid.is_some() && !sample.cpu.process_tree_pids.is_empty() {
+        // Augment with per-process GPU stats.
+        // With --pid: filter to the tracked process tree.
+        // Without --pid: report system-wide GPU allocation (all processes).
+        let (vram_mib, gpu_utilized) = if config.pid.is_some()
+            && !sample.cpu.process_tree_pids.is_empty()
+        {
             let pids_u32: Vec<u32> = sample.cpu.process_tree_pids
                 .iter()
                 .filter_map(|&p| u32::try_from(p).ok())
                 .collect();
-            let (vram_mib, gpu_utilized) = gpu.process_gpu_info(&pids_u32);
-            sample.cpu.process_gpu_vram_mib = vram_mib;
-            sample.cpu.process_gpu_utilized = gpu_utilized;
-        }
+            gpu.process_gpu_info(&pids_u32)
+        } else {
+            gpu.all_gpu_process_info()
+        };
+        sample.cpu.process_gpu_vram_mib = vram_mib;
+        sample.cpu.process_gpu_utilized = gpu_utilized;
 
         // Emit to selected output sink.
         match config.format {

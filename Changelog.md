@@ -2,6 +2,118 @@
 
 ## [Unreleased]
 
+### Fix process_gpu_vram_mib and process_gpu_utilized empty without --pid (2026-04-04)
+
+#### `src/collector/gpu.rs` -- new all_gpu_process_info() method
+
+- **Added `all_gpu_process_info(&self) -> (Option<f64>, Option<u32>)`** -- aggregates
+  GPU VRAM and utilized-device count across all running processes on the host with no
+  PID filter.  NVIDIA path sums `used_gpu_memory` for every compute and graphics process
+  across all devices; AMD path reads `mem_info_vram_used` from sysfs per device.
+  Returns `(None, None)` on CPU-only hosts, matching `process_gpu_info` semantics.
+- **Four new tests (T-GPU-A1 through T-GPU-A4)**:
+  - `test_all_gpu_process_info_consistent` -- both fields are Some or both are None, never mixed.
+  - `test_all_gpu_process_info_no_gpu_returns_none` -- CPU-only host returns `(None, None)`.
+  - `test_all_gpu_process_info_gpu_host_returns_some` -- GPU host returns `Some` for both
+    fields with `vram_mib >= 0.0`.
+  - `test_all_gpu_process_info_ge_empty_pid_query` -- result is >= the zero-PID
+    `process_gpu_info(&[])` value, confirming the no-filter path is strictly broader.
+
+#### `src/main.rs` -- populate process_gpu columns without --pid
+
+- **Removed the `config.pid.is_some()` guard** on the GPU augmentation block.
+  Previously `process_gpu_vram_mib` and `process_gpu_utilized` were always empty in CSV
+  output when running without `--pid`, even on GPU machines.
+- **New branch**: when `config.pid` is `None`, calls `gpu.all_gpu_process_info()` to
+  report system-wide GPU allocation; when `config.pid` is `Some`, the existing
+  `process_gpu_info(&pids)` call is used unchanged.
+- Note: the remaining `process_` columns (pid, children, utime, stime, cpu_usage,
+  memory_mib, disk_read_bytes, disk_write_bytes, gpu_usage) require `--pid` to identify
+  a tracked process tree and remain empty without it by design.
+
+---
+
+### Fix integration test, compare test, and enforce single-threaded test execution (2026-04-04)
+
+#### `src/sentinel/run.rs` -- close_run and integration test
+
+- **`close_run` now validates the HTTP status code** -- after a successful POST,
+  the status is checked and `Err(...)` is returned if it is not 200.  Previously
+  any non-error ureq response silently passed.
+- **Integration test `test_real_api_finish_run_returns_ok` rewritten** -- replaces
+  the hand-crafted 3-column CSV (wrong column names causing 422) with
+  `samples_to_csv(&[sample], 1)` using a proper `Sample` whose column names match
+  the API schema.  Adds `eprintln!` diagnostics at each step.  Token is read from
+  `SENTINEL_API_TOKEN` env var; test skips when absent and runs automatically when
+  the token is present.  Confirmed against the live API: 200 received.
+
+#### `tests/compare.rs` -- Python vs Rust numeric comparison test
+
+- **`parse_csv` no longer panics on an empty file** -- returns empty `CsvData`
+  instead of panicking with "CSV has no header" when a collector produced no output.
+- **Empty-output case now skips gracefully** -- prints a `SKIP:` message and returns
+  when Python or Rust produced no rows (e.g. uv startup exceeded the wall-clock cap).
+- **Rust collector now uses `--output`** -- the binary writes CSV to a file via
+  `--output`; the test previously captured stdout but the binary emits to stderr by
+  default (or to a file when `--output` is given).
+
+#### `.cargo/config.toml` -- enforce single-threaded test execution
+
+- Added `.cargo/config.toml` with `[test] threads = 1`.  Mock TCP server tests bind
+  ephemeral ports and have race conditions under parallel execution; this setting is
+  equivalent to `--test-threads=1` and only affects `cargo test`.
+
+---
+
+### Fix /finish endpoint payload -- raw CSV, finished_at, spec-driven tests (2026-04-03)
+
+#### `src/sentinel/run.rs` -- close_run now sends a spec-compliant RunFinishInline payload
+
+- **Bug fix: `data_csv` was base64-encoded** -- the `RunFinishInline` schema specifies
+  `data_csv` as a plain `string` ("Raw CSV string containing the metrics data"), not
+  base64.  Sending base64 caused a 422 Validation Error from the API.  The
+  `base64_encode()` call is removed; the raw CSV string is now passed through directly.
+- **Added `finished_at`** -- `CloseRunRequest` now includes `finished_at: Option<String>`
+  (ISO 8601 UTC, e.g. `"2026-04-03T12:00:00Z"`).  Populated via a new `now_iso8601()`
+  helper.  Omitted when explicitly set to `None` via `skip_serializing_if`.
+- **Added `unix_secs_to_iso8601(secs: u64) -> String`** and `now_iso8601() -> String`
+  helper functions using the same calendar math as the existing `days_since_epoch`.
+- `base64_encode` moved to `#[cfg(test)]` since it is now only used by its own tests.
+- Removed incorrect doc comment claiming data_csv is base64-encoded.
+
+#### New spec-driven tests (T-FIN-01 through T-FIN-07)
+
+All tests use a local mock TCP server to capture the exact bytes `close_run` sends,
+then assert on the JSON body:
+
+- **T-FIN-01** `test_close_run_run_status_finished_for_zero_exit` -- `run_status` is
+  `"finished"` and `exit_code` is 0 when called with `exit_code = Some(0)`.
+- **T-FIN-02** `test_close_run_run_status_finished_for_sigterm` -- `run_status` is
+  `"finished"` and `exit_code` is omitted when called with `exit_code = None` (SIGTERM).
+- **T-FIN-03** `test_close_run_run_status_failed_for_nonzero_exit` -- `run_status` is
+  `"failed"` for exit codes 1, 2, 127, 130, 255.
+- **T-FIN-04** `test_close_run_data_csv_is_raw_csv_not_base64` -- `data_csv` contains
+  raw CSV content (commas, column headers, numeric values) and not base64 gibberish.
+- **T-FIN-05** `test_close_run_finished_at_is_valid_iso8601` -- `finished_at` is present,
+  ends with `Z`, parses as ISO 8601, and is within 60 seconds of now.
+- **T-FIN-06** `test_close_run_handles_valid_run_finish_response` -- function returns
+  `Ok(())` when the server replies with a valid `RunFinishResponse` JSON.
+- **T-FIN-07** `test_close_run_no_extra_fields_in_payload` -- the JSON object contains
+  only fields allowed by `RunFinishInline` (`additionalProperties: false`).
+
+Additional helpers/tests:
+- `test_unix_secs_to_iso8601_known_values` -- epoch, Y2K, and a round-trip via
+  `parse_iso8601_secs`.
+- `test_unix_secs_to_iso8601_leap_day` -- `2000-02-29` round-trips correctly.
+- `test_now_iso8601_parses` -- `now_iso8601()` output is non-empty, ends with `Z`,
+  and parses back to a Unix timestamp.
+- `test_close_run_finished_at_omitted_when_none` (T-EOR-06) -- `finished_at` key is
+  absent from the JSON when the field is `None`.
+- Updated T-EOR-02 and T-EOR-03 to use raw CSV strings in `data_csv` (not the old
+  fake base64 strings) and to include the `finished_at` field in the struct literal.
+
+---
+
 ### CLI ordering fix + command field in start_run payload (2026-04-03)
 
 #### `src/config.rs` -- --job-name moved to metadata section

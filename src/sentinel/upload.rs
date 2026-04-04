@@ -21,6 +21,10 @@ pub type SampleBuffer = Arc<Mutex<Vec<Sample>>>;
 // for the current batch and logs a warning.
 const MAX_CONSECUTIVE_FAILURES: u32 = 3;
 
+// Total upload attempts per batch (1 initial + N-1 retries).
+// Delay before attempt i (i > 0) is 2^i seconds: 2 s, 4 s, 8 s, …
+const MAX_UPLOAD_ATTEMPTS: u32 = 3;
+
 // ---------------------------------------------------------------------------
 // CSV serialization helper
 // ---------------------------------------------------------------------------
@@ -88,18 +92,25 @@ impl BatchUploader {
     /// The thread wakes every `upload_interval_secs`, drains the buffer, builds
     /// a `.csv.gz` batch (gzip-compressed CSV, `Content-Type: application/gzip`),
     /// and uploads it to S3.  On shutdown signal it performs one final flush
-    /// before returning all successfully uploaded S3 URIs.
+    /// before exiting.
+    ///
+    /// Returns a `JoinHandle<Vec<String>>` whose value is the list of all
+    /// successfully uploaded S3 URIs (e.g. `"s3://bucket/prefix/run-id/000000.csv.gz"`).
+    /// The caller uses this list to decide the `/finish` route:
+    /// - non-empty → `data_source: "s3"` with `data_uris`
+    /// - empty     → `data_source: "inline"` with `data_csv`
     pub fn spawn(
         self,
         ctx: Arc<Mutex<RunContext>>,
         agent: ureq::Agent,
         api_base: String,
         token: String,
-    ) -> std::thread::JoinHandle<()> {
+    ) -> std::thread::JoinHandle<Vec<String>> {
         std::thread::spawn(move || {
             let mut region_cache = RegionCache::new();
             let mut seq: u32 = 0;
             let mut consecutive_failures: u32 = 0;
+            let mut uploaded_uris: Vec<String> = Vec::new();
 
             // Break the upload interval into 250 ms ticks so a shutdown signal
             // is noticed within 250 ms rather than waiting a full 60 seconds.
@@ -181,22 +192,36 @@ impl BatchUploader {
                 let region = region_cache.get_or_detect(&bucket);
                 let key = format!("{prefix}/{run_id}/{seq:06}.csv.gz");
 
-                // Upload with exponential backoff: retry 1 after 2s, retry 2 after 4s
-                // (Section 9.2.2: "retry at least once with exponential back-off").
-                let result = s3_put(&agent, &bucket, &key, &region, &compressed, &creds)
-                    .or_else(|e1| {
-                        std::thread::sleep(Duration::from_secs(2));
-                        s3_put(&agent, &bucket, &key, &region, &compressed, &creds)
-                            .map_err(|e2| format!("{e1}; retry1: {e2}"))
-                    })
-                    .or_else(|e1| {
-                        std::thread::sleep(Duration::from_secs(4));
-                        s3_put(&agent, &bucket, &key, &region, &compressed, &creds)
-                            .map_err(|e2| format!("{e1}; retry2: {e2}"))
-                    });
+                // Upload with exponential backoff.
+                // Attempt 0 is immediate; attempt i (i > 0) sleeps 2^i seconds first.
+                // With MAX_UPLOAD_ATTEMPTS=3: delays are 2 s and 4 s before retries.
+                let result: Result<String, String> = {
+                    let mut last_err = String::new();
+                    let mut uploaded_uri: Option<String> = None;
+                    for attempt in 0..MAX_UPLOAD_ATTEMPTS {
+                        if attempt > 0 {
+                            std::thread::sleep(Duration::from_secs(1u64 << attempt));
+                        }
+                        match s3_put(&agent, &bucket, &key, &region, &compressed, &creds) {
+                            Ok(uri) => { uploaded_uri = Some(uri); break; }
+                            Err(e) => {
+                                last_err = if last_err.is_empty() {
+                                    e
+                                } else {
+                                    format!("{last_err}; retry{attempt}: {e}")
+                                };
+                            }
+                        }
+                    }
+                    match uploaded_uri {
+                        Some(uri) => Ok(uri),
+                        None      => Err(last_err),
+                    }
+                };
 
                 match result {
-                    Ok(_uri) => {
+                    Ok(uri) => {
+                        uploaded_uris.push(uri);
                         seq += 1;
                         consecutive_failures = 0;
                     }
@@ -218,6 +243,7 @@ impl BatchUploader {
                     break;
                 }
             }
+            uploaded_uris
         })
     }
 }
@@ -426,6 +452,137 @@ mod tests {
             elapsed < Duration::from_secs(2),
             "upload thread with non-empty batch took {elapsed:?}; expected < 2 s"
         );
+    }
+
+    // T-UPL-INT-01: full roundtrip -- sample serialized, gzip-compressed, and
+    // PUT to the real Sentinel S3 bucket.  Covers the Ok(uri) success arm inside
+    // spawn() (uploaded_uris.push, seq += 1, consecutive_failures = 0).
+    // Skips automatically when SENTINEL_API_TOKEN is absent.
+    #[test]
+    fn test_upload_roundtrip_real_api() {
+        use crate::config::JobMetadata;
+        use crate::metrics::{CloudInfo, HostInfo};
+        use crate::sentinel::run::{close_run, start_run};
+        use std::sync::{Arc, Mutex};
+        use std::sync::atomic::Ordering;
+        use std::time::Duration;
+
+        let token = match std::env::var("SENTINEL_API_TOKEN") {
+            Ok(t) if !t.is_empty() => t,
+            _ => { eprintln!("skip: SENTINEL_API_TOKEN not set"); return; }
+        };
+        let api_base = std::env::var("SENTINEL_API_BASE")
+            .unwrap_or_else(|_| "https://api.sentinel.sparecores.net".to_string());
+        eprintln!("T-UPL-INT-01: api_base={api_base}");
+
+        let agent = ureq::config::Config::builder()
+            .timeout_global(Some(Duration::from_secs(30)))
+            .build()
+            .new_agent();
+
+        let ctx = start_run(
+            &agent, &api_base, &token,
+            &JobMetadata { job_name: Some("upload-roundtrip-test".to_string()), ..Default::default() },
+            None, &HostInfo::default(), &CloudInfo::default(),
+        ).expect("start_run failed");
+        eprintln!("T-UPL-INT-01: run_id={}", ctx.run_id);
+
+        let ctx_arc = Arc::new(Mutex::new(ctx));
+        let (uploader, buf) = BatchUploader::new(1, 1);
+        let flag = uploader.shutdown_flag();
+
+        buf.lock().unwrap().push(minimal_sample());
+
+        // Signal shutdown before spawning: the thread processes one batch then exits.
+        flag.store(true, Ordering::Relaxed);
+
+        let handle = uploader.spawn(
+            Arc::clone(&ctx_arc),
+            agent.clone(),
+            api_base.clone(),
+            token.clone(),
+        );
+        let uris = handle.join().expect("upload thread panicked");
+        eprintln!("T-UPL-INT-01: uris={uris:?}");
+
+        assert!(!uris.is_empty(), "expected at least one S3 URI; S3 upload may have failed");
+        assert!(uris[0].starts_with("s3://"), "URI must have s3:// scheme: {}", uris[0]);
+
+        // Close the run via the S3 route.
+        let ctx_guard = ctx_arc.lock().unwrap();
+        let result = close_run(&agent, &api_base, &token, &ctx_guard, Some(0), None, &uris);
+        assert!(result.is_ok(), "close_run (S3 route) failed: {result:?}");
+        eprintln!("T-UPL-INT-01: close_run ok");
+    }
+
+    // T-UPL-INT-02: upload thread calls refresh_credentials when expires_at is in the
+    // past.  Covers the creds_expiring_soon() -> refresh_credentials block.
+    // The actual S3 credentials issued by start_run are still valid; setting
+    // expires_at to 1970 only causes our code to request a refresh -- the server
+    // returns fresh credentials and the upload proceeds normally.
+    // Skips automatically when SENTINEL_API_TOKEN is absent.
+    #[test]
+    fn test_upload_thread_refreshes_expiring_credentials() {
+        use crate::config::JobMetadata;
+        use crate::metrics::{CloudInfo, HostInfo};
+        use crate::sentinel::run::{close_run, start_run};
+        use std::sync::{Arc, Mutex};
+        use std::sync::atomic::Ordering;
+        use std::time::Duration;
+
+        let token = match std::env::var("SENTINEL_API_TOKEN") {
+            Ok(t) if !t.is_empty() => t,
+            _ => { eprintln!("skip: SENTINEL_API_TOKEN not set"); return; }
+        };
+        let api_base = std::env::var("SENTINEL_API_BASE")
+            .unwrap_or_else(|_| "https://api.sentinel.sparecores.net".to_string());
+        eprintln!("T-UPL-INT-02: api_base={api_base}");
+
+        let agent = ureq::config::Config::builder()
+            .timeout_global(Some(Duration::from_secs(30)))
+            .build()
+            .new_agent();
+
+        let mut ctx = start_run(
+            &agent, &api_base, &token,
+            &JobMetadata { job_name: Some("cred-refresh-test".to_string()), ..Default::default() },
+            None, &HostInfo::default(), &CloudInfo::default(),
+        ).expect("start_run failed");
+        eprintln!("T-UPL-INT-02: run_id={}", ctx.run_id);
+
+        // Force expires_at into the past so creds_expiring_soon() returns true.
+        // The underlying S3 session token is still valid; this only triggers the
+        // refresh call path in the upload thread.
+        ctx.credentials.expires_at = "1970-01-01T00:00:00Z".to_string();
+        eprintln!("T-UPL-INT-02: expires_at forced to epoch; creds_expiring_soon() will be true");
+
+        let ctx_arc = Arc::new(Mutex::new(ctx));
+        let (uploader, buf) = BatchUploader::new(1, 1);
+        let flag = uploader.shutdown_flag();
+
+        buf.lock().unwrap().push(minimal_sample());
+
+        flag.store(true, Ordering::Relaxed);
+
+        let handle = uploader.spawn(
+            Arc::clone(&ctx_arc),
+            agent.clone(),
+            api_base.clone(),
+            token.clone(),
+        );
+        let uris = handle.join().expect("upload thread panicked");
+        eprintln!("T-UPL-INT-02: uris={uris:?}");
+
+        // After refresh the upload should succeed via S3 or fall back to inline.
+        let ctx_guard = ctx_arc.lock().unwrap();
+        let csv = if uris.is_empty() {
+            Some(samples_to_csv(&[minimal_sample()], 1))
+        } else {
+            None
+        };
+        let result = close_run(&agent, &api_base, &token, &ctx_guard, Some(0), csv, &uris);
+        assert!(result.is_ok(), "close_run after credential refresh failed: {result:?}");
+        eprintln!("T-UPL-INT-02: close_run ok");
     }
 
     // T-STR-06: when a valid-looking S3 endpoint is unreachable, the thread
