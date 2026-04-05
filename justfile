@@ -1,4 +1,6 @@
 
+set dotenv-load
+
 help:
     @just --list
 
@@ -36,8 +38,15 @@ real_test1: build_release
 real_test2: build_release
 	./target/release/resource-tracker-rs --format csv Rscript stress.r
 
+
+real_test3: build_release
+	./target/release/resource-tracker-rs --format csv Rscript stress.r --cpu 4 --vm 1 --vm-bytes 12024M --timeout 63s
+
+
 report_coverage:
-	cargo llvm-cov --bins --html --open -- --test-threads=1
+    cargo llvm-cov --bins --html --open -- --test-threads=1
+
+
 
 
 ## Stub for possisble future use:

@@ -2,6 +2,35 @@
 
 ## [Unreleased]
 
+### Fix HTTP 422 on start_run and correct Sentinel API field names (2026-04-04)
+
+#### `src/sentinel/run.rs` -- MetadataPayload command serialization and pid removal
+
+- **Fixed HTTP 422 on start_run**: `command` was serialized as a JSON array
+  (e.g. `["Rscript","stress.r"]`), but the `RunCreate` API schema declares
+  `command` as `string | null` ("JSON array encoded in TEXT").  Pydantic rejects
+  an array where a string is expected, causing every invocation with a wrapped
+  command to return 422 and disable streaming.
+- **`command` is now JSON-encoded**: pre-serialized with
+  `serde_json::to_string(&metadata.command)` and sent as an `Option<String>`;
+  `None` when no command was given.
+- **`pid` removed from `MetadataPayload`**: the `RunCreate` schema has no `pid`
+  field.  The parameter is retained in the `start_run` function signature (bound
+  to `let _ = pid`) with a comment explaining the omission.
+
+#### `src/metrics/host.rs` -- serde renames to match API field names
+
+- **`host_name` serializes as `host_hostname`** (`#[serde(rename)]`) -- the API
+  field is `host_hostname`, not `host_name`.
+- **`host_allocation` serializes as `host_server_allocation`** -- the API field
+  is `host_server_allocation`.
+- **`host_gpu_vram_mib` serializes as `host_gpu_memory_mib`** -- the API field
+  is `host_gpu_memory_mib`.
+- Rust field names are unchanged; the renames only affect JSON serialization so
+  all internal collector code and tests remain unmodified.
+
+---
+
 ### Fix process_gpu_vram_mib and process_gpu_utilized empty without --pid (2026-04-04)
 
 #### `src/collector/gpu.rs` -- new all_gpu_process_info() method

@@ -236,12 +236,14 @@ struct MetadataPayload<'a> {
     container_image: Option<&'a str>,
     #[serde(skip_serializing_if = "slice_is_empty")]
     tags: &'a [String],
+    // NOTE: `pid` was intentionally omitted.  The `RunCreate` schema at
+    // https://api.sentinel.sparecores.net/openapi.json does not include a `pid`
+    // field, so sending it caused Pydantic validation to reject it with HTTP 422.
+    /// Shell-wrapper command encoded as a JSON string, e.g. `"[\"stress\",\"--cpu\",\"4\"]"`.
+    /// The Sentinel API `command` field is `string | null` ("JSON array encoded in TEXT"),
+    /// not a JSON array.  Omitted when not running in shell-wrapper mode.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pid: Option<i32>,
-    /// Shell-wrapper command as a JSON array, e.g. ["stress","--cpu","4"].
-    /// Omitted when not running in shell-wrapper mode.
-    #[serde(skip_serializing_if = "slice_is_empty")]
-    command: &'a [String],
+    command: Option<String>,
 }
 
 // See https://api.sentinel.sparecores.net/docs#/Resource%20Tracker/finish_run_runs__run_id__finish_post
@@ -301,6 +303,17 @@ pub fn start_run(
     host: &HostInfo,
     cloud: &CloudInfo,
 ) -> Result<RunContext, String> {
+    // The API `command` field is `string | null` ("JSON array encoded in TEXT").
+    // Serialize the Vec<String> to a JSON string; send None when no command was given.
+    let command_json: Option<String> = if metadata.command.is_empty() {
+        None
+    } else {
+        serde_json::to_string(&metadata.command).ok()
+    };
+
+    // `pid` is tracked locally but is not part of the `RunCreate` API schema.
+    let _ = pid;
+
     let payload = StartRunRequest {
         metadata: MetadataPayload {
             job_name: metadata.job_name.as_deref(),
@@ -315,8 +328,7 @@ pub fn start_run(
             external_run_id: metadata.external_run_id.as_deref(),
             container_image: metadata.container_image.as_deref(),
             tags: &metadata.tags,
-            pid,
-            command: &metadata.command,
+            command: command_json,
         },
         host,
         cloud,
@@ -1409,7 +1421,11 @@ mod tests {
             raw_str.contains("\"job_name\":\"test-job\""),
             "job_name missing: {raw_str}"
         );
-        assert!(raw_str.contains("\"pid\":42"), "pid missing: {raw_str}");
+        // `pid` is intentionally absent -- the RunCreate schema does not accept it.
+        assert!(
+            !raw_str.contains("\"pid\""),
+            "pid must not appear in the payload: {raw_str}"
+        );
     }
 
     // T-CMD-01: when start_run is called with a non-empty command (shell-wrapper mode),
@@ -1506,11 +1522,13 @@ mod tests {
         let raw = rx.recv().expect("mock server did not receive request");
         let raw_str = String::from_utf8_lossy(&raw);
 
-        // The body must contain the command as a JSON array.
-        let expected = r#""command":["stress","--cpu","4","--vm","1","--vm-bytes","12024M","--timeout","63s"]"#;
+        // The RunCreate schema declares `command` as `string | null` ("JSON array encoded
+        // in TEXT"), so the body must contain the command as a JSON-encoded string, not a
+        // bare JSON array.
+        let expected = r#""command":"[\"stress\",\"--cpu\",\"4\",\"--vm\",\"1\",\"--vm-bytes\",\"12024M\",\"--timeout\",\"63s\"]""#;
         assert!(
             raw_str.contains(expected),
-            "command array not found in payload.\nExpected: {expected}\nGot body: {raw_str}"
+            "command JSON string not found in payload.\nExpected: {expected}\nGot body: {raw_str}"
         );
     }
 
@@ -1531,8 +1549,7 @@ mod tests {
             external_run_id: None,
             container_image: None,
             tags: &[],
-            pid: None,
-            command: &[], // empty = standalone mode
+            command: None, // empty = standalone mode
         };
         let json = serde_json::to_string(&req_payload).expect("serialize failed");
         assert!(

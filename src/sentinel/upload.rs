@@ -650,4 +650,160 @@ mod tests {
             "upload thread took {elapsed:?}; expected < 20 s"
         );
     }
+
+    // T-COV-01: empty sample slice produces only the CSV header line.
+    #[test]
+    fn test_samples_to_csv_empty_slice() {
+        let csv = samples_to_csv(&[], 1);
+        let mut lines = csv.lines();
+        assert_eq!(lines.next(), Some(csv_header()), "first line must be the CSV header");
+        assert_eq!(lines.next(), None, "empty slice must produce no data rows");
+        assert!(csv.ends_with('\n'), "output must end with a newline");
+    }
+
+    // T-STR-07: the upload thread hits the empty-batch `continue` path at least
+    // twice before processing a sample pushed after those cycles, then exits
+    // on the shutdown signal.  Covers lines 135-139 in the non-shutdown branch.
+    #[test]
+    fn test_upload_thread_skips_empty_batch_then_processes() {
+        use crate::sentinel::run::RunContext;
+        use crate::sentinel::s3::UploadCredentials;
+        use std::sync::{Arc, Mutex};
+        use std::sync::atomic::Ordering;
+        use std::time::{Duration, Instant};
+
+        // upload_interval=0 → ticks_per_interval = (0*4).max(1) = 1 → 250 ms per cycle.
+        let (uploader, buf) = BatchUploader::new(0, 1);
+        let flag = uploader.shutdown_flag();
+
+        // Invalid URI → bucket empty after parse → S3 call is skipped entirely.
+        let ctx = Arc::new(Mutex::new(RunContext {
+            run_id: "r".to_string(),
+            upload_uri_prefix: "invalid-not-an-s3-uri".to_string(),
+            credentials: UploadCredentials {
+                access_key_id:     "k".to_string(),
+                secret_access_key: "s".to_string(),
+                session_token:     "t".to_string(),
+                expires_at:        "2099-01-01T00:00:00Z".to_string(),
+            },
+        }));
+
+        let agent = ureq::config::Config::builder()
+            .timeout_global(Some(Duration::from_millis(100)))
+            .build()
+            .new_agent();
+
+        let handle = uploader.spawn(
+            ctx,
+            agent,
+            "http://127.0.0.1:1".to_string(),
+            "token".to_string(),
+        );
+
+        // Let the thread execute at least two empty-buffer iterations (2 × 250 ms).
+        std::thread::sleep(Duration::from_millis(700));
+
+        // Push a sample then signal shutdown.  The thread drains it on the next wake,
+        // serializes, gzip-compresses, skips S3 (empty bucket), and exits.
+        buf.lock().unwrap().push(minimal_sample());
+        flag.store(true, Ordering::Relaxed);
+
+        let t0 = Instant::now();
+        handle.join().expect("upload thread panicked");
+        let elapsed = t0.elapsed();
+
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "thread took {elapsed:?} after sample push; expected < 2 s"
+        );
+    }
+
+    // T-STR-08: after MAX_CONSECUTIVE_FAILURES (3) consecutive batch failures the
+    // thread resets the counter to 0 and continues rather than exiting.
+    //
+    // Three distinct batches are forced by pushing one sample at a time and
+    // sleeping between pushes so each drain is a separate upload attempt.
+    // Shutdown is signaled together with the third push so the thread processes
+    // batch 3 (hits the reset branch) and then exits on the shutdown check.
+    //
+    // NOTE: each failed batch runs through MAX_UPLOAD_ATTEMPTS retries with
+    // exponential back-off (2 s + 4 s = 6 s) plus region detection (~2 s on
+    // the first batch).  Total wall-clock time is approximately 26 s.
+    #[test]
+    fn test_upload_thread_resets_consecutive_failures() {
+        use crate::sentinel::run::RunContext;
+        use crate::sentinel::s3::UploadCredentials;
+        use std::sync::{Arc, Mutex};
+        use std::sync::atomic::Ordering;
+        use std::time::{Duration, Instant};
+
+        let ctx = Arc::new(Mutex::new(RunContext {
+            run_id: "r".to_string(),
+            upload_uri_prefix: "s3://fake-nonexistent-bucket-xyz/prefix".to_string(),
+            credentials: UploadCredentials {
+                access_key_id:     "AKIAIOSFODNN7EXAMPLE".to_string(),
+                secret_access_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".to_string(),
+                session_token:     "token".to_string(),
+                expires_at:        "2099-01-01T00:00:00Z".to_string(),
+            },
+        }));
+
+        let agent = ureq::config::Config::builder()
+            .timeout_global(Some(Duration::from_millis(50)))
+            .build()
+            .new_agent();
+
+        // upload_interval=0 → thread wakes every 250 ms between upload cycles.
+        let (uploader, buf) = BatchUploader::new(0, 1);
+        let flag = uploader.shutdown_flag();
+
+        let handle = uploader.spawn(
+            Arc::clone(&ctx),
+            agent,
+            "http://127.0.0.1:1".to_string(),
+            "token".to_string(),
+        );
+
+        // Each batch takes ≤10 s: region detection (~2 s first time) +
+        // 3 × 50 ms agent timeout + 2 s + 4 s retry back-off.
+        // Push one sample per batch; sleep between pushes so each drain is
+        // a distinct batch (batch N drains before sample N+1 arrives).
+        //
+        // Batch 1 → consecutive_failures = 1
+        // Batch 2 → consecutive_failures = 2
+        // Batch 3 → consecutive_failures = 3 → RESET to 0 (lines 233-237)
+        let batch_wait = Duration::from_secs(10);
+        for i in 0..3u32 {
+            buf.lock().unwrap().push(minimal_sample());
+            if i < 2 {
+                std::thread::sleep(batch_wait);
+            }
+        }
+
+        // Signal shutdown together with the third sample so the thread
+        // processes batch 3, resets the counter, then exits.
+        flag.store(true, Ordering::Relaxed);
+
+        let t0 = Instant::now();
+        handle.join().expect("upload thread panicked");
+        let elapsed = t0.elapsed();
+
+        // From the shutdown signal: batch 3 takes ≤10 s, then the thread exits.
+        assert!(
+            elapsed < Duration::from_secs(15),
+            "thread did not exit after consecutive-failure reset: {elapsed:?}"
+        );
+    }
+
+    // T-STR-09: BatchUploader::new wires the uploader's internal buffer and the
+    // returned SampleBuffer to the same Arc allocation.
+    #[test]
+    fn test_batch_uploader_new_shares_buffer() {
+        use std::sync::Arc;
+        let (uploader, buf) = BatchUploader::new(60, 1);
+        assert!(
+            Arc::ptr_eq(&uploader.buffer, &buf),
+            "uploader.buffer and the returned SampleBuffer must point to the same Arc allocation"
+        );
+    }
 }
