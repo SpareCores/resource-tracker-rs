@@ -9,15 +9,9 @@ build:
     cargo build
 
 build_release:
-    (cargo build --release) && upx target/release/resource-tracker-rs
+    ## (cargo build --release) && upx target/release/resource-tracker-rs
+	cargo build --release
 
-# GPU machine: requires AMD driver (libdrm) + NVIDIA driver (libnvidia-ml.so) at runtime.
-# Both libraries are loaded dynamically; the binary degrades gracefully if either is absent.
-build_gpu:
-    cargo build
-
-build_release_gpu:
-    cargo build --release
 
 run_only_show_key_names:
      target/release/resource-tracker-rs --interval 3 | jq -r 'paths(scalars) as $p | "\($p | join(".")): \(getpath($p) | type)"'
@@ -47,6 +41,15 @@ report_coverage:
     cargo llvm-cov --bins --html --open -- --test-threads=1
 
 
+## Audit dependencies for known vulnerabilities
+audit:
+	@command -v cargo-audit >/dev/null 2>&1 || cargo install cargo-audit --locked
+	cargo audit
+
+outdated:
+	@command -v cargo-outdated >/dev/null 2>&1 || cargo install cargo-outdated --locked
+	cargo outdated
+	
 
 
 ## Stub for possisble future use:
