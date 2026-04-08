@@ -90,10 +90,15 @@ fn shutdown(
 // ---------------------------------------------------------------------------
 
 fn main() {
-    // Install SIGTERM handler so the binary can flush before exiting.
+    // Install SIGTERM and SIGINT handlers so the binary can flush before exiting.
+    // Both signals set the same flag and trigger the same graceful shutdown path.
     unsafe {
         libc::signal(
             libc::SIGTERM,
+            handle_sigterm as *const () as libc::sighandler_t,
+        );
+        libc::signal(
+            libc::SIGINT,
             handle_sigterm as *const () as libc::sighandler_t,
         );
     }
@@ -157,7 +162,7 @@ fn main() {
     let memory = MemoryCollector::new();
     let mut network = NetworkCollector::new();
     let mut disk = DiskCollector::new();
-    let gpu = GpuCollector::new();
+    let mut gpu = GpuCollector::new();
 
     // Collect static GPU info now so host discovery can derive GPU host fields.
     let initial_gpus = gpu.collect().unwrap_or_default();
@@ -250,7 +255,7 @@ fn main() {
         // Augment with per-process GPU stats.
         // With --pid: filter to the tracked process tree.
         // Without --pid: report system-wide GPU allocation (all processes).
-        let (vram_mib, gpu_utilized) =
+        let (vram_mib, gpu_usage, gpu_utilized) =
             if config.pid.is_some() && !sample.cpu.process_tree_pids.is_empty() {
                 let pids_u32: Vec<u32> = sample
                     .cpu
@@ -258,11 +263,12 @@ fn main() {
                     .iter()
                     .filter_map(|&p| u32::try_from(p).ok())
                     .collect();
-                gpu.process_gpu_info(&pids_u32)
+                gpu.process_gpu_info(&pids_u32, interval)
             } else {
-                gpu.all_gpu_process_info()
+                gpu.all_gpu_process_info(interval)
             };
         sample.cpu.process_gpu_vram_mib = vram_mib;
+        sample.cpu.process_gpu_usage = gpu_usage;
         sample.cpu.process_gpu_utilized = gpu_utilized;
 
         // Emit to selected output sink.
@@ -327,5 +333,48 @@ fn main() {
         }
 
         std::thread::sleep(interval);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Verify that SIGINT sets SIGTERM_RECEIVED, triggering the same graceful
+    /// shutdown path as SIGTERM.  The test installs the handler, resets the
+    /// flag, raises SIGINT, then asserts the flag is true.
+    #[test]
+    fn test_sigint_sets_shutdown_flag() {
+        // Reset in case a previous test left the flag set.
+        SIGTERM_RECEIVED.store(false, Ordering::SeqCst);
+
+        // Install the handler for SIGINT (mirrors what main() does).
+        unsafe {
+            libc::signal(
+                libc::SIGINT,
+                handle_sigterm as *const () as libc::sighandler_t,
+            );
+        }
+
+        // Raise SIGINT on the current process.
+        unsafe {
+            libc::raise(libc::SIGINT);
+        }
+
+        assert!(
+            SIGTERM_RECEIVED.load(Ordering::SeqCst),
+            "SIGTERM_RECEIVED flag must be true after SIGINT"
+        );
+
+        // Clean up: reset the flag and restore the default SIGINT disposition
+        // so this does not interfere with other tests.
+        SIGTERM_RECEIVED.store(false, Ordering::SeqCst);
+        unsafe {
+            libc::signal(libc::SIGINT, libc::SIG_DFL);
+        }
     }
 }

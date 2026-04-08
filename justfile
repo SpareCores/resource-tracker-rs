@@ -4,12 +4,14 @@ set dotenv-load
 help:
     @just --list
 
+format:
+	cargo fmt
 
-build:
+build: format
     cargo build
 
-build_release:
-    ## (cargo build --release) && upx target/release/resource-tracker-rs
+## (cargo build --release) && upx target/release/resource-tracker-rs
+build_release:  format
 	cargo build --release
 
 

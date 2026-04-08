@@ -232,6 +232,7 @@ impl CpuCollector {
                 process_rss_mib,
                 process_disk_read_bytes: self.pid.map(|_| 0),
                 process_disk_write_bytes: self.pid.map(|_| 0),
+                process_gpu_usage: None, // filled by main.rs after GPU query
                 process_gpu_vram_mib: None, // filled by main.rs after GPU query
                 process_gpu_utilized: None,
                 process_tree_pids: curr.proc_ticks.keys().copied().collect(),
@@ -332,6 +333,7 @@ impl CpuCollector {
                     process_rss_mib,
                     process_disk_read_bytes,
                     process_disk_write_bytes,
+                    process_gpu_usage: None, // filled by main.rs after GPU query
                     process_gpu_vram_mib: None, // filled by main.rs after GPU query
                     process_gpu_utilized: None,
                     process_tree_pids: curr.proc_ticks.keys().copied().collect(),

@@ -2,7 +2,7 @@ use crate::metrics::GpuMetrics;
 use libamdgpu_top::{
     AMDGPU::{GpuMetrics as AmdHwMetrics, MetricsInfo},
     DevicePath,
-    stat::GpuActivity,
+    stat::{FdInfoStat, GpuActivity, ProcInfo, update_index_by_all_proc},
 };
 use nvml_wrapper::{
     Nvml,
@@ -10,7 +10,8 @@ use nvml_wrapper::{
     enums::device::UsedGpuMemory,
 };
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -23,12 +24,16 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 /// On a CPU-only host `collect()` returns an empty Vec with no error.
 pub struct GpuCollector {
     nvml: Option<Nvml>,
+    /// Per-process fdinfo state for AMD GPU utilization delta tracking.
+    /// Populated lazily on first AMD host detection.
+    amd_fdinfo: Option<FdInfoStat>,
 }
 
 impl GpuCollector {
     pub fn new() -> Self {
         Self {
             nvml: Nvml::init().ok(),
+            amd_fdinfo: None,
         }
     }
 
@@ -39,28 +44,39 @@ impl GpuCollector {
         Ok(metrics)
     }
 
-    /// Return `(process_gpu_vram_mib, process_gpu_utilized)` for the given PIDs.
+    /// Return `(process_gpu_vram_mib, process_gpu_usage, process_gpu_utilized)` for the given PIDs.
     ///
     /// `pids` is the tracked process tree (root + descendants) as u32 values.
     ///
     /// NVIDIA: queries NVML running-compute and running-graphics process lists
     /// for each device; sums `used_gpu_memory` for matched PIDs.
+    /// SM utilization is sourced from `nvmlDeviceGetProcessUtilization`; the
+    /// latest sample per PID is taken and summed across all matched PIDs and devices.
     ///
     /// AMD: reads `/proc/{pid}/fdinfo` for each PID, parses `drm-memory-vram`
     /// and `drm-pdev` from DRM fdinfo entries (Linux kernel >= 5.17), and
     /// matches against known AMD device PCI addresses.
+    /// Per-process GPU utilization is not yet supported for AMD.
     ///
-    /// Returns `(None, None)` when no GPU is present on the host.
-    /// Returns `(Some(0.0), Some(0))` when a GPU is present but the process
-    /// tree has no allocations.
-    pub fn process_gpu_info(&self, pids: &[u32]) -> (Option<f64>, Option<u32>) {
+    /// Returns `(None, None, None)` when no GPU is present on the host.
+    /// Returns `(Some(0.0), Some(0.0), Some(0))` when a GPU is present but the
+    /// process tree has no allocations.
+    pub fn process_gpu_info(
+        &mut self,
+        pids: &[u32],
+        interval: Duration,
+    ) -> (Option<f64>, Option<f64>, Option<u32>) {
         let mut total_vram_bytes: u64 = 0;
+        let mut total_sm_util: f64 = 0.0;
         let mut n_utilized: u32 = 0;
         let mut any_gpu = false;
+        let mut has_nvml = false;
+        let mut has_amd_util = false;
 
         // --- NVIDIA via NVML -------------------------------------------------
         if let Some(ref nvml) = self.nvml {
             any_gpu = true;
+            has_nvml = true;
             let pid_set: HashSet<u32> = pids.iter().copied().collect();
             let count = nvml.device_count().unwrap_or(0);
 
@@ -91,19 +107,39 @@ impl GpuCollector {
                     n_utilized += 1;
                     total_vram_bytes += device_vram;
                 }
+
+                // Per-process SM utilization: take the latest sample per PID
+                // (nvmlDeviceGetProcessUtilization; no accounting mode required).
+                let util_samples = device.process_utilization_stats(0u64).unwrap_or_default();
+                let mut latest_sm: HashMap<u32, (u64, u32)> = HashMap::new();
+                for s in &util_samples {
+                    if pid_set.contains(&s.pid) {
+                        let e = latest_sm.entry(s.pid).or_insert((0, 0));
+                        if s.timestamp > e.0 {
+                            *e = (s.timestamp, s.sm_util);
+                        }
+                    }
+                }
+                for (_, sm) in latest_sm.values() {
+                    total_sm_util += f64::from(*sm);
+                }
             });
         }
 
         // --- AMD via /proc/pid/fdinfo ----------------------------------------
-        // DRM fdinfo (kernel >= 5.17): each open DRM fd exposes drm-memory-vram
-        // and drm-pdev so we can attribute VRAM per process and per device.
+        // DRM fdinfo (kernel >= 5.17): each open DRM fd exposes drm-memory-vram,
+        // drm-pdev, and drm-engine-gfx so we can attribute VRAM and GFX engine
+        // utilization per process and per device.
         if std::path::Path::new("/sys/module/amdgpu").exists() {
             any_gpu = true;
+            has_amd_util = true;
+
+            let device_paths = DevicePath::get_device_path_list();
 
             // Collect PCI addresses of all known AMD devices (lowercase for
             // case-insensitive comparison with kernel fdinfo drm-pdev values).
-            let amd_pci_addrs: HashSet<String> = DevicePath::get_device_path_list()
-                .into_iter()
+            let amd_pci_addrs: HashSet<String> = device_paths
+                .iter()
                 .map(|dp| format!("{}", dp.pci).to_lowercase())
                 .collect();
 
@@ -153,37 +189,77 @@ impl GpuCollector {
             });
 
             n_utilized += u32::try_from(utilized_pcis.len()).unwrap_or(0);
+
+            // Per-process GFX engine utilization via FdInfoStat delta tracking.
+            // FdInfoStat accumulates cumulative ns on first call and computes %
+            // utilization on subsequent calls using the interval as the denominator.
+            let fdinfo = self.amd_fdinfo.get_or_insert_with(FdInfoStat::default);
+            fdinfo.interval = interval;
+
+            // Collect the DRM render+card paths for all AMD devices so
+            // update_index_by_all_proc can identify which fds belong to AMD GPUs.
+            let dev_paths: Vec<PathBuf> = device_paths
+                .iter()
+                .flat_map(|dp| [dp.render.clone(), dp.card.clone()])
+                .collect();
+
+            // Build ProcInfo only for the tracked PIDs.
+            let pids_i32: Vec<i32> = pids.iter().filter_map(|&p| i32::try_from(p).ok()).collect();
+            let mut proc_infos: Vec<ProcInfo> = Vec::new();
+            update_index_by_all_proc(&mut proc_infos, &dev_paths, &pids_i32);
+
+            fdinfo.get_all_proc_usage(&proc_infos);
+
+            // Sum gfx utilization across all matched PIDs.
+            for pu in &fdinfo.proc_usage {
+                total_sm_util += f64::from(i32::try_from(pu.usage.gfx).unwrap_or(0).max(0));
+            }
         }
 
         if !any_gpu {
-            return (None, None);
+            return (None, None, None);
         }
 
         let vram_mib = total_vram_bytes as f64 / 1_048_576.0;
-        (Some(vram_mib), Some(n_utilized))
+        let usage_pct = if has_nvml || has_amd_util {
+            Some(total_sm_util)
+        } else {
+            None
+        };
+        (Some(vram_mib), usage_pct, Some(n_utilized))
     }
 
-    /// Return `(process_gpu_vram_mib, process_gpu_utilized)` summed across ALL
-    /// GPU processes on the host (no PID filter).  Used when tracking is not
+    /// Return `(process_gpu_vram_mib, process_gpu_usage, process_gpu_utilized)` summed
+    /// across ALL GPU processes on the host (no PID filter).  Used when tracking is not
     /// scoped to a specific PID so the full system-wide GPU allocation is
     /// reported in the `process_` CSV columns.
     ///
     /// NVIDIA: sums `used_gpu_memory` for every running compute and graphics
     /// process across all devices; counts each device that has at least one
     /// process as "utilized".
+    /// SM utilization is summed across the latest sample per PID from
+    /// `nvmlDeviceGetProcessUtilization`.
     ///
     /// AMD: reads `mem_info_vram_used` from sysfs for each device (the kernel
     /// already provides the system-wide VRAM used value there).
+    /// Per-process GPU utilization is not yet supported for AMD.
     ///
-    /// Returns `(None, None)` when no GPU is present on the host.
-    pub fn all_gpu_process_info(&self) -> (Option<f64>, Option<u32>) {
+    /// Returns `(None, None, None)` when no GPU is present on the host.
+    pub fn all_gpu_process_info(
+        &mut self,
+        interval: Duration,
+    ) -> (Option<f64>, Option<f64>, Option<u32>) {
         let mut total_vram_bytes: u64 = 0;
+        let mut total_sm_util: f64 = 0.0;
         let mut n_utilized: u32 = 0;
         let mut any_gpu = false;
+        let mut has_nvml = false;
+        let mut has_amd_util = false;
 
         // --- NVIDIA via NVML -------------------------------------------------
         if let Some(ref nvml) = self.nvml {
             any_gpu = true;
+            has_nvml = true;
             let count = nvml.device_count().unwrap_or(0);
 
             (0..count).for_each(|i| {
@@ -206,30 +282,70 @@ impl GpuCollector {
                         total_vram_bytes += bytes;
                     }
                 });
+
+                // System-wide SM utilization: latest sample per PID, all processes.
+                let util_samples = device.process_utilization_stats(0u64).unwrap_or_default();
+                let mut latest_sm: HashMap<u32, (u64, u32)> = HashMap::new();
+                for s in &util_samples {
+                    let e = latest_sm.entry(s.pid).or_insert((0, 0));
+                    if s.timestamp > e.0 {
+                        *e = (s.timestamp, s.sm_util);
+                    }
+                }
+                for (_, sm) in latest_sm.values() {
+                    total_sm_util += f64::from(*sm);
+                }
             });
         }
 
-        // --- AMD via sysfs ---------------------------------------------------
+        // --- AMD via sysfs + fdinfo ------------------------------------------
         if std::path::Path::new("/sys/module/amdgpu").exists() {
             any_gpu = true;
+            has_amd_util = true;
 
-            DevicePath::get_device_path_list()
-                .into_iter()
-                .for_each(|dp| {
-                    let used = read_sysfs_u64(dp.sysfs_path.join("mem_info_vram_used"));
-                    if used > 0 {
-                        total_vram_bytes += used;
-                        n_utilized += 1;
-                    }
-                });
+            let device_paths = DevicePath::get_device_path_list();
+
+            device_paths.iter().for_each(|dp| {
+                let used = read_sysfs_u64(dp.sysfs_path.join("mem_info_vram_used"));
+                if used > 0 {
+                    total_vram_bytes += used;
+                    n_utilized += 1;
+                }
+            });
+
+            // System-wide GFX utilization: sum gfx % across all processes on
+            // all AMD devices using FdInfoStat delta tracking.
+            let fdinfo = self.amd_fdinfo.get_or_insert_with(FdInfoStat::default);
+            fdinfo.interval = interval;
+
+            let dev_paths: Vec<PathBuf> = device_paths
+                .iter()
+                .flat_map(|dp| [dp.render.clone(), dp.card.clone()])
+                .collect();
+
+            // Enumerate all processes on the system that have AMD GPU fds open.
+            let all_pids = libamdgpu_top::stat::get_process_list();
+            let mut proc_infos: Vec<ProcInfo> = Vec::new();
+            update_index_by_all_proc(&mut proc_infos, &dev_paths, &all_pids);
+
+            fdinfo.get_all_proc_usage(&proc_infos);
+
+            for pu in &fdinfo.proc_usage {
+                total_sm_util += f64::from(i32::try_from(pu.usage.gfx).unwrap_or(0).max(0));
+            }
         }
 
         if !any_gpu {
-            return (None, None);
+            return (None, None, None);
         }
 
         let vram_mib = total_vram_bytes as f64 / 1_048_576.0;
-        (Some(vram_mib), Some(n_utilized))
+        let usage_pct = if has_nvml || has_amd_util {
+            Some(total_sm_util)
+        } else {
+            None
+        };
+        (Some(vram_mib), usage_pct, Some(n_utilized))
     }
 
     // -----------------------------------------------------------------------
@@ -395,13 +511,13 @@ impl GpuCollector {
 mod tests {
     use super::*;
 
-    // T-GPU-P1: process_gpu_info with an empty PID list must return (None, None)
-    // on a CPU-only host, or (Some(0.0), Some(0)) on a GPU host -- never panic,
-    // and always return matching Some/None for both fields.
+    // T-GPU-P1: process_gpu_info with an empty PID list must return (None, None, None)
+    // on a CPU-only host, or (Some(0.0), Some(_), Some(0)) on a GPU host -- never panic,
+    // and always return matching Some/None for vram and utilized.
     #[test]
     fn test_process_gpu_info_empty_pids_consistent() {
-        let collector = GpuCollector::new();
-        let (vram, utilized) = collector.process_gpu_info(&[]);
+        let mut collector = GpuCollector::new();
+        let (vram, _usage, utilized) = collector.process_gpu_info(&[], Duration::from_secs(1));
         match (vram, utilized) {
             (None, None) => {} // CPU-only host
             (Some(v), Some(u)) => {
@@ -413,13 +529,13 @@ mod tests {
     }
 
     // T-GPU-P2: process_gpu_info with the current process PID must not panic
-    // and must return a consistent shape: (None, None) on CPU-only hosts, or
-    // (Some(v), Some(u)) with v >= 0.0 on GPU hosts.
+    // and must return a consistent shape: (None, None, None) on CPU-only hosts, or
+    // (Some(v), Some(_), Some(u)) with v >= 0.0 on GPU hosts.
     #[test]
     fn test_process_gpu_info_real_pid_does_not_panic() {
-        let collector = GpuCollector::new();
+        let mut collector = GpuCollector::new();
         let pid = std::process::id();
-        let (vram, utilized) = collector.process_gpu_info(&[pid]);
+        let (vram, _usage, utilized) = collector.process_gpu_info(&[pid], Duration::from_secs(1));
         match (vram, utilized) {
             (None, None) => {}
             (Some(v), Some(u)) => {
@@ -431,7 +547,7 @@ mod tests {
     }
 
     // T-GPU-P3: on a CPU-only host (no NVML, no /sys/module/amdgpu),
-    // any PID list must return (None, None).  Skipped on GPU hosts.
+    // any PID list must return (None, None, None).  Skipped on GPU hosts.
     #[test]
     fn test_process_gpu_info_no_gpu_returns_none() {
         let nvml_unavailable = Nvml::init().is_err();
@@ -440,22 +556,23 @@ mod tests {
             // Host has a GPU; this test is not applicable.
             return;
         }
-        let collector = GpuCollector::new();
-        let (vram, utilized) = collector.process_gpu_info(&[1, 2, 3]);
+        let mut collector = GpuCollector::new();
+        let (vram, usage, utilized) =
+            collector.process_gpu_info(&[1, 2, 3], Duration::from_secs(1));
         assert_eq!(
-            (vram, utilized),
-            (None, None),
-            "CPU-only host must return (None, None) for any PID list"
+            (vram, usage, utilized),
+            (None, None, None),
+            "CPU-only host must return (None, None, None) for any PID list"
         );
     }
 
     // T-GPU-A1: all_gpu_process_info() must not panic and must return a
-    // consistent shape on any host: (None, None) on CPU-only, or
-    // (Some(v), Some(u)) with v >= 0.0 on GPU hosts.
+    // consistent shape on any host: (None, None, None) on CPU-only, or
+    // (Some(v), Some(_), Some(u)) with v >= 0.0 on GPU hosts.
     #[test]
     fn test_all_gpu_process_info_consistent() {
-        let collector = GpuCollector::new();
-        let (vram, utilized) = collector.all_gpu_process_info();
+        let mut collector = GpuCollector::new();
+        let (vram, _usage, utilized) = collector.all_gpu_process_info(Duration::from_secs(1));
         match (vram, utilized) {
             (None, None) => {} // CPU-only host
             (Some(v), Some(u)) => {
@@ -466,7 +583,7 @@ mod tests {
         }
     }
 
-    // T-GPU-A2: on a CPU-only host, all_gpu_process_info() must return (None, None).
+    // T-GPU-A2: on a CPU-only host, all_gpu_process_info() must return (None, None, None).
     // Skipped on GPU hosts.
     #[test]
     fn test_all_gpu_process_info_no_gpu_returns_none() {
@@ -475,17 +592,17 @@ mod tests {
         if !nvml_unavailable || !amd_absent {
             return;
         }
-        let collector = GpuCollector::new();
-        let result = collector.all_gpu_process_info();
+        let mut collector = GpuCollector::new();
+        let result = collector.all_gpu_process_info(Duration::from_secs(1));
         assert_eq!(
             result,
-            (None, None),
-            "CPU-only host must return (None, None)"
+            (None, None, None),
+            "CPU-only host must return (None, None, None)"
         );
     }
 
-    // T-GPU-A3: on a GPU host, all_gpu_process_info() must return Some for both
-    // fields, with vram_mib >= 0.0.  Skipped on CPU-only hosts.
+    // T-GPU-A3: on a GPU host, all_gpu_process_info() must return Some for vram
+    // and utilized, with vram_mib >= 0.0.  Skipped on CPU-only hosts.
     #[test]
     fn test_all_gpu_process_info_gpu_host_returns_some() {
         let nvml_available = Nvml::init().is_ok();
@@ -493,8 +610,8 @@ mod tests {
         if !nvml_available && !amd_present {
             return; // CPU-only host; not applicable
         }
-        let collector = GpuCollector::new();
-        let (vram, utilized) = collector.all_gpu_process_info();
+        let mut collector = GpuCollector::new();
+        let (vram, _usage, utilized) = collector.all_gpu_process_info(Duration::from_secs(1));
         assert!(vram.is_some(), "GPU host: vram_mib must be Some, got None");
         assert!(
             utilized.is_some(),
@@ -516,9 +633,10 @@ mod tests {
         if !nvml_available && !amd_present {
             return;
         }
-        let collector = GpuCollector::new();
-        let (all_vram, _) = collector.all_gpu_process_info();
-        let (pid_vram, _) = collector.process_gpu_info(&[]);
+        let mut collector = GpuCollector::new();
+        let interval = Duration::from_secs(1);
+        let (all_vram, _, _) = collector.all_gpu_process_info(interval);
+        let (pid_vram, _, _) = collector.process_gpu_info(&[], interval);
         // process_gpu_info(&[]) returns Some(0.0) on a GPU host; all_gpu_process_info
         // must return >= 0.0 (can be 0.0 if no GPU processes are running).
         if let (Some(av), Some(pv)) = (all_vram, pid_vram) {

@@ -131,7 +131,7 @@ pub fn sample_to_csv_row(s: &Sample, interval_secs: u64) -> String {
         opt_u64(s.cpu.process_rss_mib),
         opt_u64(s.cpu.process_disk_read_bytes),
         opt_u64(s.cpu.process_disk_write_bytes),
-        String::new(), // process_gpu_usage: NVML per-process utilization % unavailable without accounting mode
+        opt_f4(s.cpu.process_gpu_usage),
         opt_f4(s.cpu.process_gpu_vram_mib),
         opt_u32(s.cpu.process_gpu_utilized),
     ]
@@ -167,6 +167,7 @@ mod tests {
                 process_rss_mib: None,
                 process_disk_read_bytes: None,
                 process_disk_write_bytes: None,
+                process_gpu_usage: None,
                 process_gpu_vram_mib: None,
                 process_gpu_utilized: None,
                 process_tree_pids: vec![],
@@ -289,19 +290,20 @@ mod tests {
         assert_eq!(r1, r2, "csv row output is not deterministic");
     }
 
-    // T-CSV-07: process_gpu_vram_mib and process_gpu_utilized are emitted at
-    // columns 30 and 31 when set; process_gpu_usage (col 29) is always empty.
+    // T-CSV-07: process_gpu_usage, process_gpu_vram_mib, and process_gpu_utilized
+    // are emitted at columns 29, 30, and 31 when set.
     #[test]
     fn test_csv_process_gpu_fields_emitted_when_set() {
         let mut sample = minimal_sample();
         sample.tracked_pid = Some(42);
+        sample.cpu.process_gpu_usage = Some(55.0);
         sample.cpu.process_gpu_vram_mib = Some(83.1875);
         sample.cpu.process_gpu_utilized = Some(1);
 
         let row = sample_to_csv_row(&sample, 1);
         let cols: Vec<&str> = row.split(',').collect();
 
-        assert_eq!(cols[29], "", "process_gpu_usage must always be empty");
+        assert_eq!(cols[29], "55.0000", "process_gpu_usage mismatch");
         assert_eq!(cols[30], "83.1875", "process_gpu_vram_mib mismatch");
         assert_eq!(cols[31], "1", "process_gpu_utilized mismatch");
     }
@@ -314,7 +316,7 @@ mod tests {
         let row = sample_to_csv_row(&sample, 1);
         let cols: Vec<&str> = row.split(',').collect();
 
-        assert_eq!(cols[29], "", "process_gpu_usage must be empty");
+        assert_eq!(cols[29], "", "process_gpu_usage must be empty when None");
         assert_eq!(cols[30], "", "process_gpu_vram_mib must be empty when None");
         assert_eq!(cols[31], "", "process_gpu_utilized must be empty when None");
     }

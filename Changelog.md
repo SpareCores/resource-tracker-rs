@@ -2,6 +2,48 @@
 
 ## [Unreleased]
 
+### Populate process_gpu_usage and handle SIGINT gracefully (2026-04-08)
+
+#### `src/collector/gpu.rs` -- per-process GPU utilization for NVIDIA and AMD
+
+- **`process_gpu_info` and `all_gpu_process_info` now return a 3-tuple**
+  `(Option<f64>, Option<f64>, Option<u32>)` = `(vram_mib, usage_pct, gpu_utilized)`.
+- **NVIDIA**: SM (shader/compute) utilization is sourced from
+  `nvmlDeviceGetProcessUtilization` (`device.process_utilization_stats(0u64)`).
+  The latest sample per PID is taken (highest timestamp) and summed across all
+  matched PIDs and devices.  Does not require accounting mode.
+- **AMD**: per-process GFX engine utilization is computed from
+  `drm-engine-gfx` cumulative nanoseconds in `/proc/{pid}/fdinfo` using
+  `libamdgpu_top::stat::FdInfoStat` delta tracking.  `FdInfoStat` is stored as
+  persistent state on `GpuCollector` (field `amd_fdinfo: Option<FdInfoStat>`)
+  and updated each polling interval.  `process_gpu_info` builds `ProcInfo` only
+  for the tracked PIDs; `all_gpu_process_info` enumerates all GPU-using processes.
+- **`GpuCollector`** gains an `amd_fdinfo` field and both methods now take
+  `&mut self` and a `Duration` (the polling interval) for AMD delta computation.
+
+#### `src/metrics/cpu.rs` -- new `process_gpu_usage` field
+
+- Added `pub process_gpu_usage: Option<f64>` between `process_disk_write_bytes`
+  and `process_gpu_vram_mib`.  `None` on CPU-only hosts or when NVML/AMD data is
+  unavailable; `Some(pct)` otherwise (summed across matched processes/devices).
+
+#### `src/main.rs` -- wire new field; SIGINT handler
+
+- Destructures the new 3-tuple from GPU calls and assigns `sample.cpu.process_gpu_usage`.
+- `gpu` is now `let mut gpu` to satisfy `&mut self`.
+- **SIGINT registered to the same handler as SIGTERM** so Ctrl-C triggers the
+  existing graceful shutdown path (flush S3, call `/finish`, exit).  Both signals
+  set `SIGTERM_RECEIVED`; the main loop's existing check handles both.
+- Added test `test_sigint_sets_shutdown_flag` verifying SIGINT sets the flag.
+
+#### `src/output/csv.rs` -- emit `process_gpu_usage` column
+
+- Column 29 (`process_gpu_usage`) now emits `opt_f4(s.cpu.process_gpu_usage)`
+  instead of the hardcoded empty string.
+- Updated tests T-CSV-07 and T-CSV-08 to reflect the new behavior.
+
+---
+
 ### Fix HTTP 422 on start_run and correct Sentinel API field names (2026-04-04)
 
 #### `src/sentinel/run.rs` -- MetadataPayload command serialization and pid removal
