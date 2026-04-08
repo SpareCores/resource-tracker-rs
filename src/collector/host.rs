@@ -24,9 +24,7 @@ fn read_host_id() -> Option<String> {
 
 fn read_host_name() -> Option<String> {
     let mut buf = vec![0u8; 256];
-    let ret = unsafe {
-        libc::gethostname(buf.as_mut_ptr() as *mut libc::c_char, buf.len())
-    };
+    let ret = unsafe { libc::gethostname(buf.as_mut_ptr() as *mut libc::c_char, buf.len()) };
     if ret != 0 {
         return None;
     }
@@ -116,21 +114,15 @@ fn read_storage_gb() -> Option<f64> {
                 return None;
             }
             // /sys/block/<dev>/size reports 512-byte sectors.
-            let sectors: u64 = std::fs::read_to_string(
-                format!("/sys/block/{}/size", name),
-            )
-            .ok()?
-            .trim()
-            .parse()
-            .ok()?;
+            let sectors: u64 = std::fs::read_to_string(format!("/sys/block/{}/size", name))
+                .ok()?
+                .trim()
+                .parse()
+                .ok()?;
             Some(sectors as f64 * 512.0 / 1_000_000_000.0)
         })
         .sum();
-    if total > 0.0 {
-        Some(total)
-    } else {
-        None
-    }
+    if total > 0.0 { Some(total) } else { None }
 }
 
 // ---------------------------------------------------------------------------
@@ -212,10 +204,7 @@ fn probe_aws() -> CloudInfo {
         &agent,
         &format!("{}/latest/meta-data/placement/availability-zone", BASE),
     );
-    let cloud_instance_type = imds_get(
-        &agent,
-        &format!("{}/latest/meta-data/instance-type", BASE),
-    );
+    let cloud_instance_type = imds_get(&agent, &format!("{}/latest/meta-data/instance-type", BASE));
     // Account ID lives inside a JSON document; extract the AccountId field.
     let cloud_account_id = imds_get(
         &agent,
@@ -268,8 +257,8 @@ fn probe_azure() -> bool {
 /// Each probe has a ≤ 2-second timeout; total wall time is bounded by the
 /// slowest thread (at most 2 seconds when no provider responds).
 fn probe_cloud() -> CloudInfo {
-    let aws   = std::thread::spawn(probe_aws);
-    let gcp   = std::thread::spawn(probe_gcp);
+    let aws = std::thread::spawn(probe_aws);
+    let gcp = std::thread::spawn(probe_gcp);
     let azure = std::thread::spawn(probe_azure);
 
     let aws_result = aws.join().unwrap_or_default();
@@ -315,19 +304,19 @@ mod tests {
 
     fn fake_gpu(name: &str, vram_total_bytes: u64) -> GpuMetrics {
         GpuMetrics {
-            uuid:                "test-uuid".to_string(),
-            name:                name.to_string(),
-            device_type:         "GPU".to_string(),
-            host_id:             "0".to_string(),
-            detail:              HashMap::new(),
-            utilization_pct:     0.0,
+            uuid: "test-uuid".to_string(),
+            name: name.to_string(),
+            device_type: "GPU".to_string(),
+            host_id: "0".to_string(),
+            detail: HashMap::new(),
+            utilization_pct: 0.0,
             vram_total_bytes,
-            vram_used_bytes:     0,
-            vram_used_pct:       0.0,
+            vram_used_bytes: 0,
+            vram_used_pct: 0.0,
             temperature_celsius: 0,
-            power_watts:         0.0,
-            frequency_mhz:       0,
-            core_count:          None,
+            power_watts: 0.0,
+            frequency_mhz: 0,
+            core_count: None,
         }
     }
 
@@ -335,9 +324,18 @@ mod tests {
     #[test]
     fn test_collect_host_info_no_gpus_returns_none_gpu_fields() {
         let info = collect_host_info(&[]);
-        assert!(info.host_gpu_model.is_none(),    "host_gpu_model must be None when no GPUs");
-        assert!(info.host_gpu_count.is_none(),    "host_gpu_count must be None when no GPUs");
-        assert!(info.host_gpu_vram_mib.is_none(), "host_gpu_vram_mib must be None when no GPUs");
+        assert!(
+            info.host_gpu_model.is_none(),
+            "host_gpu_model must be None when no GPUs"
+        );
+        assert!(
+            info.host_gpu_count.is_none(),
+            "host_gpu_count must be None when no GPUs"
+        );
+        assert!(
+            info.host_gpu_vram_mib.is_none(),
+            "host_gpu_vram_mib must be None when no GPUs"
+        );
     }
 
     // T-HOST-02: one GPU sets model, count, and VRAM correctly.
@@ -366,7 +364,10 @@ mod tests {
     fn test_collect_host_info_hostname_present() {
         let info = collect_host_info(&[]);
         assert!(
-            info.host_name.as_deref().map(|s| !s.is_empty()).unwrap_or(false),
+            info.host_name
+                .as_deref()
+                .map(|s| !s.is_empty())
+                .unwrap_or(false),
             "host_name should be a non-empty string on a standard Linux host"
         );
     }
@@ -376,7 +377,11 @@ mod tests {
     fn test_collect_host_info_vcpus_positive() {
         let info = collect_host_info(&[]);
         let vcpus = info.host_vcpus.unwrap_or(0);
-        assert!(vcpus > 0, "host_vcpus must be > 0, got {:?}", info.host_vcpus);
+        assert!(
+            vcpus > 0,
+            "host_vcpus must be > 0, got {:?}",
+            info.host_vcpus
+        );
     }
 
     // T-HOST-06: spawn_cloud_discovery resolves without panic.

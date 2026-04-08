@@ -203,7 +203,10 @@ impl BatchUploader {
                             std::thread::sleep(Duration::from_secs(1u64 << attempt));
                         }
                         match s3_put(&agent, &bucket, &key, &region, &compressed, &creds) {
-                            Ok(uri) => { uploaded_uri = Some(uri); break; }
+                            Ok(uri) => {
+                                uploaded_uri = Some(uri);
+                                break;
+                            }
                             Err(e) => {
                                 last_err = if last_err.is_empty() {
                                     e
@@ -215,7 +218,7 @@ impl BatchUploader {
                     }
                     match uploaded_uri {
                         Some(uri) => Ok(uri),
-                        None      => Err(last_err),
+                        None => Err(last_err),
                     }
                 };
 
@@ -262,18 +265,18 @@ mod tests {
     fn minimal_sample() -> Sample {
         Sample {
             timestamp_secs: 1_000_000,
-            job_name:    None,
+            job_name: None,
             tracked_pid: None,
             cpu: CpuMetrics {
-                utilization_pct:          1.0,
-                process_utime_secs:       None,
-                process_stime_secs:       None,
-                process_rss_mib:          None,
-                process_disk_read_bytes:  None,
+                utilization_pct: 1.0,
+                process_utime_secs: None,
+                process_stime_secs: None,
+                process_rss_mib: None,
+                process_disk_read_bytes: None,
                 process_disk_write_bytes: None,
-                process_gpu_vram_mib:     None,
-                process_gpu_utilized:     None,
-                process_tree_pids:        vec![],
+                process_gpu_vram_mib: None,
+                process_gpu_utilized: None,
+                process_tree_pids: vec![],
                 ..Default::default()
             },
             memory: MemoryMetrics {
@@ -301,13 +304,13 @@ mod tests {
         let flag = uploader.shutdown_flag();
 
         let ctx = Arc::new(Mutex::new(RunContext {
-            run_id:              "r".to_string(),
-            upload_uri_prefix:   "s3://b/p".to_string(),
+            run_id: "r".to_string(),
+            upload_uri_prefix: "s3://b/p".to_string(),
             credentials: UploadCredentials {
-                access_key_id:     "k".to_string(),
+                access_key_id: "k".to_string(),
                 secret_access_key: "s".to_string(),
-                session_token:     "t".to_string(),
-                expires_at:        "2099-01-01T00:00:00Z".to_string(),
+                session_token: "t".to_string(),
+                expires_at: "2099-01-01T00:00:00Z".to_string(),
             },
         }));
 
@@ -404,8 +407,8 @@ mod tests {
     fn test_upload_thread_processes_batch_with_invalid_uri() {
         use crate::sentinel::run::RunContext;
         use crate::sentinel::s3::UploadCredentials;
-        use std::sync::{Arc, Mutex};
         use std::sync::atomic::Ordering;
+        use std::sync::{Arc, Mutex};
         use std::time::{Duration, Instant};
 
         let (uploader, buf) = BatchUploader::new(1, 1);
@@ -422,10 +425,10 @@ mod tests {
             run_id: "r".to_string(),
             upload_uri_prefix: "invalid-not-an-s3-uri".to_string(),
             credentials: UploadCredentials {
-                access_key_id:     "k".to_string(),
+                access_key_id: "k".to_string(),
                 secret_access_key: "s".to_string(),
-                session_token:     "t".to_string(),
-                expires_at:        "2099-01-01T00:00:00Z".to_string(),
+                session_token: "t".to_string(),
+                expires_at: "2099-01-01T00:00:00Z".to_string(),
             },
         }));
 
@@ -463,13 +466,16 @@ mod tests {
         use crate::config::JobMetadata;
         use crate::metrics::{CloudInfo, HostInfo};
         use crate::sentinel::run::{close_run, start_run};
-        use std::sync::{Arc, Mutex};
         use std::sync::atomic::Ordering;
+        use std::sync::{Arc, Mutex};
         use std::time::Duration;
 
         let token = match std::env::var("SENTINEL_API_TOKEN") {
             Ok(t) if !t.is_empty() => t,
-            _ => { eprintln!("skip: SENTINEL_API_TOKEN not set"); return; }
+            _ => {
+                eprintln!("skip: SENTINEL_API_TOKEN not set");
+                return;
+            }
         };
         let api_base = std::env::var("SENTINEL_API_BASE")
             .unwrap_or_else(|_| "https://api.sentinel.sparecores.net".to_string());
@@ -481,10 +487,18 @@ mod tests {
             .new_agent();
 
         let ctx = start_run(
-            &agent, &api_base, &token,
-            &JobMetadata { job_name: Some("upload-roundtrip-test".to_string()), ..Default::default() },
-            None, &HostInfo::default(), &CloudInfo::default(),
-        ).expect("start_run failed");
+            &agent,
+            &api_base,
+            &token,
+            &JobMetadata {
+                job_name: Some("upload-roundtrip-test".to_string()),
+                ..Default::default()
+            },
+            None,
+            &HostInfo::default(),
+            &CloudInfo::default(),
+        )
+        .expect("start_run failed");
         eprintln!("T-UPL-INT-01: run_id={}", ctx.run_id);
 
         let ctx_arc = Arc::new(Mutex::new(ctx));
@@ -505,8 +519,15 @@ mod tests {
         let uris = handle.join().expect("upload thread panicked");
         eprintln!("T-UPL-INT-01: uris={uris:?}");
 
-        assert!(!uris.is_empty(), "expected at least one S3 URI; S3 upload may have failed");
-        assert!(uris[0].starts_with("s3://"), "URI must have s3:// scheme: {}", uris[0]);
+        assert!(
+            !uris.is_empty(),
+            "expected at least one S3 URI; S3 upload may have failed"
+        );
+        assert!(
+            uris[0].starts_with("s3://"),
+            "URI must have s3:// scheme: {}",
+            uris[0]
+        );
 
         // Close the run via the S3 route.
         let ctx_guard = ctx_arc.lock().unwrap();
@@ -526,13 +547,16 @@ mod tests {
         use crate::config::JobMetadata;
         use crate::metrics::{CloudInfo, HostInfo};
         use crate::sentinel::run::{close_run, start_run};
-        use std::sync::{Arc, Mutex};
         use std::sync::atomic::Ordering;
+        use std::sync::{Arc, Mutex};
         use std::time::Duration;
 
         let token = match std::env::var("SENTINEL_API_TOKEN") {
             Ok(t) if !t.is_empty() => t,
-            _ => { eprintln!("skip: SENTINEL_API_TOKEN not set"); return; }
+            _ => {
+                eprintln!("skip: SENTINEL_API_TOKEN not set");
+                return;
+            }
         };
         let api_base = std::env::var("SENTINEL_API_BASE")
             .unwrap_or_else(|_| "https://api.sentinel.sparecores.net".to_string());
@@ -544,10 +568,18 @@ mod tests {
             .new_agent();
 
         let mut ctx = start_run(
-            &agent, &api_base, &token,
-            &JobMetadata { job_name: Some("cred-refresh-test".to_string()), ..Default::default() },
-            None, &HostInfo::default(), &CloudInfo::default(),
-        ).expect("start_run failed");
+            &agent,
+            &api_base,
+            &token,
+            &JobMetadata {
+                job_name: Some("cred-refresh-test".to_string()),
+                ..Default::default()
+            },
+            None,
+            &HostInfo::default(),
+            &CloudInfo::default(),
+        )
+        .expect("start_run failed");
         eprintln!("T-UPL-INT-02: run_id={}", ctx.run_id);
 
         // Force expires_at into the past so creds_expiring_soon() returns true.
@@ -581,7 +613,10 @@ mod tests {
             None
         };
         let result = close_run(&agent, &api_base, &token, &ctx_guard, Some(0), csv, &uris);
-        assert!(result.is_ok(), "close_run after credential refresh failed: {result:?}");
+        assert!(
+            result.is_ok(),
+            "close_run after credential refresh failed: {result:?}"
+        );
         eprintln!("T-UPL-INT-02: close_run ok");
     }
 
@@ -593,8 +628,8 @@ mod tests {
     fn test_upload_thread_handles_s3_failure_gracefully() {
         use crate::sentinel::run::RunContext;
         use crate::sentinel::s3::UploadCredentials;
-        use std::sync::{Arc, Mutex};
         use std::sync::atomic::Ordering;
+        use std::sync::{Arc, Mutex};
         use std::time::{Duration, Instant};
 
         let (uploader, buf) = BatchUploader::new(1, 1);
@@ -611,10 +646,10 @@ mod tests {
             run_id: "r".to_string(),
             upload_uri_prefix: "s3://fake-nonexistent-bucket-xyz/prefix".to_string(),
             credentials: UploadCredentials {
-                access_key_id:     "AKIAIOSFODNN7EXAMPLE".to_string(),
+                access_key_id: "AKIAIOSFODNN7EXAMPLE".to_string(),
                 secret_access_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".to_string(),
-                session_token:     "token".to_string(),
-                expires_at:        "2099-01-01T00:00:00Z".to_string(),
+                session_token: "token".to_string(),
+                expires_at: "2099-01-01T00:00:00Z".to_string(),
             },
         }));
 
@@ -656,7 +691,11 @@ mod tests {
     fn test_samples_to_csv_empty_slice() {
         let csv = samples_to_csv(&[], 1);
         let mut lines = csv.lines();
-        assert_eq!(lines.next(), Some(csv_header()), "first line must be the CSV header");
+        assert_eq!(
+            lines.next(),
+            Some(csv_header()),
+            "first line must be the CSV header"
+        );
         assert_eq!(lines.next(), None, "empty slice must produce no data rows");
         assert!(csv.ends_with('\n'), "output must end with a newline");
     }
@@ -668,8 +707,8 @@ mod tests {
     fn test_upload_thread_skips_empty_batch_then_processes() {
         use crate::sentinel::run::RunContext;
         use crate::sentinel::s3::UploadCredentials;
-        use std::sync::{Arc, Mutex};
         use std::sync::atomic::Ordering;
+        use std::sync::{Arc, Mutex};
         use std::time::{Duration, Instant};
 
         // upload_interval=0 → ticks_per_interval = (0*4).max(1) = 1 → 250 ms per cycle.
@@ -681,10 +720,10 @@ mod tests {
             run_id: "r".to_string(),
             upload_uri_prefix: "invalid-not-an-s3-uri".to_string(),
             credentials: UploadCredentials {
-                access_key_id:     "k".to_string(),
+                access_key_id: "k".to_string(),
                 secret_access_key: "s".to_string(),
-                session_token:     "t".to_string(),
-                expires_at:        "2099-01-01T00:00:00Z".to_string(),
+                session_token: "t".to_string(),
+                expires_at: "2099-01-01T00:00:00Z".to_string(),
             },
         }));
 
@@ -733,18 +772,18 @@ mod tests {
     fn test_upload_thread_resets_consecutive_failures() {
         use crate::sentinel::run::RunContext;
         use crate::sentinel::s3::UploadCredentials;
-        use std::sync::{Arc, Mutex};
         use std::sync::atomic::Ordering;
+        use std::sync::{Arc, Mutex};
         use std::time::{Duration, Instant};
 
         let ctx = Arc::new(Mutex::new(RunContext {
             run_id: "r".to_string(),
             upload_uri_prefix: "s3://fake-nonexistent-bucket-xyz/prefix".to_string(),
             credentials: UploadCredentials {
-                access_key_id:     "AKIAIOSFODNN7EXAMPLE".to_string(),
+                access_key_id: "AKIAIOSFODNN7EXAMPLE".to_string(),
                 secret_access_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".to_string(),
-                session_token:     "token".to_string(),
-                expires_at:        "2099-01-01T00:00:00Z".to_string(),
+                session_token: "token".to_string(),
+                expires_at: "2099-01-01T00:00:00Z".to_string(),
             },
         }));
 

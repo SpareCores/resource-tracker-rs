@@ -8,11 +8,11 @@ pub mod run;
 pub mod s3;
 pub mod upload;
 
-pub use run::{close_run, start_run, RunContext};
-pub use upload::{samples_to_csv, BatchUploader};
+pub use run::{RunContext, close_run, start_run};
+pub use upload::{BatchUploader, samples_to_csv};
 
-use ureq::config::Config as UreqConfig;
 use std::time::Duration;
+use ureq::config::Config as UreqConfig;
 
 /// Default Sentinel API base URL.  Override with `SENTINEL_API_URL`.
 const DEFAULT_API_BASE: &str = "https://api.sentinel.sparecores.net";
@@ -30,9 +30,9 @@ const API_TIMEOUT_SECS: u64 = 30;
 /// gates on `Option<SentinelClient>` so no HTTP is attempted without a token.
 #[derive(Clone)]
 pub struct SentinelClient {
-    pub token:    String,
+    pub token: String,
     pub api_base: String,
-    pub agent:    ureq::Agent,
+    pub agent: ureq::Agent,
 }
 
 impl SentinelClient {
@@ -45,15 +45,19 @@ impl SentinelClient {
         if token.is_empty() {
             return None;
         }
-        let api_base = std::env::var("SENTINEL_API_URL")
-            .unwrap_or_else(|_| DEFAULT_API_BASE.to_string());
+        let api_base =
+            std::env::var("SENTINEL_API_URL").unwrap_or_else(|_| DEFAULT_API_BASE.to_string());
 
         let agent = UreqConfig::builder()
             .timeout_global(Some(Duration::from_secs(API_TIMEOUT_SECS)))
             .build()
             .new_agent();
 
-        Some(Self { token, api_base, agent })
+        Some(Self {
+            token,
+            api_base,
+            agent,
+        })
     }
 }
 
@@ -73,7 +77,9 @@ mod tests {
     #[test]
     fn test_no_token_returns_none() {
         // SAFETY: single-threaded test; no concurrent env access.
-        unsafe { std::env::remove_var("SENTINEL_API_TOKEN"); }
+        unsafe {
+            std::env::remove_var("SENTINEL_API_TOKEN");
+        }
         assert!(
             SentinelClient::from_env().is_none(),
             "expected None when SENTINEL_API_TOKEN is unset"
@@ -83,20 +89,33 @@ mod tests {
     #[test]
     fn test_empty_token_returns_none() {
         // SAFETY: single-threaded test; no concurrent env access.
-        unsafe { std::env::set_var("SENTINEL_API_TOKEN", ""); }
+        unsafe {
+            std::env::set_var("SENTINEL_API_TOKEN", "");
+        }
         let result = SentinelClient::from_env();
-        unsafe { std::env::remove_var("SENTINEL_API_TOKEN"); }
-        assert!(result.is_none(), "expected None when SENTINEL_API_TOKEN is empty string");
+        unsafe {
+            std::env::remove_var("SENTINEL_API_TOKEN");
+        }
+        assert!(
+            result.is_none(),
+            "expected None when SENTINEL_API_TOKEN is empty string"
+        );
     }
 
     // T-STR-07: a non-empty token returns Some with the correct token and default URL.
     #[test]
     fn test_valid_token_returns_some_with_defaults() {
         // SAFETY: single-threaded test; no concurrent env access.
-        unsafe { std::env::set_var("SENTINEL_API_TOKEN", "my-test-token"); }
-        unsafe { std::env::remove_var("SENTINEL_API_URL"); }
+        unsafe {
+            std::env::set_var("SENTINEL_API_TOKEN", "my-test-token");
+        }
+        unsafe {
+            std::env::remove_var("SENTINEL_API_URL");
+        }
         let result = SentinelClient::from_env();
-        unsafe { std::env::remove_var("SENTINEL_API_TOKEN"); }
+        unsafe {
+            std::env::remove_var("SENTINEL_API_TOKEN");
+        }
         let client = result.expect("expected Some when SENTINEL_API_TOKEN is non-empty");
         assert_eq!(client.token, "my-test-token");
         assert_eq!(client.api_base, DEFAULT_API_BASE);
@@ -106,11 +125,19 @@ mod tests {
     #[test]
     fn test_api_url_env_override() {
         // SAFETY: single-threaded test; no concurrent env access.
-        unsafe { std::env::set_var("SENTINEL_API_TOKEN", "tok"); }
-        unsafe { std::env::set_var("SENTINEL_API_URL", "http://localhost:9999"); }
+        unsafe {
+            std::env::set_var("SENTINEL_API_TOKEN", "tok");
+        }
+        unsafe {
+            std::env::set_var("SENTINEL_API_URL", "http://localhost:9999");
+        }
         let result = SentinelClient::from_env();
-        unsafe { std::env::remove_var("SENTINEL_API_TOKEN"); }
-        unsafe { std::env::remove_var("SENTINEL_API_URL"); }
+        unsafe {
+            std::env::remove_var("SENTINEL_API_TOKEN");
+        }
+        unsafe {
+            std::env::remove_var("SENTINEL_API_URL");
+        }
         let client = result.expect("expected Some when token is set");
         assert_eq!(client.api_base, "http://localhost:9999");
     }

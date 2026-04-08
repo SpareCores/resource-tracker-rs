@@ -280,8 +280,11 @@ interval_secs = 5
     #[test]
     fn test_toml_config_default_is_all_none() {
         let cfg = TomlConfig::default();
-        assert!(cfg.job.is_none(),     "job must be None in default TomlConfig");
-        assert!(cfg.tracker.is_none(), "tracker must be None in default TomlConfig");
+        assert!(cfg.job.is_none(), "job must be None in default TomlConfig");
+        assert!(
+            cfg.tracker.is_none(),
+            "tracker must be None in default TomlConfig"
+        );
     }
 
     // T-CFG-03: JobMetadata default produces all-None/empty fields.
@@ -299,14 +302,17 @@ interval_secs = 5
         assert!(m.executor.is_none());
         assert!(m.external_run_id.is_none());
         assert!(m.container_image.is_none());
-        assert!(m.tags.is_empty(), "tags must be empty in default JobMetadata");
+        assert!(
+            m.tags.is_empty(),
+            "tags must be empty in default JobMetadata"
+        );
     }
 
     // T-CFG-04: OutputFormat variants compare correctly.
     #[test]
     fn test_output_format_equality() {
         assert_eq!(OutputFormat::Json, OutputFormat::Json);
-        assert_eq!(OutputFormat::Csv,  OutputFormat::Csv);
+        assert_eq!(OutputFormat::Csv, OutputFormat::Csv);
         assert_ne!(OutputFormat::Json, OutputFormat::Csv);
     }
 

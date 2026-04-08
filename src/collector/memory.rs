@@ -1,6 +1,6 @@
 use crate::metrics::MemoryMetrics;
-use procfs::prelude::*;
 use procfs::Meminfo;
+use procfs::prelude::*;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -22,12 +22,11 @@ impl MemoryCollector {
         // match Python resource-tracker PR #9.
         let to_mib = |bytes: u64| bytes / 1_048_576;
 
-        let total_mib     = to_mib(info.mem_total);
-        let free_mib      = to_mib(info.mem_free);
+        let total_mib = to_mib(info.mem_total);
+        let free_mib = to_mib(info.mem_free);
         let available_mib = to_mib(info.mem_available.unwrap_or(info.mem_free));
-        let buffers_mib   = to_mib(info.buffers);
-        let cached_mib    = to_mib(info.cached)
-            + to_mib(info.s_reclaimable.unwrap_or(0));
+        let buffers_mib = to_mib(info.buffers);
+        let cached_mib = to_mib(info.cached) + to_mib(info.s_reclaimable.unwrap_or(0));
         // Python formula: MemTotal - MemFree - Buffers - (Cached + SReclaimable)
         let used_mib = total_mib
             .saturating_sub(free_mib)
@@ -40,8 +39,8 @@ impl MemoryCollector {
         };
 
         let swap_total_mib = to_mib(info.swap_total);
-        let swap_used_mib  = swap_total_mib.saturating_sub(to_mib(info.swap_free));
-        let swap_used_pct  = if swap_total_mib > 0 {
+        let swap_used_mib = swap_total_mib.saturating_sub(to_mib(info.swap_free));
+        let swap_used_pct = if swap_total_mib > 0 {
             swap_used_mib as f64 / swap_total_mib as f64 * 100.0
         } else {
             0.0
@@ -58,7 +57,7 @@ impl MemoryCollector {
             swap_total_mib,
             swap_used_mib,
             swap_used_pct,
-            active_mib:   to_mib(info.active),
+            active_mib: to_mib(info.active),
             inactive_mib: to_mib(info.inactive),
         })
     }
@@ -75,8 +74,14 @@ mod tests {
     // T-MEM-01: collect() succeeds on a Linux host and total_mib > 0.
     #[test]
     fn test_memory_collect_ok_and_total_positive() {
-        let m = MemoryCollector::new().collect().expect("collect() must succeed on Linux");
-        assert!(m.total_mib > 0, "total_mib must be > 0, got {}", m.total_mib);
+        let m = MemoryCollector::new()
+            .collect()
+            .expect("collect() must succeed on Linux");
+        assert!(
+            m.total_mib > 0,
+            "total_mib must be > 0, got {}",
+            m.total_mib
+        );
     }
 
     // T-MEM-02: used_pct is in 0..=100.
@@ -119,8 +124,14 @@ mod tests {
             m.swap_total_mib
         );
         if m.swap_total_mib == 0 {
-            assert_eq!(m.swap_used_mib, 0, "swap_used_mib must be 0 when swap_total_mib is 0");
-            assert_eq!(m.swap_used_pct, 0.0, "swap_used_pct must be 0.0 when swap_total_mib is 0");
+            assert_eq!(
+                m.swap_used_mib, 0,
+                "swap_used_mib must be 0 when swap_total_mib is 0"
+            );
+            assert_eq!(
+                m.swap_used_pct, 0.0,
+                "swap_used_pct must be 0.0 when swap_total_mib is 0"
+            );
         }
     }
 

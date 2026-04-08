@@ -41,30 +41,53 @@ pub fn sample_to_csv_row(s: &Sample, interval_secs: u64) -> String {
 
     // Disk I/O: per-interval byte counts (rate × interval ≈ bytes in this window)
     let secs = f64::from(u32::try_from(interval_secs).unwrap_or(u32::MAX));
-    let disk_read: u64  = s.disk.iter().map(|d| (d.read_bytes_per_sec  * secs) as u64).sum();
-    let disk_write: u64 = s.disk.iter().map(|d| (d.write_bytes_per_sec * secs) as u64).sum();
+    let disk_read: u64 = s
+        .disk
+        .iter()
+        .map(|d| (d.read_bytes_per_sec * secs) as u64)
+        .sum();
+    let disk_write: u64 = s
+        .disk
+        .iter()
+        .map(|d| (d.write_bytes_per_sec * secs) as u64)
+        .sum();
 
     // Disk space: sum all mounts; used = total - free (includes root-reserved blocks)
-    let disk_space_total: f64 = s.disk.iter()
+    let disk_space_total: f64 = s
+        .disk
+        .iter()
         .flat_map(|d| d.mounts.iter())
         .map(|m| m.total_bytes as f64 / 1_000_000_000.0)
         .sum();
-    let disk_space_free: f64 = s.disk.iter()
+    let disk_space_free: f64 = s
+        .disk
+        .iter()
         .flat_map(|d| d.mounts.iter())
         .map(|m| m.available_bytes as f64 / 1_000_000_000.0)
         .sum();
     let disk_space_used = disk_space_total - disk_space_free;
 
     // Network I/O: per-interval byte counts
-    let net_recv: u64 = s.network.iter().map(|n| (n.rx_bytes_per_sec * secs) as u64).sum();
-    let net_sent: u64 = s.network.iter().map(|n| (n.tx_bytes_per_sec * secs) as u64).sum();
+    let net_recv: u64 = s
+        .network
+        .iter()
+        .map(|n| (n.rx_bytes_per_sec * secs) as u64)
+        .sum();
+    let net_sent: u64 = s
+        .network
+        .iter()
+        .map(|n| (n.tx_bytes_per_sec * secs) as u64)
+        .sum();
 
     // GPU system aggregates
-    let gpu_usage: f64    = s.gpu.iter().map(|g| g.utilization_pct / 100.0).sum();
-    let gpu_vram: f64     = s.gpu.iter().map(|g| g.vram_used_bytes as f64 / 1_048_576.0).sum();
-    let gpu_utilized: u32 = u32::try_from(
-        s.gpu.iter().filter(|g| g.utilization_pct > 0.0).count()
-    ).unwrap_or(0);
+    let gpu_usage: f64 = s.gpu.iter().map(|g| g.utilization_pct / 100.0).sum();
+    let gpu_vram: f64 = s
+        .gpu
+        .iter()
+        .map(|g| g.vram_used_bytes as f64 / 1_048_576.0)
+        .sum();
+    let gpu_utilized: u32 =
+        u32::try_from(s.gpu.iter().filter(|g| g.utilization_pct > 0.0).count()).unwrap_or(0);
 
     // System columns (21): same layout and values as before, new names in header.
     let system_row = format!(
@@ -95,7 +118,7 @@ pub fn sample_to_csv_row(s: &Sample, interval_secs: u64) -> String {
     // Process columns (11): empty when not tracked or not yet collected.
     let opt_u32 = |v: Option<u32>| v.map_or(String::new(), |x| x.to_string());
     let opt_i32 = |v: Option<i32>| v.map_or(String::new(), |x| x.to_string());
-    let opt_f4  = |v: Option<f64>| v.map_or(String::new(), |x| format!("{x:.4}"));
+    let opt_f4 = |v: Option<f64>| v.map_or(String::new(), |x| format!("{x:.4}"));
 
     let opt_u64 = |v: Option<u64>| v.map_or(String::new(), |x| x.to_string());
 
@@ -111,7 +134,8 @@ pub fn sample_to_csv_row(s: &Sample, interval_secs: u64) -> String {
         String::new(), // process_gpu_usage: NVML per-process utilization % unavailable without accounting mode
         opt_f4(s.cpu.process_gpu_vram_mib),
         opt_u32(s.cpu.process_gpu_utilized),
-    ].join(",");
+    ]
+    .join(",");
 
     format!("{system_row},{process_row}")
 }
@@ -128,42 +152,42 @@ mod tests {
     fn minimal_sample() -> Sample {
         Sample {
             timestamp_secs: 1_000_000,
-            job_name:       None,
-            tracked_pid:    None,
+            job_name: None,
+            tracked_pid: None,
             cpu: CpuMetrics {
-                utilization_pct:          2.5,
-                utime_secs:               1.234,
-                stime_secs:               0.567,
-                process_count:            42,
-                per_core_pct:             vec![],
-                process_cores_used:       None,
-                process_child_count:      None,
-                process_utime_secs:       None,
-                process_stime_secs:       None,
-                process_rss_mib:          None,
-                process_disk_read_bytes:  None,
+                utilization_pct: 2.5,
+                utime_secs: 1.234,
+                stime_secs: 0.567,
+                process_count: 42,
+                per_core_pct: vec![],
+                process_cores_used: None,
+                process_child_count: None,
+                process_utime_secs: None,
+                process_stime_secs: None,
+                process_rss_mib: None,
+                process_disk_read_bytes: None,
                 process_disk_write_bytes: None,
-                process_gpu_vram_mib:     None,
-                process_gpu_utilized:     None,
-                process_tree_pids:        vec![],
+                process_gpu_vram_mib: None,
+                process_gpu_utilized: None,
+                process_tree_pids: vec![],
             },
             memory: MemoryMetrics {
-                total_mib:      8192,
-                free_mib:       1000,
-                available_mib:  2000,
-                used_mib:       2000,
-                used_pct:       25.0,
-                buffers_mib:    100,
-                cached_mib:     500,
+                total_mib: 8192,
+                free_mib: 1000,
+                available_mib: 2000,
+                used_mib: 2000,
+                used_pct: 25.0,
+                buffers_mib: 100,
+                cached_mib: 500,
                 swap_total_mib: 0,
-                swap_used_mib:  0,
-                swap_used_pct:  0.0,
-                active_mib:     1500,
-                inactive_mib:   300,
+                swap_used_mib: 0,
+                swap_used_pct: 0.0,
+                active_mib: 1500,
+                inactive_mib: 300,
             },
             network: vec![],
-            disk:    vec![],
-            gpu:     vec![],
+            disk: vec![],
+            gpu: vec![],
         }
     }
 
@@ -171,8 +195,14 @@ mod tests {
     #[test]
     fn test_csv_header_is_first_line_no_embedded_newline() {
         let h = csv_header();
-        assert!(h.starts_with("timestamp,"), "header must start with 'timestamp,'");
-        assert!(!h.contains('\n'), "header must not contain an embedded newline");
+        assert!(
+            h.starts_with("timestamp,"),
+            "header must start with 'timestamp,'"
+        );
+        assert!(
+            !h.contains('\n'),
+            "header must not contain an embedded newline"
+        );
     }
 
     // T-CSV-02: column count in each data row equals column count in header.
@@ -204,7 +234,8 @@ mod tests {
         // Column order: timestamp(0),system_processes(1),system_utime(2),
         //   system_stime(3),system_cpu_usage(4),...
         let cols: Vec<&str> = row.split(',').collect();
-        let cpu_usage: f64 = cols[4].parse()
+        let cpu_usage: f64 = cols[4]
+            .parse()
             .unwrap_or_else(|_| panic!("system_cpu_usage column is not numeric: {:?}", cols[4]));
         assert!(
             (cpu_usage - 3.1415_f64).abs() < 0.00005,
@@ -217,32 +248,32 @@ mod tests {
     fn test_csv_disk_space_used_equals_total_minus_free() {
         let mut sample = minimal_sample();
         sample.disk = vec![DiskMetrics {
-            device:            "sda".to_string(),
-            model:             None,
-            vendor:            None,
-            serial:            None,
-            device_type:       None,
-            capacity_bytes:    None,
+            device: "sda".to_string(),
+            model: None,
+            vendor: None,
+            serial: None,
+            device_type: None,
+            capacity_bytes: None,
             mounts: vec![DiskMountMetrics {
-                mount_point:     "/".to_string(),
-                filesystem:      "ext4".to_string(),
-                total_bytes:     100_000_000_000,
-                used_bytes:      60_000_000_000,
+                mount_point: "/".to_string(),
+                filesystem: "ext4".to_string(),
+                total_bytes: 100_000_000_000,
+                used_bytes: 60_000_000_000,
                 available_bytes: 40_000_000_000,
-                used_pct:        60.0,
+                used_pct: 60.0,
             }],
-            read_bytes_per_sec:  0.0,
+            read_bytes_per_sec: 0.0,
             write_bytes_per_sec: 0.0,
-            read_bytes_total:    0,
-            write_bytes_total:   0,
+            read_bytes_total: 0,
+            write_bytes_total: 0,
         }];
         let row = sample_to_csv_row(&sample, 1);
         // Column order: ...system_disk_space_total_gb(13),system_disk_space_used_gb(14),
         //   system_disk_space_free_gb(15),...  (indices unchanged from original layout)
         let cols: Vec<&str> = row.split(',').collect();
         let total: f64 = cols[13].parse().unwrap();
-        let used:  f64 = cols[14].parse().unwrap();
-        let free:  f64 = cols[15].parse().unwrap();
+        let used: f64 = cols[14].parse().unwrap();
+        let free: f64 = cols[15].parse().unwrap();
         assert!(
             (used - (total - free)).abs() < 1e-9,
             "disk_space_used_gb {used:.6} != total {total:.6} - free {free:.6}"
@@ -263,16 +294,16 @@ mod tests {
     #[test]
     fn test_csv_process_gpu_fields_emitted_when_set() {
         let mut sample = minimal_sample();
-        sample.tracked_pid          = Some(42);
-        sample.cpu.process_gpu_vram_mib  = Some(83.1875);
-        sample.cpu.process_gpu_utilized  = Some(1);
+        sample.tracked_pid = Some(42);
+        sample.cpu.process_gpu_vram_mib = Some(83.1875);
+        sample.cpu.process_gpu_utilized = Some(1);
 
         let row = sample_to_csv_row(&sample, 1);
         let cols: Vec<&str> = row.split(',').collect();
 
-        assert_eq!(cols[29], "",        "process_gpu_usage must always be empty");
+        assert_eq!(cols[29], "", "process_gpu_usage must always be empty");
         assert_eq!(cols[30], "83.1875", "process_gpu_vram_mib mismatch");
-        assert_eq!(cols[31], "1",       "process_gpu_utilized mismatch");
+        assert_eq!(cols[31], "1", "process_gpu_utilized mismatch");
     }
 
     // T-CSV-08: process GPU columns are empty strings when no PID is tracked.
@@ -295,10 +326,10 @@ mod tests {
     #[test]
     fn test_csv_no_trailing_commas_no_quoted_fields() {
         let row = sample_to_csv_row(&minimal_sample(), 1);
-        assert!(!row.contains('"'),   "double-quoted field in row: {row}");
-        assert!(!row.contains('\''),  "single-quoted field in row: {row}");
+        assert!(!row.contains('"'), "double-quoted field in row: {row}");
+        assert!(!row.contains('\''), "single-quoted field in row: {row}");
         let h = csv_header();
         assert!(!h.ends_with(','), "trailing comma in header");
-        assert!(!h.contains('"'),  "double-quoted field in header");
+        assert!(!h.contains('"'), "double-quoted field in header");
     }
 }

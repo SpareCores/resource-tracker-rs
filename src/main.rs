@@ -9,14 +9,12 @@ mod sentinel;
 extern crate libc;
 
 use collector::{
-    collect_host_info, spawn_cloud_discovery, CpuCollector, DiskCollector, GpuCollector,
-    MemoryCollector, NetworkCollector,
+    CpuCollector, DiskCollector, GpuCollector, MemoryCollector, NetworkCollector,
+    collect_host_info, spawn_cloud_discovery,
 };
 use config::{Config, OutputFormat};
 use metrics::Sample;
-use sentinel::{
-    close_run, samples_to_csv, start_run, BatchUploader, RunContext, SentinelClient,
-};
+use sentinel::{BatchUploader, RunContext, SentinelClient, close_run, samples_to_csv, start_run};
 use std::io::Write;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -42,12 +40,12 @@ extern "C" fn handle_sigterm(_: libc::c_int) {
 /// bare `std::process::exit()` calls so the upload thread always gets a chance
 /// to flush.
 fn shutdown(
-    exit_code:     i32,
-    sentinel:      Option<&SentinelClient>,
-    run_ctx:       Option<Arc<Mutex<RunContext>>>,
+    exit_code: i32,
+    sentinel: Option<&SentinelClient>,
+    run_ctx: Option<Arc<Mutex<RunContext>>>,
     shutdown_flag: Option<Arc<AtomicBool>>,
     upload_handle: Option<std::thread::JoinHandle<Vec<String>>>,
-    remaining:     Vec<Sample>,
+    remaining: Vec<Sample>,
     interval_secs: u64,
 ) -> ! {
     if let (Some(client), Some(ctx_arc), Some(flag), Some(handle)) =
@@ -93,7 +91,12 @@ fn shutdown(
 
 fn main() {
     // Install SIGTERM handler so the binary can flush before exiting.
-    unsafe { libc::signal(libc::SIGTERM, handle_sigterm as *const () as libc::sighandler_t); }
+    unsafe {
+        libc::signal(
+            libc::SIGTERM,
+            handle_sigterm as *const () as libc::sighandler_t,
+        );
+    }
 
     let mut config = Config::load();
 
@@ -101,19 +104,16 @@ fn main() {
     // Output sink: stdout (default), file (--output), or suppressed (--quiet).
     // Warnings and errors always go to stderr via eprintln! regardless.
     // -----------------------------------------------------------------------
-    let mut out_file: Option<std::io::BufWriter<std::fs::File>> =
-        if config.quiet {
-            None
-        } else {
-            config.output_file.as_deref().map(|path| {
-                std::io::BufWriter::new(
-                    std::fs::File::create(path).unwrap_or_else(|e| {
-                        eprintln!("error: cannot open output file {path}: {e}");
-                        std::process::exit(1);
-                    })
-                )
-            })
-        };
+    let mut out_file: Option<std::io::BufWriter<std::fs::File>> = if config.quiet {
+        None
+    } else {
+        config.output_file.as_deref().map(|path| {
+            std::io::BufWriter::new(std::fs::File::create(path).unwrap_or_else(|e| {
+                eprintln!("error: cannot open output file {path}: {e}");
+                std::process::exit(1);
+            }))
+        })
+    };
 
     // Emit one line of metric output to the selected sink.
     // quiet=true  -> no-op
@@ -153,11 +153,11 @@ fn main() {
 
     let interval = Duration::from_secs(config.interval_secs);
 
-    let mut cpu     = CpuCollector::new(config.pid);
-    let memory      = MemoryCollector::new();
+    let mut cpu = CpuCollector::new(config.pid);
+    let memory = MemoryCollector::new();
     let mut network = NetworkCollector::new();
-    let mut disk    = DiskCollector::new();
-    let gpu         = GpuCollector::new();
+    let mut disk = DiskCollector::new();
+    let gpu = GpuCollector::new();
 
     // Collect static GPU info now so host discovery can derive GPU host fields.
     let initial_gpus = gpu.collect().unwrap_or_default();
@@ -183,44 +183,41 @@ fn main() {
     // -----------------------------------------------------------------------
     let sentinel = SentinelClient::from_env();
 
-    let (run_ctx_arc, sample_buffer, upload_shutdown_flag, upload_handle) =
-        match &sentinel {
-            None => (None, None, None, None),
-            Some(client) => {
-                match start_run(
-                    &client.agent,
-                    &client.api_base,
-                    &client.token,
-                    &config.metadata,
-                    config.pid,
-                    &host_info,
-                    &cloud_info,
-                ) {
-                    Err(e) => {
-                        eprintln!("warn: sentinel start_run failed: {e}; streaming disabled");
-                        (None, None, None, None)
-                    }
-                    Ok(ctx) => {
-                        let ctx_arc = Arc::new(Mutex::new(ctx));
-                        let upload_interval =
-                            std::env::var("TRACKER_UPLOAD_INTERVAL")
-                                .ok()
-                                .and_then(|v| v.parse().ok())
-                                .unwrap_or(60u64);
-                        let (uploader, buf) =
-                            BatchUploader::new(upload_interval, config.interval_secs);
-                        let flag   = uploader.shutdown_flag();
-                        let handle = uploader.spawn(
-                            Arc::clone(&ctx_arc),
-                            client.agent.clone(),
-                            client.api_base.clone(),
-                            client.token.clone(),
-                        );
-                        (Some(ctx_arc), Some(buf), Some(flag), Some(handle))
-                    }
+    let (run_ctx_arc, sample_buffer, upload_shutdown_flag, upload_handle) = match &sentinel {
+        None => (None, None, None, None),
+        Some(client) => {
+            match start_run(
+                &client.agent,
+                &client.api_base,
+                &client.token,
+                &config.metadata,
+                config.pid,
+                &host_info,
+                &cloud_info,
+            ) {
+                Err(e) => {
+                    eprintln!("warn: sentinel start_run failed: {e}; streaming disabled");
+                    (None, None, None, None)
+                }
+                Ok(ctx) => {
+                    let ctx_arc = Arc::new(Mutex::new(ctx));
+                    let upload_interval = std::env::var("TRACKER_UPLOAD_INTERVAL")
+                        .ok()
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(60u64);
+                    let (uploader, buf) = BatchUploader::new(upload_interval, config.interval_secs);
+                    let flag = uploader.shutdown_flag();
+                    let handle = uploader.spawn(
+                        Arc::clone(&ctx_arc),
+                        client.agent.clone(),
+                        client.api_base.clone(),
+                        client.token.clone(),
+                    );
+                    (Some(ctx_arc), Some(buf), Some(flag), Some(handle))
                 }
             }
-        };
+        }
+    };
 
     // Emit CSV header once before the loop.
     if config.format == OutputFormat::Csv {
@@ -241,52 +238,56 @@ fn main() {
 
         let mut sample = Sample {
             timestamp_secs,
-            job_name:    config.metadata.job_name.clone(),
+            job_name: config.metadata.job_name.clone(),
             tracked_pid: config.pid,
-            cpu:         cpu.collect().unwrap_or_default(),
-            memory:      memory.collect().unwrap_or_default(),
-            network:     network.collect().unwrap_or_default(),
-            disk:        disk.collect().unwrap_or_default(),
-            gpu:         gpu.collect().unwrap_or_default(),
+            cpu: cpu.collect().unwrap_or_default(),
+            memory: memory.collect().unwrap_or_default(),
+            network: network.collect().unwrap_or_default(),
+            disk: disk.collect().unwrap_or_default(),
+            gpu: gpu.collect().unwrap_or_default(),
         };
 
         // Augment with per-process GPU stats.
         // With --pid: filter to the tracked process tree.
         // Without --pid: report system-wide GPU allocation (all processes).
-        let (vram_mib, gpu_utilized) = if config.pid.is_some()
-            && !sample.cpu.process_tree_pids.is_empty()
-        {
-            let pids_u32: Vec<u32> = sample.cpu.process_tree_pids
-                .iter()
-                .filter_map(|&p| u32::try_from(p).ok())
-                .collect();
-            gpu.process_gpu_info(&pids_u32)
-        } else {
-            gpu.all_gpu_process_info()
-        };
+        let (vram_mib, gpu_utilized) =
+            if config.pid.is_some() && !sample.cpu.process_tree_pids.is_empty() {
+                let pids_u32: Vec<u32> = sample
+                    .cpu
+                    .process_tree_pids
+                    .iter()
+                    .filter_map(|&p| u32::try_from(p).ok())
+                    .collect();
+                gpu.process_gpu_info(&pids_u32)
+            } else {
+                gpu.all_gpu_process_info()
+            };
         sample.cpu.process_gpu_vram_mib = vram_mib;
         sample.cpu.process_gpu_utilized = gpu_utilized;
 
         // Emit to selected output sink.
         match config.format {
-            OutputFormat::Json => {
-                match serde_json::to_value(&sample) {
-                    Ok(mut v) => {
-                        v[format!("{}-version", env!("CARGO_PKG_NAME"))] =
-                            serde_json::Value::String(env!("CARGO_PKG_VERSION").to_string());
-                        emit!("{}", v);
-                    }
-                    Err(e) => eprintln!("warn: json serialize error: {e}"),
+            OutputFormat::Json => match serde_json::to_value(&sample) {
+                Ok(mut v) => {
+                    v[format!("{}-version", env!("CARGO_PKG_NAME"))] =
+                        serde_json::Value::String(env!("CARGO_PKG_VERSION").to_string());
+                    emit!("{}", v);
                 }
-            }
+                Err(e) => eprintln!("warn: json serialize error: {e}"),
+            },
             OutputFormat::Csv => {
-                emit!("{}", output::csv::sample_to_csv_row(&sample, config.interval_secs));
+                emit!(
+                    "{}",
+                    output::csv::sample_to_csv_row(&sample, config.interval_secs)
+                );
             }
         }
 
         // Push to sentinel buffer (if streaming is active).
         if let Some(ref buf) = sample_buffer {
-            buf.lock().unwrap_or_else(|e| e.into_inner()).push(sample.clone());
+            buf.lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push(sample.clone());
         }
         unflushed.push(sample);
 

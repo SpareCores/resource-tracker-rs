@@ -28,21 +28,20 @@ fn block_attr(device: &str, attr: &str) -> Option<String> {
 
 #[derive(Clone)]
 struct DeviceInfo {
-    model:          Option<String>,
-    vendor:         Option<String>,
-    serial:         Option<String>,
-    device_type:    Option<DiskType>,
+    model: Option<String>,
+    vendor: Option<String>,
+    serial: Option<String>,
+    device_type: Option<DiskType>,
     capacity_bytes: Option<u64>,
     /// Physical sector size in bytes used for I/O accounting.
     /// Read from `/sys/block/<dev>/queue/hw_sector_size`; falls back to 512.
-    sector_size:    u32,
+    sector_size: u32,
 }
 
 fn read_device_info(device: &str) -> DeviceInfo {
-    let model  = block_attr(device, "device/model");
+    let model = block_attr(device, "device/model");
     let vendor = block_attr(device, "device/vendor");
-    let serial = block_attr(device, "device/serial")
-        .or_else(|| block_attr(device, "device/wwid"));
+    let serial = block_attr(device, "device/serial").or_else(|| block_attr(device, "device/wwid"));
 
     let device_type = if device.starts_with("nvme") {
         Some(DiskType::Nvme)
@@ -50,7 +49,7 @@ fn read_device_info(device: &str) -> DeviceInfo {
         match block_attr(device, "queue/rotational").as_deref() {
             Some("0") => Some(DiskType::Ssd),
             Some("1") => Some(DiskType::Hdd),
-            _         => None,
+            _ => None,
         }
     };
 
@@ -68,7 +67,14 @@ fn read_device_info(device: &str) -> DeviceInfo {
         .filter(|&v| v >= 512)
         .unwrap_or(u32::try_from(SECTOR_BYTES).unwrap_or(512));
 
-    DeviceInfo { model, vendor, serial, device_type, capacity_bytes, sector_size }
+    DeviceInfo {
+        model,
+        vendor,
+        serial,
+        device_type,
+        capacity_bytes,
+        sector_size,
+    }
 }
 
 /// Discover all whole-disk block devices from /sys/block/ and cache their
@@ -102,10 +108,14 @@ fn statvfs_space(path: &str) -> Option<(u64, u64, u64)> {
             return None;
         }
         // f_frsize is the fundamental block size; fall back to f_bsize if zero.
-        let bs = if buf.f_frsize > 0 { buf.f_frsize as u64 } else { buf.f_bsize as u64 };
+        let bs = if buf.f_frsize > 0 {
+            buf.f_frsize as u64
+        } else {
+            buf.f_bsize as u64
+        };
         let total = buf.f_blocks * bs;
         let avail = buf.f_bavail * bs;
-        let used  = total.saturating_sub(buf.f_bfree * bs);
+        let used = total.saturating_sub(buf.f_bfree * bs);
         Some((total, used, avail))
     }
 }
@@ -123,11 +133,15 @@ fn mounts_for_device(device_name: &str) -> Vec<DiskMountMetrics> {
         .filter(|line| line.starts_with(&prefix))
         .filter_map(|line| {
             let mut parts = line.split_whitespace();
-            let _source      = parts.next()?;
-            let mount_point  = parts.next()?.to_string();
-            let filesystem   = parts.next()?.to_string();
+            let _source = parts.next()?;
+            let mount_point = parts.next()?.to_string();
+            let filesystem = parts.next()?.to_string();
             let (total, used, avail) = statvfs_space(&mount_point)?;
-            let used_pct = if total > 0 { used as f64 / total as f64 * 100.0 } else { 0.0 };
+            let used_pct = if total > 0 {
+                used as f64 / total as f64 * 100.0
+            } else {
+                0.0
+            };
             Some(DiskMountMetrics {
                 mount_point,
                 filesystem,
@@ -145,8 +159,8 @@ fn mounts_for_device(device_name: &str) -> Vec<DiskMountMetrics> {
 // ---------------------------------------------------------------------------
 
 struct Snapshot {
-    instant:         Instant,
-    sectors_read:    HashMap<String, u64>,
+    instant: Instant,
+    sectors_read: HashMap<String, u64>,
     sectors_written: HashMap<String, u64>,
 }
 
@@ -166,21 +180,20 @@ impl DiskCollector {
 
     pub fn collect(&mut self) -> Result<Vec<DiskMetrics>> {
         let diskstats = procfs::diskstats()?;
-        let now       = Instant::now();
+        let now = Instant::now();
 
         // Include every device that is a direct /sys/block entry - these are
         // whole-disk devices (not partitions).  This matches Python's
         // resource-tracker, which uses the same /sys/block membership check to
         // distinguish whole disks from partitions.  Importantly, this keeps
         // loop*, dm-*, and zram* devices which Python also includes.
-        let block_set: std::collections::HashSet<String> =
-            std::fs::read_dir("/sys/block")
-                .map(|dir| {
-                    dir.flatten()
-                        .map(|e| e.file_name().to_string_lossy().to_string())
-                        .collect()
-                })
-                .unwrap_or_default();
+        let block_set: std::collections::HashSet<String> = std::fs::read_dir("/sys/block")
+            .map(|dir| {
+                dir.flatten()
+                    .map(|e| e.file_name().to_string_lossy().to_string())
+                    .collect()
+            })
+            .unwrap_or_default();
 
         let devs: Vec<_> = diskstats
             .iter()
@@ -201,21 +214,21 @@ impl DiskCollector {
             .map(|d| {
                 let info = self.device_cache.get(&d.name);
 
-                let sector_size: u32 = info.map_or(
-                    u32::try_from(SECTOR_BYTES).unwrap_or(512),
-                    |i| i.sector_size,
-                );
+                let sector_size: u32 = info
+                    .map_or(u32::try_from(SECTOR_BYTES).unwrap_or(512), |i| {
+                        i.sector_size
+                    });
                 let sector_size_f64 = f64::from(sector_size);
                 let sector_size_u64 = u64::from(sector_size);
 
                 let (read_bps, write_bps) = match &self.prev {
                     None => (0.0, 0.0),
                     Some(prev) => {
-                        let secs   = (now - prev.instant).as_secs_f64().max(0.001);
-                        let sr     = sectors_read[&d.name];
-                        let sw     = sectors_written[&d.name];
-                        let psr    = prev.sectors_read.get(&d.name).copied().unwrap_or(sr);
-                        let psw    = prev.sectors_written.get(&d.name).copied().unwrap_or(sw);
+                        let secs = (now - prev.instant).as_secs_f64().max(0.001);
+                        let sr = sectors_read[&d.name];
+                        let sw = sectors_written[&d.name];
+                        let psr = prev.sectors_read.get(&d.name).copied().unwrap_or(sr);
+                        let psw = prev.sectors_written.get(&d.name).copied().unwrap_or(sw);
                         // u64 -> f64 is lossy for very large values but no From impl exists in std.
                         (
                             sr.saturating_sub(psr) as f64 * sector_size_f64 / secs,
@@ -225,23 +238,27 @@ impl DiskCollector {
                 };
 
                 DiskMetrics {
-                    device:         d.name.clone(),
-                    model:          info.and_then(|i| i.model.clone()),
-                    vendor:         info.and_then(|i| i.vendor.clone()),
-                    serial:         info.and_then(|i| i.serial.clone()),
-                    device_type:    info.and_then(|i| i.device_type.clone()),
+                    device: d.name.clone(),
+                    model: info.and_then(|i| i.model.clone()),
+                    vendor: info.and_then(|i| i.vendor.clone()),
+                    serial: info.and_then(|i| i.serial.clone()),
+                    device_type: info.and_then(|i| i.device_type.clone()),
                     capacity_bytes: info.and_then(|i| i.capacity_bytes),
-                    mounts:         mounts_for_device(&d.name),
-                    read_bytes_per_sec:  read_bps,
+                    mounts: mounts_for_device(&d.name),
+                    read_bytes_per_sec: read_bps,
                     write_bytes_per_sec: write_bps,
-                    read_bytes_total:  sectors_read[&d.name] * sector_size_u64,
+                    read_bytes_total: sectors_read[&d.name] * sector_size_u64,
                     write_bytes_total: sectors_written[&d.name] * sector_size_u64,
                 }
             })
             .collect();
 
         metrics.sort_by(|a, b| a.device.cmp(&b.device));
-        self.prev = Some(Snapshot { instant: now, sectors_read, sectors_written });
+        self.prev = Some(Snapshot {
+            instant: now,
+            sectors_read,
+            sectors_written,
+        });
         Ok(metrics)
     }
 }
@@ -260,14 +277,17 @@ mod tests {
     #[test]
     fn test_sector_size_4k_gives_8x_bytes() {
         let sector_delta: u64 = 1000;
-        let sector_size_512:  u32 = 512;
+        let sector_size_512: u32 = 512;
         let sector_size_4096: u32 = 4096;
 
-        let bytes_512  = sector_delta * u64::from(sector_size_512);
+        let bytes_512 = sector_delta * u64::from(sector_size_512);
         let bytes_4096 = sector_delta * u64::from(sector_size_4096);
 
-        assert_eq!(bytes_4096, bytes_512 * 8,
-            "4K sector should produce 8x the bytes of 512-byte sector");
+        assert_eq!(
+            bytes_4096,
+            bytes_512 * 8,
+            "4K sector should produce 8x the bytes of 512-byte sector"
+        );
     }
 
     // Verify read_device_info falls back to 512 when hw_sector_size is absent
@@ -363,10 +383,25 @@ mod tests {
     #[test]
     fn test_read_device_info_nonexistent_all_none() {
         let info = read_device_info("__nonexistent__");
-        assert!(info.model.is_none(),       "model must be None for missing device");
-        assert!(info.vendor.is_none(),      "vendor must be None for missing device");
-        assert!(info.serial.is_none(),      "serial must be None for missing device");
-        assert!(info.device_type.is_none(), "device_type must be None for missing device");
-        assert!(info.capacity_bytes.is_none(), "capacity_bytes must be None for missing device");
+        assert!(
+            info.model.is_none(),
+            "model must be None for missing device"
+        );
+        assert!(
+            info.vendor.is_none(),
+            "vendor must be None for missing device"
+        );
+        assert!(
+            info.serial.is_none(),
+            "serial must be None for missing device"
+        );
+        assert!(
+            info.device_type.is_none(),
+            "device_type must be None for missing device"
+        );
+        assert!(
+            info.capacity_bytes.is_none(),
+            "capacity_bytes must be None for missing device"
+        );
     }
 }

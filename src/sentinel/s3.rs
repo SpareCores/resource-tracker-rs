@@ -17,7 +17,7 @@ type HmacSha256 = Hmac<Sha256>;
 #[derive(Debug, PartialEq)]
 pub struct S3Uri {
     pub bucket: String,
-    pub key:    String,
+    pub key: String,
 }
 
 /// Parse an S3 URI of the form `s3://bucket/key`.
@@ -33,7 +33,7 @@ pub fn parse_s3_uri(uri: &str) -> Result<S3Uri, String> {
         .ok_or_else(|| format!("S3 URI missing key after bucket: {uri}"))?;
 
     let bucket = &rest[..slash];
-    let key    = &rest[slash + 1..];
+    let key = &rest[slash + 1..];
 
     if bucket.is_empty() {
         return Err(format!("S3 URI has empty bucket: {uri}"));
@@ -42,7 +42,10 @@ pub fn parse_s3_uri(uri: &str) -> Result<S3Uri, String> {
         return Err(format!("S3 URI has empty key: {uri}"));
     }
 
-    Ok(S3Uri { bucket: bucket.to_string(), key: key.to_string() })
+    Ok(S3Uri {
+        bucket: bucket.to_string(),
+        key: key.to_string(),
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -75,7 +78,7 @@ pub(crate) fn detect_region_at(host: &str, port: u16, timeout: Duration) -> Stri
     let sock_addr = match addr_str.to_socket_addrs() {
         Ok(mut a) => match a.next() {
             Some(s) => s,
-            None    => return "eu-central-1".to_string(),
+            None => return "eu-central-1".to_string(),
         },
         Err(_) => return "eu-central-1".to_string(),
     };
@@ -98,7 +101,10 @@ pub(crate) fn detect_region_at(host: &str, port: u16, timeout: Duration) -> Stri
     String::from_utf8_lossy(&buf)
         .lines()
         .find_map(|line| {
-            if line.to_ascii_lowercase().starts_with("x-amz-bucket-region:") {
+            if line
+                .to_ascii_lowercase()
+                .starts_with("x-amz-bucket-region:")
+            {
                 line.splitn(2, ':').nth(1).map(|v| v.trim().to_string())
             } else {
                 None
@@ -116,8 +122,7 @@ fn sha256_hex(data: &[u8]) -> String {
 }
 
 fn hmac_sha256(key: &[u8], data: &[u8]) -> Vec<u8> {
-    let mut mac = HmacSha256::new_from_slice(key)
-        .expect("HMAC accepts any key length");
+    let mut mac = HmacSha256::new_from_slice(key).expect("HMAC accepts any key length");
     mac.update(data);
     mac.finalize().into_bytes().to_vec()
 }
@@ -134,15 +139,15 @@ fn hmac_sha256(key: &[u8], data: &[u8]) -> Vec<u8> {
 /// `amz_date`   -- `"YYYYMMDDTHHmmSSZ"` format
 /// `date_stamp` -- `"YYYYMMDD"` format
 pub fn sign_put_request(
-    access_key:    &str,
-    secret_key:    &str,
+    access_key: &str,
+    secret_key: &str,
     session_token: &str,
-    region:        &str,
-    bucket:        &str,
-    key:           &str,
-    body_sha256:   &str,
-    amz_date:      &str,
-    date_stamp:    &str,
+    region: &str,
+    bucket: &str,
+    key: &str,
+    body_sha256: &str,
+    amz_date: &str,
+    date_stamp: &str,
 ) -> String {
     let host = format!("{bucket}.s3.{region}.amazonaws.com");
 
@@ -151,9 +156,8 @@ pub fn sign_put_request(
         "host:{host}\nx-amz-content-sha256:{body_sha256}\nx-amz-date:{amz_date}\nx-amz-security-token:{session_token}\n"
     );
     let signed_headers = "host;x-amz-content-sha256;x-amz-date;x-amz-security-token";
-    let canonical_request = format!(
-        "PUT\n/{key}\n\n{canonical_headers}\n{signed_headers}\n{body_sha256}"
-    );
+    let canonical_request =
+        format!("PUT\n/{key}\n\n{canonical_headers}\n{signed_headers}\n{body_sha256}");
 
     // --- String to sign ---
     let credential_scope = format!("{date_stamp}/{region}/s3/aws4_request");
@@ -163,9 +167,12 @@ pub fn sign_put_request(
     );
 
     // --- Signing key derivation ---
-    let k_date    = hmac_sha256(format!("AWS4{secret_key}").as_bytes(), date_stamp.as_bytes());
-    let k_region  = hmac_sha256(&k_date,    region.as_bytes());
-    let k_service = hmac_sha256(&k_region,  b"s3");
+    let k_date = hmac_sha256(
+        format!("AWS4{secret_key}").as_bytes(),
+        date_stamp.as_bytes(),
+    );
+    let k_region = hmac_sha256(&k_date, region.as_bytes());
+    let k_service = hmac_sha256(&k_region, b"s3");
     let k_signing = hmac_sha256(&k_service, b"aws4_request");
 
     let signature = hex::encode(hmac_sha256(&k_signing, string_to_sign.as_bytes()));
@@ -183,11 +190,11 @@ pub fn sign_put_request(
 /// STS credentials used to sign S3 PUT requests.
 #[derive(Debug, Clone)]
 pub struct UploadCredentials {
-    pub access_key_id:     String,
+    pub access_key_id: String,
     pub secret_access_key: String,
-    pub session_token:     String,
+    pub session_token: String,
     /// ISO 8601 expires_at timestamp, e.g. `"2026-04-01T12:00:00Z"`.
-    pub expires_at:        String,
+    pub expires_at: String,
 }
 
 /// Upload `body` bytes to `s3://bucket/key` using AWS Signature V4.
@@ -195,12 +202,12 @@ pub struct UploadCredentials {
 /// Returns the full S3 URI (`s3://bucket/key`) on HTTP 200/201.
 /// Any other outcome is an error with a human-readable message.  (T-S3-06)
 pub fn s3_put(
-    agent:  &ureq::Agent,
+    agent: &ureq::Agent,
     bucket: &str,
-    key:    &str,
+    key: &str,
     region: &str,
-    body:   &[u8],
-    creds:  &UploadCredentials,
+    body: &[u8],
+    creds: &UploadCredentials,
 ) -> Result<String, String> {
     let base_url = format!("https://{bucket}.s3.{region}.amazonaws.com");
     s3_put_to(agent, &base_url, bucket, key, region, body, creds)
@@ -209,19 +216,19 @@ pub fn s3_put(
 /// Internal: same as `s3_put` but accepts an explicit `base_url`.
 /// Used in unit tests to point at a plain-HTTP mock server.
 pub(crate) fn s3_put_to(
-    agent:    &ureq::Agent,
+    agent: &ureq::Agent,
     base_url: &str,
-    bucket:   &str,
-    key:      &str,
-    region:   &str,
-    body:     &[u8],
-    creds:    &UploadCredentials,
+    bucket: &str,
+    key: &str,
+    region: &str,
+    body: &[u8],
+    creds: &UploadCredentials,
 ) -> Result<String, String> {
-    let now      = std::time::SystemTime::now()
+    let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default();
-    let secs     = now.as_secs();
-    let amz_date  = format_amz_date(secs);
+    let secs = now.as_secs();
+    let amz_date = format_amz_date(secs);
     let date_stamp = &amz_date[..8];
 
     let body_sha256 = sha256_hex(body);
@@ -240,18 +247,16 @@ pub(crate) fn s3_put_to(
     let url = format!("{base_url}/{key}");
     let result = agent
         .put(&url)
-        .header("Content-Type",          "application/gzip")
-        .header("Content-Length",        &body.len().to_string())
-        .header("x-amz-content-sha256",  &body_sha256)
-        .header("x-amz-date",            &amz_date)
-        .header("x-amz-security-token",  &creds.session_token)
-        .header("Authorization",         &authorization)
+        .header("Content-Type", "application/gzip")
+        .header("Content-Length", &body.len().to_string())
+        .header("x-amz-content-sha256", &body_sha256)
+        .header("x-amz-date", &amz_date)
+        .header("x-amz-security-token", &creds.session_token)
+        .header("Authorization", &authorization)
         .send(body);
 
     match result {
-        Ok(r) if r.status() == 200 || r.status() == 201 => {
-            Ok(format!("s3://{bucket}/{key}"))
-        }
+        Ok(r) if r.status() == 200 || r.status() == 201 => Ok(format!("s3://{bucket}/{key}")),
         Ok(r) => Err(format!("S3 PUT returned HTTP {}: {}", r.status(), url)),
         Err(e) => Err(format!("S3 PUT network error for {url}: {e}")),
     }
@@ -266,26 +271,28 @@ pub fn format_amz_date(unix_secs: u64) -> String {
 /// Decompose a Unix timestamp (seconds since 1970-01-01 UTC) into
 /// (year, month, day, hour, minute, second).  No leap-second handling.
 fn epoch_to_utc(secs: u64) -> (u32, u32, u32, u32, u32, u32) {
-    let s   = secs % 60;
+    let s = secs % 60;
     let min = (secs / 60) % 60;
-    let h   = (secs / 3600) % 24;
+    let h = (secs / 3600) % 24;
 
     // Days since epoch
     let days = secs / 86400;
 
     // Gregorian calendar calculation (valid for 1970–2099)
-    let z  = days + 719_468;
+    let z = days + 719_468;
     let era = z / 146_097;
     let doe = z - era * 146_097;
     let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
-    let y   = yoe + era * 400;
+    let y = yoe + era * 400;
     let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp  = (5 * doy + 2) / 153;
-    let d   = doy - (153 * mp + 2) / 5 + 1;
-    let mo  = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y   = if mo <= 2 { y + 1 } else { y };
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let mo = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if mo <= 2 { y + 1 } else { y };
 
-    (y as u32, mo as u32, d as u32, h as u32, min as u32, s as u32)
+    (
+        y as u32, mo as u32, d as u32, h as u32, min as u32, s as u32,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -327,7 +334,7 @@ mod tests {
     fn test_parse_valid_s3_uri() {
         let uri = parse_s3_uri("s3://my-bucket/path/to/obj.csv.gz").unwrap();
         assert_eq!(uri.bucket, "my-bucket");
-        assert_eq!(uri.key,    "path/to/obj.csv.gz");
+        assert_eq!(uri.key, "path/to/obj.csv.gz");
     }
 
     // T-S3-02
@@ -367,12 +374,23 @@ mod tests {
 
         assert!(auth.starts_with("AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/20130524/us-east-1/s3/aws4_request"),
             "unexpected auth header start: {auth}");
-        assert!(auth.contains("SignedHeaders=host;x-amz-content-sha256;x-amz-date;x-amz-security-token"),
-            "missing SignedHeaders: {auth}");
+        assert!(
+            auth.contains(
+                "SignedHeaders=host;x-amz-content-sha256;x-amz-date;x-amz-security-token"
+            ),
+            "missing SignedHeaders: {auth}"
+        );
 
         let sig = auth.split("Signature=").nth(1).unwrap_or("");
-        assert_eq!(sig.len(), 64, "signature should be 64 hex chars, got: {sig}");
-        assert!(sig.chars().all(|c| c.is_ascii_hexdigit()), "non-hex char in signature: {sig}");
+        assert_eq!(
+            sig.len(),
+            64,
+            "signature should be 64 hex chars, got: {sig}"
+        );
+        assert!(
+            sig.chars().all(|c| c.is_ascii_hexdigit()),
+            "non-hex char in signature: {sig}"
+        );
     }
 
     // T-S3-05: RegionCache returns the cached value without calling the network.
@@ -382,7 +400,9 @@ mod tests {
     fn test_region_cache_skips_network_on_hit() {
         let mut cache = RegionCache::new();
         // Directly seed the cache.
-        cache.0.insert("my-bucket".to_string(), "ap-southeast-1".to_string());
+        cache
+            .0
+            .insert("my-bucket".to_string(), "ap-southeast-1".to_string());
 
         // get_or_detect does not call detect_bucket_region when the key is present.
         let r1 = cache.get_or_detect("my-bucket");
@@ -405,11 +425,13 @@ mod tests {
                 // Drain the request (ignore contents).
                 let mut buf = [0u8; 256];
                 let _ = stream.read(&mut buf);
-                stream.write_all(
-                    b"HTTP/1.0 403 Forbidden\r\n\
+                stream
+                    .write_all(
+                        b"HTTP/1.0 403 Forbidden\r\n\
                       x-amz-bucket-region: eu-west-1\r\n\
                       Content-Length: 0\r\n\r\n",
-                ).ok();
+                    )
+                    .ok();
             }
         });
 
@@ -436,9 +458,9 @@ mod tests {
                 let n = stream.read(&mut buf).unwrap_or(0);
                 buf.truncate(n);
                 tx.send(buf).ok();
-                stream.write_all(
-                    b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"
-                ).ok();
+                stream
+                    .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+                    .ok();
             }
         });
 
@@ -448,10 +470,10 @@ mod tests {
             .new_agent();
 
         let creds = UploadCredentials {
-            access_key_id:     "AKID".to_string(),
+            access_key_id: "AKID".to_string(),
             secret_access_key: "SECRET".to_string(),
-            session_token:     "TOKEN".to_string(),
-            expires_at:        "2099-01-01T00:00:00Z".to_string(),
+            session_token: "TOKEN".to_string(),
+            expires_at: "2099-01-01T00:00:00Z".to_string(),
         };
 
         let base_url = format!("http://127.0.0.1:{port}");
@@ -472,7 +494,9 @@ mod tests {
         // Using Content-Type (not Content-Encoding) prevents HTTP clients from
         // transparently decompressing the object on download; the gzip bytes are
         // stored and retrieved as-is.
-        let raw_request = rx.recv().expect("mock server did not send captured request");
+        let raw_request = rx
+            .recv()
+            .expect("mock server did not send captured request");
         let raw_str = String::from_utf8_lossy(&raw_request).to_ascii_lowercase();
         assert!(
             raw_str.contains("content-type: application/gzip"),

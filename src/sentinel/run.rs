@@ -140,7 +140,9 @@ fn unix_secs_to_iso8601(secs: u64) -> String {
     loop {
         let is_leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
         let yd = if is_leap { 366u64 } else { 365u64 };
-        if days < yd { break; }
+        if days < yd {
+            break;
+        }
         days -= yd;
         year += 1;
     }
@@ -148,8 +150,14 @@ fn unix_secs_to_iso8601(secs: u64) -> String {
     const MDAYS: [u64; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
     let mut month = 1u64;
     loop {
-        let dim = if month == 2 && is_leap { 29u64 } else { MDAYS[(month - 1) as usize] };
-        if days < dim { break; }
+        let dim = if month == 2 && is_leap {
+            29u64
+        } else {
+            MDAYS[(month - 1) as usize]
+        };
+        if days < dim {
+            break;
+        }
         days -= dim;
         month += 1;
     }
@@ -872,10 +880,7 @@ mod tests {
     // reads the full request, validates presence of required fields, returns a proper
     // RunFinishResponse JSON on success (200) or a 422 JSON error if required fields
     // are missing.  Returns the parsed request body JSON for assertions.
-    fn capture_close_run_body(
-        exit_code: Option<i32>,
-        csv: Option<&str>,
-    ) -> String {
+    fn capture_close_run_body(exit_code: Option<i32>, csv: Option<&str>) -> String {
         use std::io::{Read as _, Write as _};
         use std::sync::mpsc;
         use std::time::Duration;
@@ -890,27 +895,46 @@ mod tests {
                 let mut tmp = [0u8; 4096];
                 loop {
                     let n = stream.read(&mut tmp).unwrap_or(0);
-                    if n == 0 { break; }
+                    if n == 0 {
+                        break;
+                    }
                     buf.extend_from_slice(&tmp[..n]);
                     if let Some(sep) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
                         let header_str = String::from_utf8_lossy(&buf[..sep]).to_ascii_lowercase();
-                        let cl = header_str.lines().find_map(|l| {
-                            l.trim().strip_prefix("content-length:").and_then(|v| v.trim().parse::<usize>().ok())
-                        }).unwrap_or(0);
-                        if buf.len() >= sep + 4 + cl { break; }
+                        let cl = header_str
+                            .lines()
+                            .find_map(|l| {
+                                l.trim()
+                                    .strip_prefix("content-length:")
+                                    .and_then(|v| v.trim().parse::<usize>().ok())
+                            })
+                            .unwrap_or(0);
+                        if buf.len() >= sep + 4 + cl {
+                            break;
+                        }
                     }
                 }
                 // Parse the body and decide: 200 with RunFinishResponse, or 422.
-                let body_start = buf.windows(4).position(|w| w == b"\r\n\r\n")
-                    .map(|p| p + 4).unwrap_or(buf.len());
+                let body_start = buf
+                    .windows(4)
+                    .position(|w| w == b"\r\n\r\n")
+                    .map(|p| p + 4)
+                    .unwrap_or(buf.len());
                 let body_str = String::from_utf8_lossy(&buf[body_start..]);
-                let parsed: serde_json::Value = serde_json::from_str(&body_str).unwrap_or(serde_json::Value::Null);
+                let parsed: serde_json::Value =
+                    serde_json::from_str(&body_str).unwrap_or(serde_json::Value::Null);
                 // Real API requires data_source and data_csv for RunFinishInline.
                 let valid = parsed.get("data_source").and_then(|v| v.as_str()) == Some("inline")
                     && parsed.get("data_csv").is_some();
                 let (status_line, resp_body) = if valid {
-                    let run_status = parsed.get("run_status").and_then(|v| v.as_str()).unwrap_or("finished");
-                    let ec = parsed.get("exit_code").and_then(|v| v.as_i64()).map(|v| v as i32);
+                    let run_status = parsed
+                        .get("run_status")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("finished");
+                    let ec = parsed
+                        .get("exit_code")
+                        .and_then(|v| v.as_i64())
+                        .map(|v| v as i32);
                     (
                         "HTTP/1.1 200 OK",
                         finish_response_json("run-spec-test", run_status, ec),
@@ -924,7 +948,8 @@ mod tests {
                 tx.send(buf).ok();
                 let http = format!(
                     "{status_line}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
-                    resp_body.len(), resp_body
+                    resp_body.len(),
+                    resp_body
                 );
                 stream.write_all(http.as_bytes()).ok();
             }
@@ -955,7 +980,11 @@ mod tests {
         );
         let raw = rx.recv().expect("mock server did not capture request");
         // Extract the JSON body (everything after \r\n\r\n).
-        let body_start = raw.windows(4).position(|w| w == b"\r\n\r\n").map(|p| p + 4).unwrap_or(0);
+        let body_start = raw
+            .windows(4)
+            .position(|w| w == b"\r\n\r\n")
+            .map(|p| p + 4)
+            .unwrap_or(0);
         String::from_utf8_lossy(&raw[body_start..]).to_string()
     }
 
@@ -968,10 +997,7 @@ mod tests {
             v["run_status"], "finished",
             "run_status must be 'finished' for exit_code=0: {body}"
         );
-        assert_eq!(
-            v["exit_code"], 0,
-            "exit_code must be 0 in payload: {body}"
-        );
+        assert_eq!(v["exit_code"], 0, "exit_code must be 0 in payload: {body}");
     }
 
     // T-FIN-02: run_status is "finished" when exit_code is None (SIGTERM shutdown).
@@ -1032,7 +1058,9 @@ mod tests {
     fn test_close_run_finished_at_is_valid_iso8601() {
         let body = capture_close_run_body(Some(0), None);
         let v: serde_json::Value = serde_json::from_str(&body).expect("body is not JSON");
-        let fa = v["finished_at"].as_str().expect("finished_at must be a string");
+        let fa = v["finished_at"]
+            .as_str()
+            .expect("finished_at must be a string");
         assert!(fa.ends_with('Z'), "finished_at must end with Z (UTC): {fa}");
         let secs = parse_iso8601_secs(fa);
         assert!(
@@ -1117,7 +1145,10 @@ mod tests {
             Some("timestamp,cpu_pct\n1743638400,42.5\n".to_string()),
             &[], // no S3 uploads → inline route
         );
-        assert!(result.is_ok(), "close_run must succeed for a 200 response: {result:?}");
+        assert!(
+            result.is_ok(),
+            "close_run must succeed for a 200 response: {result:?}"
+        );
     }
 
     // T-FIN-07: no extra fields are sent beyond what the spec allows
@@ -1128,8 +1159,15 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&body).expect("body is not JSON");
         let obj = v.as_object().expect("payload must be a JSON object");
         let allowed: std::collections::HashSet<&str> = [
-            "exit_code", "run_status", "finished_at", "data_source", "data_csv",
-        ].iter().copied().collect();
+            "exit_code",
+            "run_status",
+            "finished_at",
+            "data_source",
+            "data_csv",
+        ]
+        .iter()
+        .copied()
+        .collect();
         for key in obj.keys() {
             assert!(
                 allowed.contains(key.as_str()),
@@ -1146,10 +1184,7 @@ mod tests {
     // ---------------------------------------------------------------------------
 
     // Helper: call close_run with S3 URIs, return the captured request body JSON.
-    fn capture_close_run_s3_body(
-        exit_code: Option<i32>,
-        uris: &[&str],
-    ) -> String {
+    fn capture_close_run_s3_body(exit_code: Option<i32>, uris: &[&str]) -> String {
         use std::io::{Read as _, Write as _};
         use std::sync::mpsc;
         use std::time::Duration;
@@ -1164,34 +1199,61 @@ mod tests {
                 let mut tmp = [0u8; 4096];
                 loop {
                     let n = stream.read(&mut tmp).unwrap_or(0);
-                    if n == 0 { break; }
+                    if n == 0 {
+                        break;
+                    }
                     buf.extend_from_slice(&tmp[..n]);
                     if let Some(sep) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
                         let hdr = String::from_utf8_lossy(&buf[..sep]).to_ascii_lowercase();
-                        let cl = hdr.lines().find_map(|l| {
-                            l.trim().strip_prefix("content-length:").and_then(|v| v.trim().parse::<usize>().ok())
-                        }).unwrap_or(0);
-                        if buf.len() >= sep + 4 + cl { break; }
+                        let cl = hdr
+                            .lines()
+                            .find_map(|l| {
+                                l.trim()
+                                    .strip_prefix("content-length:")
+                                    .and_then(|v| v.trim().parse::<usize>().ok())
+                            })
+                            .unwrap_or(0);
+                        if buf.len() >= sep + 4 + cl {
+                            break;
+                        }
                     }
                 }
                 // Real API: 200 RunFinishResponse for a valid S3 payload.
-                let body_start = buf.windows(4).position(|w| w == b"\r\n\r\n").map(|p| p + 4).unwrap_or(buf.len());
+                let body_start = buf
+                    .windows(4)
+                    .position(|w| w == b"\r\n\r\n")
+                    .map(|p| p + 4)
+                    .unwrap_or(buf.len());
                 let body_str = String::from_utf8_lossy(&buf[body_start..]);
-                let parsed: serde_json::Value = serde_json::from_str(&body_str).unwrap_or(serde_json::Value::Null);
+                let parsed: serde_json::Value =
+                    serde_json::from_str(&body_str).unwrap_or(serde_json::Value::Null);
                 let valid = parsed.get("data_source").and_then(|v| v.as_str()) == Some("s3")
                     && parsed.get("data_uris").is_some();
-                let run_status = parsed.get("run_status").and_then(|v| v.as_str()).unwrap_or("finished");
-                let ec = parsed.get("exit_code").and_then(|v| v.as_i64()).map(|v| v as i32);
+                let run_status = parsed
+                    .get("run_status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("finished");
+                let ec = parsed
+                    .get("exit_code")
+                    .and_then(|v| v.as_i64())
+                    .map(|v| v as i32);
                 let (status_line, resp_body) = if valid {
-                    ("HTTP/1.1 200 OK", finish_response_json("run-s3-test", run_status, ec))
+                    (
+                        "HTTP/1.1 200 OK",
+                        finish_response_json("run-s3-test", run_status, ec),
+                    )
                 } else {
-                    ("HTTP/1.1 422 Unprocessable Entity",
-                     r#"{"detail":[{"msg":"field required","type":"value_error.missing"}]}"#.to_string())
+                    (
+                        "HTTP/1.1 422 Unprocessable Entity",
+                        r#"{"detail":[{"msg":"field required","type":"value_error.missing"}]}"#
+                            .to_string(),
+                    )
                 };
                 tx.send(buf).ok();
                 let http = format!(
                     "{status_line}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
-                    resp_body.len(), resp_body
+                    resp_body.len(),
+                    resp_body
                 );
                 stream.write_all(http.as_bytes()).ok();
             }
@@ -1222,7 +1284,11 @@ mod tests {
             &uploaded,
         );
         let raw = rx.recv().expect("mock server did not capture request");
-        let body_start = raw.windows(4).position(|w| w == b"\r\n\r\n").map(|p| p + 4).unwrap_or(0);
+        let body_start = raw
+            .windows(4)
+            .position(|w| w == b"\r\n\r\n")
+            .map(|p| p + 4)
+            .unwrap_or(0);
         String::from_utf8_lossy(&raw[body_start..]).to_string()
     }
 
@@ -1236,13 +1302,21 @@ mod tests {
         ];
         let body = capture_close_run_s3_body(Some(0), uris);
         let v: serde_json::Value = serde_json::from_str(&body).expect("body is not JSON");
-        assert_eq!(v["data_source"], "s3", "data_source must be 's3' when URIs present: {body}");
-        let arr = v["data_uris"].as_array().expect("data_uris must be a JSON array");
+        assert_eq!(
+            v["data_source"], "s3",
+            "data_source must be 's3' when URIs present: {body}"
+        );
+        let arr = v["data_uris"]
+            .as_array()
+            .expect("data_uris must be a JSON array");
         assert_eq!(arr.len(), 2, "data_uris must have 2 elements: {body}");
         assert_eq!(arr[0], "s3://my-bucket/prefix/run-abc/000000.csv.gz");
         assert_eq!(arr[1], "s3://my-bucket/prefix/run-abc/000001.csv.gz");
         // data_csv must NOT be present in the S3 route (additionalProperties: false).
-        assert!(!body.contains("\"data_csv\""), "data_csv must be absent in S3 route: {body}");
+        assert!(
+            !body.contains("\"data_csv\""),
+            "data_csv must be absent in S3 route: {body}"
+        );
     }
 
     // T-S3R-02: S3 route payload contains no extra fields beyond RunFinishS3 schema.
@@ -1254,16 +1328,29 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&body).expect("body is not JSON");
         let obj = v.as_object().expect("payload must be a JSON object");
         let allowed: std::collections::HashSet<&str> = [
-            "exit_code", "run_status", "finished_at", "data_source", "data_uris",
-        ].iter().copied().collect();
+            "exit_code",
+            "run_status",
+            "finished_at",
+            "data_source",
+            "data_uris",
+        ]
+        .iter()
+        .copied()
+        .collect();
         for key in obj.keys() {
             assert!(
                 allowed.contains(key.as_str()),
                 "unexpected field '{key}' in S3 route payload (additionalProperties: false): {body}"
             );
         }
-        assert!(obj.contains_key("data_source"), "data_source is required in S3 route");
-        assert!(obj.contains_key("data_uris"), "data_uris is required in S3 route");
+        assert!(
+            obj.contains_key("data_source"),
+            "data_source is required in S3 route"
+        );
+        assert!(
+            obj.contains_key("data_uris"),
+            "data_uris is required in S3 route"
+        );
     }
 
     // T-S3R-03: when uploaded_uris is empty, data_source is "inline" (not "s3")
@@ -1272,9 +1359,18 @@ mod tests {
     fn test_close_run_uses_inline_route_when_no_uris() {
         let body = capture_close_run_body(Some(0), Some("ts,cpu\n1,2\n"));
         let v: serde_json::Value = serde_json::from_str(&body).expect("body is not JSON");
-        assert_eq!(v["data_source"], "inline", "data_source must be 'inline' when no URIs: {body}");
-        assert!(v.get("data_csv").is_some(), "data_csv must be present for inline route: {body}");
-        assert!(v.get("data_uris").is_none(), "data_uris must be absent for inline route: {body}");
+        assert_eq!(
+            v["data_source"], "inline",
+            "data_source must be 'inline' when no URIs: {body}"
+        );
+        assert!(
+            v.get("data_csv").is_some(),
+            "data_csv must be present for inline route: {body}"
+        );
+        assert!(
+            v.get("data_uris").is_none(),
+            "data_uris must be absent for inline route: {body}"
+        );
     }
 
     // T-EOR-05: refresh_credentials updates ctx.credentials in place on success.
@@ -1633,7 +1729,10 @@ mod tests {
             gpu: vec![],
         };
         let csv = samples_to_csv(&[sample], 1);
-        eprintln!("T-INT-01: csv preview (first 120 chars): {}", &csv[..csv.len().min(120)]);
+        eprintln!(
+            "T-INT-01: csv preview (first 120 chars): {}",
+            &csv[..csv.len().min(120)]
+        );
 
         // Step 3: finish the run with the inline CSV (no S3 uploads in this test).
         eprintln!("T-INT-01: calling close_run...");
@@ -1650,6 +1749,9 @@ mod tests {
             Ok(()) => eprintln!("T-INT-01: close_run ok -- 200 received"),
             Err(e) => eprintln!("T-INT-01: close_run FAILED: {e}"),
         }
-        assert!(result.is_ok(), "close_run must return Ok (200) against the real API: {result:?}");
+        assert!(
+            result.is_ok(),
+            "close_run must return Ok (200) against the real API: {result:?}"
+        );
     }
 }

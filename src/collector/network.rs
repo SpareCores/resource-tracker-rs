@@ -39,12 +39,12 @@ fn read_interface_info(iface: &str) -> InterfaceInfo {
     // ../../../../bus/pci/drivers/igc - we just want the basename.
     let driver = std::fs::read_link(format!("/sys/class/net/{}/device/driver", iface))
         .ok()
-        .and_then(|p| {
-            p.file_name()
-                .map(|n| n.to_string_lossy().to_string())
-        });
+        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()));
 
-    InterfaceInfo { mac_address, driver }
+    InterfaceInfo {
+        mac_address,
+        driver,
+    }
 }
 
 /// Discover all non-loopback interfaces and cache their static identity.
@@ -87,7 +87,7 @@ fn read_mtu(iface: &str) -> Option<u32> {
 // ---------------------------------------------------------------------------
 
 struct Snapshot {
-    instant:  Instant,
+    instant: Instant,
     rx_bytes: HashMap<String, u64>,
     tx_bytes: HashMap<String, u64>,
 }
@@ -108,7 +108,7 @@ impl NetworkCollector {
 
     pub fn collect(&mut self) -> Result<Vec<NetworkMetrics>> {
         let devs = dev_status()?;
-        let now  = Instant::now();
+        let now = Instant::now();
 
         let rx_bytes: HashMap<String, u64> = devs
             .iter()
@@ -128,11 +128,11 @@ impl NetworkCollector {
                 let (rx_bps, tx_bps) = match &self.prev {
                     None => (0.0, 0.0),
                     Some(prev) => {
-                        let secs   = (now - prev.instant).as_secs_f64().max(0.001);
-                        let rx     = rx_bytes[name];
-                        let tx     = tx_bytes[name];
-                        let prx    = prev.rx_bytes.get(name).copied().unwrap_or(rx);
-                        let ptx    = prev.tx_bytes.get(name).copied().unwrap_or(tx);
+                        let secs = (now - prev.instant).as_secs_f64().max(0.001);
+                        let rx = rx_bytes[name];
+                        let tx = tx_bytes[name];
+                        let prx = prev.rx_bytes.get(name).copied().unwrap_or(rx);
+                        let ptx = prev.tx_bytes.get(name).copied().unwrap_or(tx);
                         (
                             rx.saturating_sub(prx) as f64 / secs,
                             tx.saturating_sub(ptx) as f64 / secs,
@@ -141,12 +141,12 @@ impl NetworkCollector {
                 };
 
                 NetworkMetrics {
-                    interface:    name.clone(),
-                    mac_address:  info.and_then(|i| i.mac_address.clone()),
-                    driver:       info.and_then(|i| i.driver.clone()),
-                    operstate:    read_operstate(name),
-                    speed_mbps:   read_speed_mbps(name),
-                    mtu:          read_mtu(name),
+                    interface: name.clone(),
+                    mac_address: info.and_then(|i| i.mac_address.clone()),
+                    driver: info.and_then(|i| i.driver.clone()),
+                    operstate: read_operstate(name),
+                    speed_mbps: read_speed_mbps(name),
+                    mtu: read_mtu(name),
                     rx_bytes_per_sec: rx_bps,
                     tx_bytes_per_sec: tx_bps,
                     rx_bytes_total: rx_bytes[name],
@@ -156,7 +156,11 @@ impl NetworkCollector {
             .collect();
 
         metrics.sort_by(|a, b| a.interface.cmp(&b.interface));
-        self.prev = Some(Snapshot { instant: now, rx_bytes, tx_bytes });
+        self.prev = Some(Snapshot {
+            instant: now,
+            rx_bytes,
+            tx_bytes,
+        });
         Ok(metrics)
     }
 }

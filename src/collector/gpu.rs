@@ -1,13 +1,13 @@
 use crate::metrics::GpuMetrics;
 use libamdgpu_top::{
     AMDGPU::{GpuMetrics as AmdHwMetrics, MetricsInfo},
-    stat::GpuActivity,
     DevicePath,
+    stat::GpuActivity,
 };
 use nvml_wrapper::{
+    Nvml,
     enum_wrappers::device::{Clock, TemperatureSensor},
     enums::device::UsedGpuMemory,
-    Nvml,
 };
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -65,7 +65,9 @@ impl GpuCollector {
             let count = nvml.device_count().unwrap_or(0);
 
             (0..count).for_each(|i| {
-                let Ok(device) = nvml.device_by_index(i) else { return };
+                let Ok(device) = nvml.device_by_index(i) else {
+                    return;
+                };
                 let procs: Vec<_> = device
                     .running_compute_processes()
                     .unwrap_or_default()
@@ -110,9 +112,13 @@ impl GpuCollector {
 
             pids.iter().for_each(|&pid| {
                 let fdinfo_dir = format!("/proc/{pid}/fdinfo");
-                let Ok(entries) = std::fs::read_dir(&fdinfo_dir) else { return };
+                let Ok(entries) = std::fs::read_dir(&fdinfo_dir) else {
+                    return;
+                };
                 entries.filter_map(|e| e.ok()).for_each(|entry| {
-                    let Ok(content) = std::fs::read_to_string(entry.path()) else { return };
+                    let Ok(content) = std::fs::read_to_string(entry.path()) else {
+                        return;
+                    };
 
                     // Only process amdgpu DRM file descriptors.
                     if !content
@@ -129,7 +135,9 @@ impl GpuCollector {
                         .and_then(|l| l.split_whitespace().nth(1))
                         .map(|s| s.to_lowercase());
                     let Some(pdev) = pdev else { return };
-                    if !amd_pci_addrs.contains(&pdev) { return; }
+                    if !amd_pci_addrs.contains(&pdev) {
+                        return;
+                    }
 
                     // Parse drm-memory-vram (value in KiB, unit label "KiB").
                     content
@@ -179,7 +187,9 @@ impl GpuCollector {
             let count = nvml.device_count().unwrap_or(0);
 
             (0..count).for_each(|i| {
-                let Ok(device) = nvml.device_by_index(i) else { return };
+                let Ok(device) = nvml.device_by_index(i) else {
+                    return;
+                };
                 let procs: Vec<_> = device
                     .running_compute_processes()
                     .unwrap_or_default()
@@ -203,13 +213,15 @@ impl GpuCollector {
         if std::path::Path::new("/sys/module/amdgpu").exists() {
             any_gpu = true;
 
-            DevicePath::get_device_path_list().into_iter().for_each(|dp| {
-                let used = read_sysfs_u64(dp.sysfs_path.join("mem_info_vram_used"));
-                if used > 0 {
-                    total_vram_bytes += used;
-                    n_utilized += 1;
-                }
-            });
+            DevicePath::get_device_path_list()
+                .into_iter()
+                .for_each(|dp| {
+                    let used = read_sysfs_u64(dp.sysfs_path.join("mem_info_vram_used"));
+                    if used > 0 {
+                        total_vram_bytes += used;
+                        n_utilized += 1;
+                    }
+                });
         }
 
         if !any_gpu {
@@ -231,7 +243,9 @@ impl GpuCollector {
         let driver_version = nvml.sys_driver_version().unwrap_or_default();
 
         for i in 0..count {
-            let Ok(device) = nvml.device_by_index(i) else { continue };
+            let Ok(device) = nvml.device_by_index(i) else {
+                continue;
+            };
 
             let name = device.name().unwrap_or_default();
             let uuid = device.uuid().unwrap_or_else(|_| format!("nvidia-{i}"));
@@ -250,9 +264,7 @@ impl GpuCollector {
                 0.0
             };
 
-            let temperature_celsius = device
-                .temperature(TemperatureSensor::Gpu)
-                .unwrap_or(0);
+            let temperature_celsius = device.temperature(TemperatureSensor::Gpu).unwrap_or(0);
 
             // NVML reports power in milliwatts; convert to watts.
             let power_watts = device
@@ -303,75 +315,75 @@ impl GpuCollector {
             return;
         }
 
-        DevicePath::get_device_path_list().into_iter().for_each(|dp| {
-            // VRAM: standard AMD GPU sysfs attributes, always available.
-            let vram_total_bytes = read_sysfs_u64(dp.sysfs_path.join("mem_info_vram_total"));
-            let vram_used_bytes = read_sysfs_u64(dp.sysfs_path.join("mem_info_vram_used"));
-            let vram_used_pct = if vram_total_bytes > 0 {
-                vram_used_bytes as f64 / vram_total_bytes as f64 * 100.0
-            } else {
-                0.0
-            };
+        DevicePath::get_device_path_list()
+            .into_iter()
+            .for_each(|dp| {
+                // VRAM: standard AMD GPU sysfs attributes, always available.
+                let vram_total_bytes = read_sysfs_u64(dp.sysfs_path.join("mem_info_vram_total"));
+                let vram_used_bytes = read_sysfs_u64(dp.sysfs_path.join("mem_info_vram_used"));
+                let vram_used_pct = if vram_total_bytes > 0 {
+                    vram_used_bytes as f64 / vram_total_bytes as f64 * 100.0
+                } else {
+                    0.0
+                };
 
-            // Hardware gpu_metrics file: preferred source for dynamic metrics.
-            let hw = AmdHwMetrics::get_from_sysfs_path(&dp.sysfs_path).ok();
+                // Hardware gpu_metrics file: preferred source for dynamic metrics.
+                let hw = AmdHwMetrics::get_from_sysfs_path(&dp.sysfs_path).ok();
 
-            let utilization_pct = hw
-                .as_ref()
-                .and_then(|m: &AmdHwMetrics| m.get_average_gfx_activity())
-                .map(|u| u as f64)
-                .unwrap_or_else(|| {
-                    // Fallback: sysfs gpu_busy_percent (older kernels / APUs).
-                    GpuActivity::get_from_sysfs(&dp.sysfs_path)
-                        .gfx
-                        .unwrap_or(0) as f64
+                let utilization_pct = hw
+                    .as_ref()
+                    .and_then(|m: &AmdHwMetrics| m.get_average_gfx_activity())
+                    .map(|u| u as f64)
+                    .unwrap_or_else(|| {
+                        // Fallback: sysfs gpu_busy_percent (older kernels / APUs).
+                        GpuActivity::get_from_sysfs(&dp.sysfs_path).gfx.unwrap_or(0) as f64
+                    });
+
+                let frequency_mhz: u32 = hw
+                    .as_ref()
+                    .and_then(|m: &AmdHwMetrics| m.get_average_gfxclk_frequency())
+                    .map(u32::from)
+                    .unwrap_or(0);
+
+                // get_temperature_edge() returns millidegrees on some ASICs.
+                let temperature_celsius: u32 = hw
+                    .as_ref()
+                    .and_then(|m: &AmdHwMetrics| m.get_temperature_edge())
+                    .map(|t| u32::from(if t > 1000 { t / 1000 } else { t }))
+                    .unwrap_or(0);
+
+                // get_average_socket_power() returns whole watts directly.
+                let power_watts = hw
+                    .as_ref()
+                    .and_then(|m: &AmdHwMetrics| m.get_average_socket_power())
+                    .map(|w| w as f64)
+                    .unwrap_or(0.0);
+
+                // AMD GPUs have no stable UUID; use PCI bus address instead.
+                let host_id = format!("{}", dp.pci);
+
+                let mut detail: HashMap<String, String> = HashMap::new();
+                detail.insert("pci_bus".to_string(), host_id.clone());
+                if let Some(rocm) = libamdgpu_top::get_rocm_version() {
+                    detail.insert("rocm_version".to_string(), format!("{rocm:?}"));
+                }
+
+                out.push(GpuMetrics {
+                    uuid: host_id.clone(),
+                    name: dp.device_name.clone(),
+                    device_type: "GPU".to_string(),
+                    host_id,
+                    detail,
+                    utilization_pct,
+                    vram_total_bytes,
+                    vram_used_bytes,
+                    vram_used_pct,
+                    temperature_celsius,
+                    power_watts,
+                    frequency_mhz,
+                    core_count: None,
                 });
-
-            let frequency_mhz: u32 = hw
-                .as_ref()
-                .and_then(|m: &AmdHwMetrics| m.get_average_gfxclk_frequency())
-                .map(u32::from)
-                .unwrap_or(0);
-
-            // get_temperature_edge() returns millidegrees on some ASICs.
-            let temperature_celsius: u32 = hw
-                .as_ref()
-                .and_then(|m: &AmdHwMetrics| m.get_temperature_edge())
-                .map(|t| u32::from(if t > 1000 { t / 1000 } else { t }))
-                .unwrap_or(0);
-
-            // get_average_socket_power() returns whole watts directly.
-            let power_watts = hw
-                .as_ref()
-                .and_then(|m: &AmdHwMetrics| m.get_average_socket_power())
-                .map(|w| w as f64)
-                .unwrap_or(0.0);
-
-            // AMD GPUs have no stable UUID; use PCI bus address instead.
-            let host_id = format!("{}", dp.pci);
-
-            let mut detail: HashMap<String, String> = HashMap::new();
-            detail.insert("pci_bus".to_string(), host_id.clone());
-            if let Some(rocm) = libamdgpu_top::get_rocm_version() {
-                detail.insert("rocm_version".to_string(), format!("{rocm:?}"));
-            }
-
-            out.push(GpuMetrics {
-                uuid: host_id.clone(),
-                name: dp.device_name.clone(),
-                device_type: "GPU".to_string(),
-                host_id,
-                detail,
-                utilization_pct,
-                vram_total_bytes,
-                vram_used_bytes,
-                vram_used_pct,
-                temperature_celsius,
-                power_watts,
-                frequency_mhz,
-                core_count: None,
             });
-        });
     }
 }
 
@@ -391,10 +403,10 @@ mod tests {
         let collector = GpuCollector::new();
         let (vram, utilized) = collector.process_gpu_info(&[]);
         match (vram, utilized) {
-            (None, None) => {}  // CPU-only host
+            (None, None) => {} // CPU-only host
             (Some(v), Some(u)) => {
                 assert_eq!(v, 0.0, "empty PID list must produce 0.0 VRAM");
-                assert_eq!(u, 0,   "empty PID list must produce 0 utilized GPUs");
+                assert_eq!(u, 0, "empty PID list must produce 0 utilized GPUs");
             }
             _ => panic!("vram_mib and gpu_utilized must both be Some or both be None"),
         }
@@ -430,8 +442,11 @@ mod tests {
         }
         let collector = GpuCollector::new();
         let (vram, utilized) = collector.process_gpu_info(&[1, 2, 3]);
-        assert_eq!((vram, utilized), (None, None),
-            "CPU-only host must return (None, None) for any PID list");
+        assert_eq!(
+            (vram, utilized),
+            (None, None),
+            "CPU-only host must return (None, None) for any PID list"
+        );
     }
 
     // T-GPU-A1: all_gpu_process_info() must not panic and must return a
@@ -442,7 +457,7 @@ mod tests {
         let collector = GpuCollector::new();
         let (vram, utilized) = collector.all_gpu_process_info();
         match (vram, utilized) {
-            (None, None) => {}  // CPU-only host
+            (None, None) => {} // CPU-only host
             (Some(v), Some(u)) => {
                 assert!(v >= 0.0, "vram_mib must be non-negative, got {v}");
                 let _ = u;
@@ -462,8 +477,11 @@ mod tests {
         }
         let collector = GpuCollector::new();
         let result = collector.all_gpu_process_info();
-        assert_eq!(result, (None, None),
-            "CPU-only host must return (None, None)");
+        assert_eq!(
+            result,
+            (None, None),
+            "CPU-only host must return (None, None)"
+        );
     }
 
     // T-GPU-A3: on a GPU host, all_gpu_process_info() must return Some for both
@@ -473,13 +491,19 @@ mod tests {
         let nvml_available = Nvml::init().is_ok();
         let amd_present = std::path::Path::new("/sys/module/amdgpu").exists();
         if !nvml_available && !amd_present {
-            return;  // CPU-only host; not applicable
+            return; // CPU-only host; not applicable
         }
         let collector = GpuCollector::new();
         let (vram, utilized) = collector.all_gpu_process_info();
-        assert!(vram.is_some(),    "GPU host: vram_mib must be Some, got None");
-        assert!(utilized.is_some(), "GPU host: gpu_utilized must be Some, got None");
-        assert!(vram.unwrap() >= 0.0, "GPU host: vram_mib must be non-negative");
+        assert!(vram.is_some(), "GPU host: vram_mib must be Some, got None");
+        assert!(
+            utilized.is_some(),
+            "GPU host: gpu_utilized must be Some, got None"
+        );
+        assert!(
+            vram.unwrap() >= 0.0,
+            "GPU host: vram_mib must be non-negative"
+        );
     }
 
     // T-GPU-A4: all_gpu_process_info() must return >= the vram reported for an
@@ -498,8 +522,10 @@ mod tests {
         // process_gpu_info(&[]) returns Some(0.0) on a GPU host; all_gpu_process_info
         // must return >= 0.0 (can be 0.0 if no GPU processes are running).
         if let (Some(av), Some(pv)) = (all_vram, pid_vram) {
-            assert!(av >= pv,
-                "all_gpu_process_info vram ({av}) must be >= process_gpu_info([]) vram ({pv})");
+            assert!(
+                av >= pv,
+                "all_gpu_process_info vram ({av}) must be >= process_gpu_info([]) vram ({pv})"
+            );
         }
     }
 
@@ -508,7 +534,11 @@ mod tests {
     fn test_gpu_collect_does_not_panic() {
         let collector = GpuCollector::new();
         let result = collector.collect();
-        assert!(result.is_ok(), "collect() must return Ok on any host, got: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "collect() must return Ok on any host, got: {:?}",
+            result.err()
+        );
     }
 
     // T-GPU-C2: all returned GpuMetrics entries have non-empty uuid, name, and device_type.
@@ -517,9 +547,17 @@ mod tests {
         let collector = GpuCollector::new();
         let gpus = collector.collect().expect("collect() failed");
         gpus.iter().for_each(|g| {
-            assert!(!g.uuid.is_empty(),        "uuid must not be empty");
-            assert!(!g.name.is_empty(),        "name must not be empty for uuid={}", g.uuid);
-            assert!(!g.device_type.is_empty(), "device_type must not be empty for uuid={}", g.uuid);
+            assert!(!g.uuid.is_empty(), "uuid must not be empty");
+            assert!(
+                !g.name.is_empty(),
+                "name must not be empty for uuid={}",
+                g.uuid
+            );
+            assert!(
+                !g.device_type.is_empty(),
+                "device_type must not be empty for uuid={}",
+                g.uuid
+            );
         });
     }
 

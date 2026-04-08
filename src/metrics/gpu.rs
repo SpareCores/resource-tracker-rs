@@ -9,7 +9,6 @@ pub struct GpuMetrics {
     // ------------------------------------------------------------------
     // Identity - reported by the driver, stable for the lifetime of the run.
     // ------------------------------------------------------------------
-
     /// Vendor-assigned device UUID (stable across reboots for physical GPUs).
     pub uuid: String,
     /// Human-readable device name, e.g. "NVIDIA GeForce RTX 4090".
@@ -28,7 +27,6 @@ pub struct GpuMetrics {
     // ------------------------------------------------------------------
     // Dynamic metrics - polled each interval.
     // ------------------------------------------------------------------
-
     /// Core utilisation (0.0–100.0).
     pub utilization_pct: f64,
     /// Total VRAM in bytes.
