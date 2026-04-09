@@ -40,6 +40,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-cargo-
 
+      - name: Formatting check
+        run: cargo fmt --check
+
       - name: Build (debug)
         run: cargo build --locked
 
