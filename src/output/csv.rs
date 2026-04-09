@@ -296,14 +296,14 @@ mod tests {
     fn test_csv_process_gpu_fields_emitted_when_set() {
         let mut sample = minimal_sample();
         sample.tracked_pid = Some(42);
-        sample.cpu.process_gpu_usage = Some(55.0);
+        sample.cpu.process_gpu_usage = Some(0.55);
         sample.cpu.process_gpu_vram_mib = Some(83.1875);
         sample.cpu.process_gpu_utilized = Some(1);
 
         let row = sample_to_csv_row(&sample, 1);
         let cols: Vec<&str> = row.split(',').collect();
 
-        assert_eq!(cols[29], "55.0000", "process_gpu_usage mismatch");
+        assert_eq!(cols[29], "0.5500", "process_gpu_usage mismatch");
         assert_eq!(cols[30], "83.1875", "process_gpu_vram_mib mismatch");
         assert_eq!(cols[31], "1", "process_gpu_utilized mismatch");
     }

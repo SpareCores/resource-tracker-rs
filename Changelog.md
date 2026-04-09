@@ -24,8 +24,10 @@
 #### `src/metrics/cpu.rs` -- new `process_gpu_usage` field
 
 - Added `pub process_gpu_usage: Option<f64>` between `process_disk_write_bytes`
-  and `process_gpu_vram_mib`.  `None` on CPU-only hosts or when NVML/AMD data is
-  unavailable; `Some(pct)` otherwise (summed across matched processes/devices).
+  and `process_gpu_vram_mib`.  Expressed as **fractional GPUs** (same convention
+  as `process_cores_used`): 1.0 = one GPU fully utilized, 0.5 = half a GPU.
+  Raw SM utilization (0-100) is divided by 100 before being stored.
+  `None` on CPU-only hosts or when NVML/AMD data is unavailable.
 
 #### `src/main.rs` -- wire new field; SIGINT handler
 

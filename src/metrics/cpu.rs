@@ -51,12 +51,14 @@ pub struct CpuMetrics {
     /// Delta of /proc/pid/io write_bytes across all tree members.
     /// None when no PID is tracked or /proc/pid/io is unreadable.
     pub process_disk_write_bytes: Option<u64>,
-    /// SM (shader/compute) utilization attributed to the tracked process tree,
-    /// summed across all matched processes on all NVIDIA GPUs (0.0–100.0+ for
-    /// multi-GPU or multi-process workloads).
-    /// Sourced from nvmlDeviceGetProcessUtilization; does not require accounting mode.
-    /// AMD: not yet supported (per-process engine utilization requires delta tracking).
-    /// None when no GPU is present, NVML is unavailable, or no data was returned.
+    /// Fractional GPUs actively consumed by the tracked process tree, expressed
+    /// as the equivalent number of fully-utilized GPUs (same convention as
+    /// `process_cores_used`).  e.g. 0.5 means the tree is using half of one GPU.
+    /// NVIDIA: derived from SM utilization via nvmlDeviceGetProcessUtilization
+    /// (no accounting mode required), summed across matched PIDs and devices,
+    /// then divided by 100.
+    /// AMD: derived from drm-engine-gfx cumulative ns via FdInfoStat delta tracking.
+    /// None when no GPU is present, NVML/AMD data is unavailable, or no samples returned.
     pub process_gpu_usage: Option<f64>,
     /// Total VRAM consumed by the tracked process tree across all GPUs (MiB).
     /// NVIDIA: sum of used_gpu_memory from NVML running-process lists.

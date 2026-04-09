@@ -51,12 +51,13 @@ impl GpuCollector {
     /// NVIDIA: queries NVML running-compute and running-graphics process lists
     /// for each device; sums `used_gpu_memory` for matched PIDs.
     /// SM utilization is sourced from `nvmlDeviceGetProcessUtilization`; the
-    /// latest sample per PID is taken and summed across all matched PIDs and devices.
+    /// latest sample per PID is taken, summed across all matched PIDs and devices,
+    /// then divided by 100 to yield fractional GPUs (e.g. 0.5 = half a GPU).
     ///
-    /// AMD: reads `/proc/{pid}/fdinfo` for each PID, parses `drm-memory-vram`
-    /// and `drm-pdev` from DRM fdinfo entries (Linux kernel >= 5.17), and
-    /// matches against known AMD device PCI addresses.
-    /// Per-process GPU utilization is not yet supported for AMD.
+    /// AMD: reads `/proc/{pid}/fdinfo` for each PID, parses `drm-memory-vram`,
+    /// `drm-pdev`, and `drm-engine-gfx` from DRM fdinfo entries (Linux kernel >= 5.17).
+    /// GFX utilization is computed via `FdInfoStat` delta tracking and normalized
+    /// to fractional GPUs.
     ///
     /// Returns `(None, None, None)` when no GPU is present on the host.
     /// Returns `(Some(0.0), Some(0.0), Some(0))` when a GPU is present but the
@@ -221,8 +222,10 @@ impl GpuCollector {
         }
 
         let vram_mib = total_vram_bytes as f64 / 1_048_576.0;
+        // Normalize to fractional GPUs (same convention as process_cores_used):
+        // 1.0 = one GPU fully utilized at 100%.  Raw sm_util values are 0-100.
         let usage_pct = if has_nvml || has_amd_util {
-            Some(total_sm_util)
+            Some(total_sm_util / 100.0)
         } else {
             None
         };
@@ -340,8 +343,10 @@ impl GpuCollector {
         }
 
         let vram_mib = total_vram_bytes as f64 / 1_048_576.0;
+        // Normalize to fractional GPUs (same convention as process_cores_used):
+        // 1.0 = one GPU fully utilized at 100%.  Raw sm_util values are 0-100.
         let usage_pct = if has_nvml || has_amd_util {
-            Some(total_sm_util)
+            Some(total_sm_util / 100.0)
         } else {
             None
         };
