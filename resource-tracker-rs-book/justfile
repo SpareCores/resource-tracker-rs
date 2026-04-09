@@ -1,0 +1,7 @@
+help:
+    @just --list
+
+create_book:
+    mdbook build && open book/index.html
+    
+    

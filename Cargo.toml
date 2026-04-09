@@ -1,0 +1,54 @@
+[package]
+name = "resource-tracker-rs"
+version = "0.1.3"
+edition = "2024"
+
+[dependencies]
+# NVIDIA GPU monitoring via NVML — loaded at runtime with libloading.
+# No build-time system dependencies (no protoc, no libdrm-dev).
+# Gracefully returns an empty Vec on hosts without an NVIDIA GPU/driver.
+nvml-wrapper = "0.12"
+
+
+# CLI argument parsing — stripped to essentials
+clap = { version = "4", default-features = false, features = ["derive", "std", "help", "usage", "error-context", "env"] }
+
+# Linux /proc resource tracking
+procfs = { version = "0.18", features = ["serde"] }
+
+# Lightweight sync HTTP for API calls + S3 PUT (no tokio)
+ureq = { version = "3", features = ["json"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# TOML config file support
+toml = { version = "1.0", default-features = false, features = ["parse", "serde"] }
+
+# For manual AWS Sig V4 (S3 PUT without heavy SDK)
+hmac = "0.13.0-rc.6"
+sha2 = "0.11.0"
+hex = "0.4"
+
+# statvfs for filesystem space (no additional binary size — pure FFI bindings)
+libc = "0.2"
+
+# Gzip compression for .csv.gz batch uploads to S3
+flate2 = { version = "=1.1.9", default-features = false, features = ["rust_backend"] }
+# AMD GPU monitoring via libdrm — loaded at runtime. Required when an AMD GPU
+# is present; gracefully skipped on non-AMD hosts.
+libamdgpu_top = { version = "0.11.2", default-features = false, features = ["libdrm_dynamic_loading"] }
+
+[dev-dependencies]
+# Used in tests to check cpu_usage is fractional cores not a percentage
+num_cpus = "1"
+
+[profile.release]
+opt-level = "z"      # optimize for size
+lto = true           # link-time optimization
+codegen-units = 1    # better dead-code elimination
+strip = true         # strip symbols
+panic = "abort"      # smaller panic handler
+
+
