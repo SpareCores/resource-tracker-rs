@@ -1,0 +1,25 @@
+/* Make wide tables horizontally scrollable */
+.content table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+}
+
+/* Allow text wrapping in table cells; give Notes column enough room */
+.content table td {
+    white-space: normal;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    min-width: 80px;
+}
+
+/* Last column (typically Notes) gets a wider minimum so it's not squished */
+.content table td:last-child {
+    min-width: 300px;
+}
+
+/* Keep header cells non-wrapping */
+.content table th {
+    white-space: nowrap;
+}

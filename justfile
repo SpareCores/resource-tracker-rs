@@ -14,6 +14,8 @@ build: format
 build_release:  format
 	cargo build --release
 
+install: build_release
+	(mkdir -p ~/bin) && cp -p ./target/release/resource-tracker-rs ~/bin && echo "resource-tracker-rs is now installed in ~/bin"
 
 run_only_show_key_names:
      target/release/resource-tracker-rs --interval 3 | jq -r 'paths(scalars) as $p | "\($p | join(".")): \(getpath($p) | type)"'
