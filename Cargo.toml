@@ -2,6 +2,14 @@
 name = "resource-tracker"
 version = "0.1.3"
 edition = "2024"
+description = "Lightweight Linux resource and GPU tracker for system and process monitoring."
+license = "MPL-2.0"
+readme = "README.md"
+repository = "https://github.com/SpareCores/resource-tracker-rs"
+homepage = "https://github.com/SpareCores/resource-tracker-rs"
+documentation = "https://docs.rs/resource-tracker"
+keywords = ["monitoring", "resources", "gpu", "linux", "metrics"]
+categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
 # NVIDIA GPU monitoring via NVML — loaded at runtime with libloading.
