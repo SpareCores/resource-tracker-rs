@@ -1,4 +1,4 @@
-/// Smoke and behavioral tests for resource-tracker-rs output formats.
+/// Smoke and behavioral tests for resource-tracker output formats.
 ///
 /// Most tests spawn the release binary, collect a small number of lines,
 /// kill it, then assert on the content.  Using --interval 1 keeps wall-clock
@@ -10,7 +10,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-const BINARY: &str = env!("CARGO_BIN_EXE_resource-tracker-rs");
+const BINARY: &str = env!("CARGO_BIN_EXE_resource-tracker");
 const TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Spawn the binary with `args`, collect up to `n` stdout lines, then kill it.
@@ -22,7 +22,7 @@ fn collect_lines(args: &[&str], n: usize) -> Vec<String> {
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("failed to spawn resource-tracker-rs binary");
+        .expect("failed to spawn resource-tracker binary");
 
     let stderr = child.stderr.take().unwrap();
     let (tx, rx) = mpsc::channel();
@@ -107,7 +107,7 @@ fn test_json_is_valid() {
 fn test_json_version_field_present() {
     let lines = collect_lines(&["--interval", "1"], 1);
     let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
-    let version_key = format!("{}-version", "resource-tracker-rs");
+    let version_key = format!("{}-version", "resource-tracker");
     assert!(
         v[&version_key].is_string(),
         "version field '{}' missing from JSON output",
@@ -749,12 +749,12 @@ fn test_json_timestamp_secs_is_positive_integer() {
     );
 }
 
-/// T-OUT-03: resource-tracker-rs-version key present and is a semver string.
+/// T-OUT-03: resource-tracker-version key present and is a semver string.
 #[test]
 fn test_json_version_key_is_semver() {
     let lines = collect_lines(&["--interval", "1"], 1);
     let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
-    let version_key = "resource-tracker-rs-version";
+    let version_key = "resource-tracker-version";
     let ver = v[version_key]
         .as_str()
         .unwrap_or_else(|| panic!("'{version_key}' missing or not a string"));

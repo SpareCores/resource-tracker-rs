@@ -1526,7 +1526,7 @@ mod tests {
 
     // T-CMD-01: when start_run is called with a non-empty command (shell-wrapper mode),
     // the JSON body must contain a "command" array matching the wrapped command tokens.
-    // This mirrors: SENTINEL_API_TOKEN=... resource-tracker-rs --output /tmp/log \
+    // This mirrors: SENTINEL_API_TOKEN=... resource-tracker --output /tmp/log \
     //   stress --cpu 4 --vm 1 --vm-bytes 12024M --timeout 63s
     #[test]
     fn test_start_run_includes_command_array_in_payload() {
@@ -1580,7 +1580,7 @@ mod tests {
             .build()
             .new_agent();
 
-        // Simulate: resource-tracker-rs --output /tmp/resource-tracker-logs \
+        // Simulate: resource-tracker --output /tmp/resource-tracker-logs \
         //   stress --cpu 4 --vm 1 --vm-bytes 12024M --timeout 63s
         let wrapped_command: Vec<String> = vec![
             "stress",

@@ -2,7 +2,7 @@ use clap::{ArgAction, Parser, ValueEnum};
 use serde::Deserialize;
 
 const DEFAULT_INTERVAL_SECS: u64 = 1;
-const DEFAULT_CONFIG_FILE: &str = "resource-tracker-rs.toml";
+const DEFAULT_CONFIG_FILE: &str = "resource-tracker.toml";
 
 // ---------------------------------------------------------------------------
 // Output format
@@ -75,9 +75,9 @@ pub struct JobMetadata {
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "resource-tracker-rs",
+    name = "resource-tracker",
     about = "Lightweight Linux resource & GPU tracker.\n\n\
-             Shell-wrapper mode: resource-tracker-rs [FLAGS] -- <command> [args...]\n\
+             Shell-wrapper mode: resource-tracker [FLAGS] -- <command> [args...]\n\
              The tracker will spawn <command>, monitor it, and exit when it exits.",
     version
 )]
@@ -161,7 +161,7 @@ struct Cli {
 
     // -- Shell-wrapper mode --------------------------------------------------
     /// Command to spawn and monitor. All tokens after -- are the command + args.
-    /// Example: resource-tracker-rs -- Rscript model.R --epochs 10
+    /// Example: resource-tracker -- Rscript model.R --epochs 10
     #[arg(
         trailing_var_arg = true,
         allow_hyphen_values = true,

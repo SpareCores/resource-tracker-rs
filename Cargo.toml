@@ -1,5 +1,5 @@
 [package]
-name = "resource-tracker-rs"
+name = "resource-tracker"
 version = "0.1.3"
 edition = "2024"
 
