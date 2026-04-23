@@ -24,7 +24,7 @@ Both the output format and the output destination can be configured using flags 
 
 Optionally, the tracked process's metadata can be also provided using flags or environment variables.
 
-See the [Usage Guide](resource-tracker-rs-book/src/Usage.md) for more details.
+See the [Usage Guide](https://sparecores.github.io/resource-tracker-rs/Usage.html) for more details.
 
 ## Streaming
 
