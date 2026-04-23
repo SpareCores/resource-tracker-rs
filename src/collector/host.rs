@@ -234,12 +234,7 @@ fn probe_aws() -> Option<CloudInfo> {
     let token = aws_fetch_imdsv2_token(&agent);
 
     let read_token: Option<&str> = token.as_deref().filter(|t| {
-        imds_get_headers(
-            &agent,
-            AWS_META_ROOT,
-            &[("X-aws-ec2-metadata-token", t)],
-        )
-        .is_some()
+        imds_get_headers(&agent, AWS_META_ROOT, &[("X-aws-ec2-metadata-token", t)]).is_some()
     });
 
     let read_token = if read_token.is_some() {
@@ -341,10 +336,7 @@ fn probe_azure() -> Option<CloudInfo> {
 
 fn probe_hetzner() -> Option<CloudInfo> {
     let agent = new_imds_agent();
-    let text = imds_get(
-        &agent,
-        "http://169.254.169.254/hetzner/v1/metadata",
-    )?;
+    let text = imds_get(&agent, "http://169.254.169.254/hetzner/v1/metadata")?;
 
     let mut instance_type: Option<String> = None;
     let mut region: Option<String> = None;
