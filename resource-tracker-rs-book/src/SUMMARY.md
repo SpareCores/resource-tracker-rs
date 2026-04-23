@@ -10,3 +10,11 @@
 - [Design](./Design.md)
 - [Benchmarks](./Benchmarks.md)
 - [Usage](./Usage.md)
+
+---
+
+# References
+
+- [cargo doc](cargo/doc/resource_tracker_rs/index.html)
+- [Spare Cores](https://sparecores.com)
+- [Resource Tracker Python implementation](https://github.com/SpareCores/resource-tracker)
