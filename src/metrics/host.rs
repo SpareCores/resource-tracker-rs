@@ -38,14 +38,16 @@ pub struct HostInfo {
 /// Used in the Sentinel API registration payload (Section 9.1).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CloudInfo {
-    /// Cloud provider identifier: `"aws"`, `"gcp"`, or `"azure"`.
+    /// Cloud provider identifier.
     pub cloud_vendor_id: Option<String>,
-    /// AWS account ID (from EC2 identity credentials endpoint).
+    /// Cloud account ID (usually not available from metadata service).
     pub cloud_account_id: Option<String>,
-    /// AWS region, e.g. `"us-east-1"`.
+    /// Cloud region or location string for the active provider (e.g. AWS region, GCP
+    /// region derived from zone, Azure `location`, Hetzner `region`, UpCloud `region`).
     pub cloud_region_id: Option<String>,
-    /// AWS availability zone, e.g. `"us-east-1a"`.
+    /// Cloud availability zone.
     pub cloud_zone_id: Option<String>,
-    /// AWS instance type, e.g. `"t3.micro"`.
+    /// Instance type / size / flavor (machine type on GCP, `vmSize` on Azure).
+    /// UpCloud metadata does not expose a type; this field stays `None` there.
     pub cloud_instance_type: Option<String>,
 }
