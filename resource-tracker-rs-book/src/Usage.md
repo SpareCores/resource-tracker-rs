@@ -1,6 +1,6 @@
-# resource-tracker-rs -- Usage Guide
+# resource-tracker -- Usage Guide
 
-`resource-tracker-rs` is a lightweight Linux resource tracker. It polls CPU, memory,
+`resource-tracker` is a lightweight Linux resource tracker. It polls CPU, memory,
 disk, network, and GPU metrics at a configurable interval and emits
 newline-delimited JSON (JSONL) to stdout.
 
@@ -13,13 +13,13 @@ newline-delimited JSON (JSONL) to stdout.
 cargo build --release
 
 # Run with defaults (1-second interval)
-./target/release/resource-tracker-rs
+./target/release/resource-tracker
 
 # Track a specific process tree (replace 1234 with the root PID)
-./target/release/resource-tracker-rs --pid 1234 --job-name "my-benchmark"
+./target/release/resource-tracker --pid 1234 --job-name "my-benchmark"
 
 # Change the polling interval to 10 seconds
-./target/release/resource-tracker-rs --interval 10
+./target/release/resource-tracker --interval 10
 ```
 
 Each line of output is a complete JSON object representing one sample:
@@ -46,7 +46,7 @@ Each line of output is a complete JSON object representing one sample:
 | `--pid PID`       | `-p`  | _(none)_ | Root PID of the process tree to attribute CPU usage to. Includes all child processes. |
 | `--interval SECS` | `-i`  | `1`     | How often to emit a sample, in seconds. |
 | `--format FORMAT` | `-f`  | `json`  | Output format: `json` or `csv`. |
-| `--config FILE`   | `-c`  | `resource-tracker-rs.toml` | Path to a TOML config file. Silently ignored if the file does not exist. |
+| `--config FILE`   | `-c`  | `resource-tracker.toml` | Path to a TOML config file. Silently ignored if the file does not exist. |
 | `--help`          | `-h`  |         | Print help. |
 | `--version`       | `-V`  |         | Print version. |
 
@@ -54,13 +54,13 @@ Each line of output is a complete JSON object representing one sample:
 
 ---
 
-## Config file (`resource-tracker-rs.toml`)
+## Config file (`resource-tracker.toml`)
 
 The TOML config file lets you persist settings so you don't have to repeat CLI
 flags on every invocation. It is optional -- the tool works with no config file
 at all. Any field set on the CLI overrides the corresponding field in the file.
 
-The default lookup path is `resource-tracker-rs.toml` in the current working directory.
+The default lookup path is `resource-tracker.toml` in the current working directory.
 Use `--config /path/to/file.toml` to point elsewhere.
 
 ### Full reference
@@ -74,7 +74,7 @@ Use `--config /path/to/file.toml` to point elsewhere.
 name = "gpu-benchmark-run-42"
 
 # Root PID of the process to track.
-# resource-tracker-rs will walk the full process tree (parent + all descendants)
+# resource-tracker will walk the full process tree (parent + all descendants)
 # and sum their CPU tick usage to report process_cores_used.
 # Leave unset to collect system-wide metrics only.
 pid = 12345
@@ -159,7 +159,7 @@ export SENTINEL_API_TOKEN="your-token-here"
 export TRACKER_JOB_NAME="gpu-benchmark"
 export TRACKER_UPLOAD_INTERVAL=30
 
-./resource-tracker-rs --interval 1 -- python train.py
+./resource-tracker --interval 1 -- python train.py
 ```
 
 The tracker spawns `python train.py`, monitors it, uploads a gzip-compressed
@@ -186,19 +186,19 @@ tools work directly with the output.
 
 ```sh
 # Write to a file
-./resource-tracker-rs > run.jsonl
+./resource-tracker > run.jsonl
 
 # Tail live output
-./resource-tracker-rs | tee run.jsonl
+./resource-tracker | tee run.jsonl
 
 # Pretty-print with jq
-./resource-tracker-rs | jq .
+./resource-tracker | jq .
 
 # Extract only CPU utilization over time
-./resource-tracker-rs | jq '{ t: .timestamp_secs, cpu: .cpu.utilization_pct }'
+./resource-tracker | jq '{ t: .timestamp_secs, cpu: .cpu.utilization_pct }'
 
 # Watch GPU VRAM usage
-./resource-tracker-rs --interval 1 | jq '.gpu[] | { name, vram_used_pct }'
+./resource-tracker --interval 1 | jq '.gpu[] | { name, vram_used_pct }'
 ```
 
 ---
@@ -208,7 +208,7 @@ tools work directly with the output.
 Pass a command after `--` to have the tracker spawn and monitor it:
 
 ```sh
-./resource-tracker-rs --interval 1 --job-name "training-run" -- python train.py --epochs 50
+./resource-tracker --interval 1 --job-name "training-run" -- python train.py --epochs 50
 ```
 
 The tracker sets `--pid` automatically to the spawned child's PID, emits one
@@ -248,7 +248,7 @@ pgrep -n my-training-script
 
 # Already know the command? Launch and capture PID
 my-training-script &
-./resource-tracker-rs --pid $! --job-name "training-run-1"
+./resource-tracker --pid $! --job-name "training-run-1"
 ```
 
 ---

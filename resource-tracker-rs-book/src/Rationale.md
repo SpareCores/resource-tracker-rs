@@ -1,6 +1,6 @@
 # Rationale
 
-`resource-tracker-rs` is a Rust rewrite of the Python
+`resource-tracker` is a Rust rewrite of the Python
 [resource-tracker](https://github.com/SpareCores/resource-tracker) library.
 It preserves full CSV column parity with the Python implementation while adding
 new capabilities that are difficult or impossible to express in the original.
@@ -9,7 +9,7 @@ new capabilities that are difficult or impossible to express in the original.
 
 ## Why Rust
 
-| Property | Python `resource-tracker` | `resource-tracker-rs` |
+| Property | Python `resource-tracker` | `resource-tracker` |
 |---|---|---|
 | Runtime dependency | Python interpreter + `psutil` | Single static binary |
 | Startup overhead | ~200-500 ms | < 5 ms |
@@ -28,7 +28,7 @@ in the numbers it is collecting.
 ### Shell-wrapper mode
 
 ```sh
-./resource-tracker-rs --interval 1 -- python train.py --epochs 50
+./resource-tracker --interval 1 -- python train.py --epochs 50
 ```
 
 Pass any command after `--` and the tracker spawns it, sets `--pid`
@@ -57,7 +57,7 @@ connections are made when the token is absent.
 ### TOML config file + environment variable overrides
 
 All settings (interval, job name, PID, metadata) can be persisted in a
-`resource-tracker-rs.toml` file alongside the job definition. Every field
+`resource-tracker.toml` file alongside the job definition. Every field
 also has a `TRACKER_*` environment variable override, which is convenient
 for containerized or CI environments where config files are impractical.
 

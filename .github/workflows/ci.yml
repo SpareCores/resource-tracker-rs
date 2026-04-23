@@ -18,18 +18,18 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.2
 
       - name: Install Rust toolchain (stable)
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v8.1.0
         with:
           enable-cache: false   # no uv.lock in repo; we use `uv run --with`
 
       - name: Cache cargo registry and build artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v5.0.5
         with:
           path: |
             ~/.cargo/registry/index

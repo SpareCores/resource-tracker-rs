@@ -117,7 +117,7 @@ which mount points Python may be counting that Rust is not.
 benchmarks/
 +-- pyproject.toml      # uv project -- resource-tracker dependency
 +-- run_python.py       # SystemTracker -> results/python_metrics.csv
-+-- run_rust.sh         # resource-tracker-rs --format csv -> results/rust_metrics.csv
++-- run_rust.sh         # resource-tracker --format csv -> results/rust_metrics.csv
 +-- compare.py          # merge on timestamp, print diff table
 +-- results/            # populated at runtime (gitignore this)
     +-- python_metrics.csv
@@ -157,7 +157,7 @@ DURATION=60
 INTERVAL=1
 mkdir -p results
 timeout "$DURATION" \
-  ../target/release/resource-tracker-rs --interval "$INTERVAL" --format csv \
+  ../target/release/resource-tracker --interval "$INTERVAL" --format csv \
   > results/rust_metrics.csv || true
 echo "Collected $(( $(wc -l < results/rust_metrics.csv) - 1 )) rows -> results/rust_metrics.csv"
 ```

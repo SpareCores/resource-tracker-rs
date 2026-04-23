@@ -1,4 +1,4 @@
-This is a placeholder for the `sparecores-resource-tracker-rs` project.
+This is a placeholder for the `sparecores-resource-tracker` project.
 
 # Initial Specification/Ideation
 
