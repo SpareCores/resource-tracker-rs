@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["MAX_CONSECUTIVE_FAILURES","MAX_UPLOAD_ATTEMPTS"],"fn":["gzip_compress","samples_to_csv"],"struct":["BatchUploader"],"type":["SampleBuffer"]};

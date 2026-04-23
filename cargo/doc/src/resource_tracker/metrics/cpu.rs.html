@@ -1,0 +1,78 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/metrics/cpu.rs`."><title>cpu.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../../static.files/rustdoc-77263533.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="resource_tracker" data-themes="" data-resource-suffix="" data-rustdoc-version="1.94.1 (e408947bf 2026-03-25)" data-channel="1.94.1" data-search-js="search-9e2438ea.js" data-stringdex-js="stringdex-b897f86f.js" data-settings-js="settings-c38705f0.js" ><script src="../../../static.files/storage-e2aeef58.js"></script><script defer src="../../../static.files/src-script-813739b1.js"></script><script defer src="../../../src-files.js"></script><script defer src="../../../static.files/main-7bab91a1.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-ffcac47a.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">resource_tracker/metrics/</div>cpu.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-2"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="kw">use </span>serde::{Deserialize, Serialize};
+<a href=#2 id=2 data-nosnippet>2</a>
+<a href=#3 id=3 data-nosnippet>3</a><span class="doccomment">/// CPU metrics derived from /proc/stat tick deltas.
+<a href=#4 id=4 data-nosnippet>4</a></span><span class="attr">#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+<a href=#5 id=5 data-nosnippet>5</a></span><span class="kw">pub struct </span>CpuMetrics {
+<a href=#6 id=6 data-nosnippet>6</a>    <span class="doccomment">/// Aggregate CPU utilization expressed as fractional cores in use (0.0..N_cores).
+<a href=#7 id=7 data-nosnippet>7</a>    /// e.g. 4.6 on a 16-core host means ~4.6 vCPUs are fully utilized.
+<a href=#8 id=8 data-nosnippet>8</a>    /// Not clamped; values very slightly above N_cores are valid under kernel rounding.
+<a href=#9 id=9 data-nosnippet>9</a>    /// N_cores is available via host discovery (host_vcpus).
+<a href=#10 id=10 data-nosnippet>10</a>    </span><span class="kw">pub </span>utilization_pct: f64,
+<a href=#11 id=11 data-nosnippet>11</a>    <span class="doccomment">/// Per-core utilization indexed by logical CPU number (0.0–100.0 each).
+<a href=#12 id=12 data-nosnippet>12</a>    </span><span class="kw">pub </span>per_core_pct: Vec&lt;f64&gt;,
+<a href=#13 id=13 data-nosnippet>13</a>    <span class="doccomment">/// User+nice mode CPU time consumed across all cores in this interval (seconds).
+<a href=#14 id=14 data-nosnippet>14</a>    /// Equivalent to Δ(user+nice ticks) / ticks_per_second.
+<a href=#15 id=15 data-nosnippet>15</a>    /// Matches Python resource-tracker's `utime` column.
+<a href=#16 id=16 data-nosnippet>16</a>    </span><span class="kw">pub </span>utime_secs: f64,
+<a href=#17 id=17 data-nosnippet>17</a>    <span class="doccomment">/// System mode CPU time consumed across all cores in this interval (seconds).
+<a href=#18 id=18 data-nosnippet>18</a>    /// Equivalent to Δ(system ticks) / ticks_per_second.
+<a href=#19 id=19 data-nosnippet>19</a>    /// Matches Python resource-tracker's `stime` column.
+<a href=#20 id=20 data-nosnippet>20</a>    </span><span class="kw">pub </span>stime_secs: f64,
+<a href=#21 id=21 data-nosnippet>21</a>    <span class="doccomment">/// Number of processes currently in a runnable state (from /proc/stat
+<a href=#22 id=22 data-nosnippet>22</a>    /// `procs_running`). Matches Python resource-tracker's `processes` column.
+<a href=#23 id=23 data-nosnippet>23</a>    </span><span class="kw">pub </span>process_count: u32,
+<a href=#24 id=24 data-nosnippet>24</a>    <span class="doccomment">/// Fractional cores actively consumed by the tracked process tree
+<a href=#25 id=25 data-nosnippet>25</a>    /// (root process + all descendants), derived from `/proc/&lt;pid&gt;/stat` tick
+<a href=#26 id=26 data-nosnippet>26</a>    /// deltas divided by elapsed wall-clock ticks.
+<a href=#27 id=27 data-nosnippet>27</a>    /// e.g. 2.0 means the tree is consuming the equivalent of 2 full cores.
+<a href=#28 id=28 data-nosnippet>28</a>    /// None when no process PID is being tracked.
+<a href=#29 id=29 data-nosnippet>29</a>    </span><span class="kw">pub </span>process_cores_used: <span class="prelude-ty">Option</span>&lt;f64&gt;,
+<a href=#30 id=30 data-nosnippet>30</a>    <span class="doccomment">/// Number of live descendant processes under the tracked root PID.
+<a href=#31 id=31 data-nosnippet>31</a>    /// Does not include the root process itself.
+<a href=#32 id=32 data-nosnippet>32</a>    /// None when no process PID is being tracked.
+<a href=#33 id=33 data-nosnippet>33</a>    </span><span class="kw">pub </span>process_child_count: <span class="prelude-ty">Option</span>&lt;u32&gt;,
+<a href=#34 id=34 data-nosnippet>34</a>    <span class="doccomment">/// User-mode CPU seconds consumed by the process tree this interval.
+<a href=#35 id=35 data-nosnippet>35</a>    /// Sum of utime tick deltas / ticks_per_second across all tree members.
+<a href=#36 id=36 data-nosnippet>36</a>    /// None when no PID is tracked.
+<a href=#37 id=37 data-nosnippet>37</a>    </span><span class="kw">pub </span>process_utime_secs: <span class="prelude-ty">Option</span>&lt;f64&gt;,
+<a href=#38 id=38 data-nosnippet>38</a>    <span class="doccomment">/// System-mode CPU seconds consumed by the process tree this interval.
+<a href=#39 id=39 data-nosnippet>39</a>    /// Sum of stime tick deltas / ticks_per_second across all tree members.
+<a href=#40 id=40 data-nosnippet>40</a>    /// None when no PID is tracked.
+<a href=#41 id=41 data-nosnippet>41</a>    </span><span class="kw">pub </span>process_stime_secs: <span class="prelude-ty">Option</span>&lt;f64&gt;,
+<a href=#42 id=42 data-nosnippet>42</a>    <span class="doccomment">/// Resident set size of the process tree (sum of VmRSS from /proc/pid/status)
+<a href=#43 id=43 data-nosnippet>43</a>    /// in MiB, sampled at each interval (not a delta).
+<a href=#44 id=44 data-nosnippet>44</a>    /// None when no PID is tracked.
+<a href=#45 id=45 data-nosnippet>45</a>    </span><span class="kw">pub </span>process_rss_mib: <span class="prelude-ty">Option</span>&lt;u64&gt;,
+<a href=#46 id=46 data-nosnippet>46</a>    <span class="doccomment">/// Disk bytes actually read from storage by the process tree this interval.
+<a href=#47 id=47 data-nosnippet>47</a>    /// Delta of /proc/pid/io read_bytes across all tree members.
+<a href=#48 id=48 data-nosnippet>48</a>    /// None when no PID is tracked or /proc/pid/io is unreadable.
+<a href=#49 id=49 data-nosnippet>49</a>    </span><span class="kw">pub </span>process_disk_read_bytes: <span class="prelude-ty">Option</span>&lt;u64&gt;,
+<a href=#50 id=50 data-nosnippet>50</a>    <span class="doccomment">/// Disk bytes actually written to storage by the process tree this interval.
+<a href=#51 id=51 data-nosnippet>51</a>    /// Delta of /proc/pid/io write_bytes across all tree members.
+<a href=#52 id=52 data-nosnippet>52</a>    /// None when no PID is tracked or /proc/pid/io is unreadable.
+<a href=#53 id=53 data-nosnippet>53</a>    </span><span class="kw">pub </span>process_disk_write_bytes: <span class="prelude-ty">Option</span>&lt;u64&gt;,
+<a href=#54 id=54 data-nosnippet>54</a>    <span class="doccomment">/// Fractional GPUs actively consumed by the tracked process tree, expressed
+<a href=#55 id=55 data-nosnippet>55</a>    /// as the equivalent number of fully-utilized GPUs (same convention as
+<a href=#56 id=56 data-nosnippet>56</a>    /// `process_cores_used`).  e.g. 0.5 means the tree is using half of one GPU.
+<a href=#57 id=57 data-nosnippet>57</a>    /// NVIDIA: derived from SM utilization via nvmlDeviceGetProcessUtilization
+<a href=#58 id=58 data-nosnippet>58</a>    /// (no accounting mode required), summed across matched PIDs and devices,
+<a href=#59 id=59 data-nosnippet>59</a>    /// then divided by 100.
+<a href=#60 id=60 data-nosnippet>60</a>    /// AMD: derived from drm-engine-gfx cumulative ns via FdInfoStat delta tracking.
+<a href=#61 id=61 data-nosnippet>61</a>    /// None when no GPU is present, NVML/AMD data is unavailable, or no samples returned.
+<a href=#62 id=62 data-nosnippet>62</a>    </span><span class="kw">pub </span>process_gpu_usage: <span class="prelude-ty">Option</span>&lt;f64&gt;,
+<a href=#63 id=63 data-nosnippet>63</a>    <span class="doccomment">/// Total VRAM consumed by the tracked process tree across all GPUs (MiB).
+<a href=#64 id=64 data-nosnippet>64</a>    /// NVIDIA: sum of used_gpu_memory from NVML running-process lists.
+<a href=#65 id=65 data-nosnippet>65</a>    /// AMD: sum of drm-memory-vram from /proc/pid/fdinfo for matched devices.
+<a href=#66 id=66 data-nosnippet>66</a>    /// None when no PID is tracked or no GPU is present on the host.
+<a href=#67 id=67 data-nosnippet>67</a>    </span><span class="kw">pub </span>process_gpu_vram_mib: <span class="prelude-ty">Option</span>&lt;f64&gt;,
+<a href=#68 id=68 data-nosnippet>68</a>    <span class="doccomment">/// Number of GPUs on which at least one process in the tracked tree has
+<a href=#69 id=69 data-nosnippet>69</a>    /// allocated VRAM or appears in the running-process list.
+<a href=#70 id=70 data-nosnippet>70</a>    /// None when no PID is tracked or no GPU is present on the host.
+<a href=#71 id=71 data-nosnippet>71</a>    </span><span class="kw">pub </span>process_gpu_utilized: <span class="prelude-ty">Option</span>&lt;u32&gt;,
+<a href=#72 id=72 data-nosnippet>72</a>    <span class="doccomment">/// PIDs in the tracked process tree (root + all descendants).
+<a href=#73 id=73 data-nosnippet>73</a>    /// Populated by CpuCollector; used by main.rs to query per-process GPU stats.
+<a href=#74 id=74 data-nosnippet>74</a>    /// Skipped in JSON/CSV output -- internal routing field only.
+<a href=#75 id=75 data-nosnippet>75</a>    </span><span class="attr">#[serde(skip)]
+<a href=#76 id=76 data-nosnippet>76</a>    </span><span class="kw">pub </span>process_tree_pids: Vec&lt;i32&gt;,
+<a href=#77 id=77 data-nosnippet>77</a>}
+</code></pre></div></section></main></body></html>

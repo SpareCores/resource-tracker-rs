@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["discover_interfaces","net_attr","read_interface_info","read_mtu","read_operstate","read_speed_mbps","sysfs_read"],"struct":["InterfaceInfo","NetworkCollector","Snapshot"],"type":["Result"]};

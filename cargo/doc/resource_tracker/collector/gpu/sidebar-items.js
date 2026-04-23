@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["read_sysfs_u64"],"struct":["GpuCollector"],"type":["Result"]};

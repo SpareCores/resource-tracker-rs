@@ -1,0 +1,471 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Benchmarks - resource-tracker</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="This is a book to document the SpareCores resource-tracker project">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-2459343d.css">
+        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/custom-fa3bf03f.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-c01db0e6.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-a617d0e0.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">resource-tracker</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="benchmarks"><a class="header" href="#benchmarks">Benchmarks</a></h1>
+<h2 id="comparison-with-httpsgithubcomsparecoresresource-tracker"><a class="header" href="#comparison-with-httpsgithubcomsparecoresresource-tracker">Comparison with https://github.com/SpareCores/resource-tracker</a></h2>
+<h3 id="status"><a class="header" href="#status">Status</a></h3>
+<p>The Rust binary collects every field that Python’s <code>SystemTracker</code> emits,
+and emits them as either <strong>JSON Lines</strong> (default) or <strong>CSV</strong> (<code>--format csv</code>).</p>
+<p>The CSV output has <strong>parity with Python</strong> for all columns (same names, units,
+and computation formulas). The JSON output is a <strong>strict superset</strong> – it
+carries all CSV fields plus additional metrics not available in Python.</p>
+<hr>
+<h3 id="csv-column-mapping"><a class="header" href="#csv-column-mapping">CSV Column Mapping</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Column</th><th>Python formula</th><th>Rust CSV source</th><th>Unit</th><th>Parity?</th></tr>
+</thead>
+<tbody>
+<tr><td><code>timestamp</code></td><td><code>time.time()</code> (float)</td><td><code>timestamp_secs</code> (integer)</td><td>Unix seconds</td><td>approx (see note 1)</td></tr>
+<tr><td><code>processes</code></td><td>count of all <code>/proc/[0-9]+</code> entries</td><td><code>cpu.process_count</code> – same <code>/proc</code> count</td><td>count</td><td>yes</td></tr>
+<tr><td><code>utime</code></td><td>per-interval delta(user+nice ticks) / ticks_per_sec</td><td><code>cpu.utime_secs</code> – same delta calculation</td><td>seconds/interval</td><td>yes</td></tr>
+<tr><td><code>stime</code></td><td>per-interval delta(system ticks) / ticks_per_sec</td><td><code>cpu.stime_secs</code> – same delta calculation</td><td>seconds/interval</td><td>yes</td></tr>
+<tr><td><code>cpu_usage</code></td><td>fractional cores (0..N)</td><td><code>cpu.utilization_pct</code> directly (field is already fractional cores)</td><td>fractional cores</td><td>yes</td></tr>
+<tr><td><code>memory_free</code></td><td><code>MemFree</code> from <code>/proc/meminfo</code></td><td><code>memory.free_mib</code> (<code>MemFree</code> / 1,048,576)</td><td>MiB</td><td>yes</td></tr>
+<tr><td><code>memory_used</code></td><td><code>MemTotal - MemFree - Buffers - (Cached+SReclaimable)</code></td><td><code>memory.used_mib</code> – same formula</td><td>MiB</td><td>yes</td></tr>
+<tr><td><code>memory_buffers</code></td><td><code>Buffers</code></td><td><code>memory.buffers_mib</code></td><td>MiB</td><td>yes</td></tr>
+<tr><td><code>memory_cached</code></td><td><code>Cached + SReclaimable</code></td><td><code>memory.cached_mib</code> – same formula</td><td>MiB</td><td>yes</td></tr>
+<tr><td><code>memory_active</code></td><td><code>Active</code></td><td><code>memory.active_mib</code></td><td>MiB</td><td>yes</td></tr>
+<tr><td><code>memory_inactive</code></td><td><code>Inactive</code></td><td><code>memory.inactive_mib</code></td><td>MiB</td><td>yes</td></tr>
+<tr><td><code>disk_read_bytes</code></td><td>per-interval delta(sectors_read) x sector_size, all non-partition diskstats entries</td><td>sum of rate x interval across all <code>/sys/block</code> whole-disk entries</td><td>bytes/interval</td><td>approx (see note 2)</td></tr>
+<tr><td><code>disk_write_bytes</code></td><td>same, write side</td><td>same, write side</td><td>bytes/interval</td><td>approx (see note 2)</td></tr>
+<tr><td><code>disk_space_total_gb</code></td><td>sum of all non-virtual mount points (incl. snap/loop)</td><td>sum of all mounts under <code>/sys/block</code> devices (incl. loop mounts)</td><td>GB</td><td>approx (see note 3)</td></tr>
+<tr><td><code>disk_space_used_gb</code></td><td>same, <code>total - free</code> (incl. reserved-for-root blocks)</td><td>same formula</td><td>GB</td><td>approx (see note 3)</td></tr>
+<tr><td><code>disk_space_free_gb</code></td><td><code>f_bavail</code> from <code>statvfs</code></td><td><code>f_bavail</code> from <code>statvfs</code></td><td>GB</td><td>approx (see note 3)</td></tr>
+<tr><td><code>net_recv_bytes</code></td><td>per-interval delta(rx_bytes) across all interfaces</td><td>sum of rate x interval across all interfaces</td><td>bytes/interval</td><td>yes</td></tr>
+<tr><td><code>net_sent_bytes</code></td><td>same, tx side</td><td>same, tx side</td><td>bytes/interval</td><td>yes</td></tr>
+<tr><td><code>gpu_usage</code></td><td>fractional GPUs (0..N)</td><td>sum <code>gpu[].utilization_pct / 100</code></td><td>fractional GPUs</td><td>yes</td></tr>
+<tr><td><code>gpu_vram</code></td><td>used VRAM in MiB</td><td>sum <code>gpu[].vram_used_bytes / 1,048,576</code></td><td>MiB</td><td>yes</td></tr>
+<tr><td><code>gpu_utilized</code></td><td>count of GPUs with utilization &gt; 0</td><td>count <code>gpu[].utilization_pct &gt; 0</code></td><td>count</td><td>yes</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h3 id="documented-semantic-differences"><a class="header" href="#documented-semantic-differences">Documented Semantic Differences</a></h3>
+<h4 id="note-1--timestamp-precision"><a class="header" href="#note-1--timestamp-precision">Note 1 – Timestamp precision</a></h4>
+<p>Python’s <code>timestamp</code> is a float (sub-second resolution). Rust emits an integer
+Unix timestamp. When aligning rows for comparison, use a +/-0.5 s tolerance.</p>
+<h4 id="note-2--disk-io-device-set-and-sector-size"><a class="header" href="#note-2--disk-io-device-set-and-sector-size">Note 2 – Disk I/O: device set and sector size</a></h4>
+<p>Both Python and Rust use <code>/proc/diskstats</code> deltas and iterate all
+<strong>whole-disk</strong> (non-partition) entries. The device sets should match on most
+Linux systems.</p>
+<p><strong>Python’s device filter (<code>is_partition</code> from <code>resource_tracker.helpers</code>):</strong></p>
+<pre><code class="language-python"># Returns True only for names matching (sd*, nvme*, mmcblk*) partition patterns
+# where a parent device exists in /sys/block. Everything else -- including
+# loop*, dm-*, zram* -- is treated as a whole-disk device and included.
+</code></pre>
+<p><strong>Rust’s device filter:</strong></p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Reads /sys/block/ directory entries into a HashSet.
+// Keeps every diskstats entry whose name is a direct /sys/block/&lt;name&gt; entry.
+// Logically equivalent to Python's filter: partitions like nvme0n1p1
+// appear under /sys/block/nvme0n1/ (not top-level) and are excluded.
+let block_set: HashSet&lt;String&gt; = read_dir("/sys/block")...;
+let devs = diskstats.filter(|d| block_set.contains(&amp;d.name));
+<span class="boring">}</span></code></pre>
+<p><strong>Sector size:</strong> both Python and Rust read the actual hardware sector size per
+device from <code>/sys/block/&lt;dev&gt;/queue/hw_sector_size</code>, falling back to 512 bytes.
+This was implemented in Rust as P-DSK-SECTOR.</p>
+<p><strong>Rationale for explicit sector size:</strong> on 4K-native drives the logical sector
+size is 4,096 bytes; using a hard-coded 512 would under-count I/O bytes by 8x.
+Reading the actual value from sysfs ensures correctness on all drive types.</p>
+<h4 id="note-2a--zfs-volumes"><a class="header" href="#note-2a--zfs-volumes">Note 2a – ZFS volumes</a></h4>
+<p>Python’s disk I/O implementation handles ZFS volumes, where disk usage is
+reported differently at <code>/sys/block</code>. Rust does not currently account for
+this. ZFS support is a planned enhancement (not required for MVP).</p>
+<h4 id="note-3--disk-space-mount-set"><a class="header" href="#note-3--disk-space-mount-set">Note 3 – Disk space: mount set</a></h4>
+<p>Python sums all mount points that <code>psutil.disk_partitions()</code> reports as
+non-virtual (including snap squashfs loop mounts). Rust sums all mount points
+found in <code>/proc/mounts</code> whose source device matches a <code>/sys/block</code> entry.</p>
+<p>On systems with many snap packages, Python includes the squashfs read-only
+mounts for each snap. Because <code>/dev/loop*</code> devices appear in <code>/sys/block</code>,
+Rust’s <code>mounts_for_device("loopN")</code> will pick these up too. However,
+<code>psutil</code> may enumerate mount points that are not under <code>/dev/</code> (e.g., <code>tmpfs</code>,
+<code>overlay</code>, <code>cgroup2</code>) which Rust’s <code>/dev/&lt;device&gt;</code> prefix filter skips. This
+can cause small differences in <code>disk_space_total_gb</code> on container hosts or
+systems with unusual mount configurations.</p>
+<p>To investigate: run <code>mount | grep -v '^/dev' | grep -v ' type tmpfs'</code> to see
+which mount points Python may be counting that Rust is not.</p>
+<hr>
+<h3 id="running-the-comparison"><a class="header" href="#running-the-comparison">Running the comparison</a></h3>
+<h4 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h4>
+<ul>
+<li><code>uv</code> &gt;= 0.9 (Astral): <code>which uv</code></li>
+<li>Rust release binary: <code>cargo build --release</code></li>
+</ul>
+<h4 id="directory-layout"><a class="header" href="#directory-layout">Directory layout</a></h4>
+<pre><code>benchmarks/
++-- pyproject.toml      # uv project -- resource-tracker dependency
++-- run_python.py       # SystemTracker -&gt; results/python_metrics.csv
++-- run_rust.sh         # resource-tracker --format csv -&gt; results/rust_metrics.csv
++-- compare.py          # merge on timestamp, print diff table
++-- results/            # populated at runtime (gitignore this)
+    +-- python_metrics.csv
+    +-- rust_metrics.csv
+</code></pre>
+<h4 id="step-1--set-up-python-environment"><a class="header" href="#step-1--set-up-python-environment">Step 1 – Set up Python environment</a></h4>
+<pre><code class="language-bash">cd benchmarks
+uv init --no-workspace
+uv add resource-tracker
+</code></pre>
+<h4 id="step-2--run_pythonpy"><a class="header" href="#step-2--run_pythonpy">Step 2 – <code>run_python.py</code></a></h4>
+<pre><code class="language-python">"""Collect SystemTracker metrics for DURATION seconds -&gt; results/python_metrics.csv"""
+import time
+from resource_tracker import SystemTracker
+
+DURATION = 60
+INTERVAL = 1
+
+tracker = SystemTracker(interval=INTERVAL, output_file="results/python_metrics.csv")
+time.sleep(DURATION)
+tracker.stop()
+print(f"Done -&gt; results/python_metrics.csv")
+</code></pre>
+<h4 id="step-3--run_rustsh"><a class="header" href="#step-3--run_rustsh">Step 3 – <code>run_rust.sh</code></a></h4>
+<pre><code class="language-bash">#!/usr/bin/env bash
+set -euo pipefail
+DURATION=60
+INTERVAL=1
+mkdir -p results
+timeout "$DURATION" \
+  ../target/release/resource-tracker --interval "$INTERVAL" --format csv \
+  &gt; results/rust_metrics.csv || true
+echo "Collected $(( $(wc -l &lt; results/rust_metrics.csv) - 1 )) rows -&gt; results/rust_metrics.csv"
+</code></pre>
+<h4 id="step-4--comparepy"><a class="header" href="#step-4--comparepy">Step 4 – <code>compare.py</code></a></h4>
+<p>Strategy:</p>
+<ol>
+<li>Load both CSVs, parse <code>timestamp</code> columns.</li>
+<li>Differentiate Python’s cumulative I/O columns with <code>diff()</code> to get rates,
+matching Rust’s per-interval values.</li>
+<li>Merge on nearest timestamp (tolerance +/-0.5 x interval).</li>
+<li>For each shared metric, report: mean, std, min/max for each side plus
+mean absolute difference (MAD) and % deviation.</li>
+</ol>
+<pre><code class="language-python">"""Compare python_metrics.csv and rust_metrics.csv side by side."""
+import csv, sys
+from pathlib import Path
+
+IO_COLS = {"disk_read_bytes", "disk_write_bytes", "net_recv_bytes", "net_sent_bytes"}
+
+def load(path):
+    rows = list(csv.DictReader(Path(path).open()))
+    return [{k: float(v) if v else 0.0 for k, v in row.items()} for row in rows]
+
+def diff_col(rows, col):
+    """Replace cumulative totals with per-row deltas (rate proxy)."""
+    for i in range(len(rows) - 1, 0, -1):
+        rows[i][col] = rows[i][col] - rows[i-1][col]
+    rows[0][col] = 0.0
+
+py  = load("results/python_metrics.csv")
+rs  = load("results/rust_metrics.csv")
+
+for col in IO_COLS:
+    if col in (py[0] if py else {}):
+        diff_col(py, col)
+
+shared_cols = set(py[0]) &amp; set(rs[0]) - {"timestamp"} if py and rs else set()
+
+print(f"{'column':&lt;30} {'py_mean':&gt;12} {'rs_mean':&gt;12} {'MAD':&gt;12} {'%dev':&gt;8}")
+print("-" * 80)
+for col in sorted(shared_cols):
+    py_vals = [r[col] for r in py]
+    rs_vals = [r[col] for r in rs]
+    py_mean = sum(py_vals) / len(py_vals)
+    rs_mean = sum(rs_vals) / len(rs_vals)
+    mad = sum(abs(a - b) for a, b in zip(py_vals, rs_vals)) / len(py_vals)
+    pct = (mad / py_mean * 100) if py_mean != 0 else float("inf")
+    print(f"{col:&lt;30} {py_mean:&gt;12.3f} {rs_mean:&gt;12.3f} {mad:&gt;12.3f} {pct:&gt;7.1f}%")
+</code></pre>
+<hr>
+<h3 id="results"><a class="header" href="#results">Results</a></h3>
+<blockquote>
+<p><em>To be populated after running the benchmark on target hardware.</em></p>
+<p>Fill in: host specs (CPU model, RAM, OS, kernel), Rust git SHA,
+Python <code>resource-tracker</code> version, output table from <code>compare.py</code>,
+and observations on where the two implementations agree and diverge.</p>
+</blockquote>
+<hr>
+<h3 id="remaining-known-differences"><a class="header" href="#remaining-known-differences">Remaining known differences</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Aspect</th><th>Python</th><th>Rust</th><th>Status</th></tr>
+</thead>
+<tbody>
+<tr><td>Timestamp precision</td><td>Float (sub-second)</td><td>Integer (Unix seconds)</td><td>By design; use +/-0.5 s tolerance when aligning rows</td></tr>
+<tr><td>Disk I/O sector size</td><td>Per-device from <code>/sys/block/&lt;dev&gt;/queue/hw_sector_size</code>, fallback 512</td><td>Per-device from same sysfs path, fallback 512</td><td>Implemented (P-DSK-SECTOR); parity achieved</td></tr>
+<tr><td>Disk space: non-<code>/dev/</code> mounts</td><td><code>psutil</code> includes overlay/tmpfs/cgroup mounts if reported non-virtual</td><td>Only <code>/dev/&lt;device&gt;</code> prefixed sources in <code>/proc/mounts</code></td><td>Low impact on physical hosts; notable on container/VM hosts</td></tr>
+<tr><td>ZFS volumes</td><td>Handled via <code>psutil</code> disk partition enumeration</td><td>Not yet implemented</td><td>Planned enhancement</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h3 id="json-superset-fields-not-in-python-csv"><a class="header" href="#json-superset-fields-not-in-python-csv">JSON superset fields (not in Python CSV)</a></h3>
+<p>The JSON output carries richer data than any Python CSV column can express.</p>
+<p><strong>Rationale:</strong> the CSV columns match Python for downstream compatibility.
+The JSON output is the primary format for new consumers and exposes all
+available data without being constrained by the Python column set.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Type</th><th>Field</th><th>Description</th><th>Rationale</th></tr>
+</thead>
+<tbody>
+<tr><td>cpu</td><td><code>cpu.per_core_pct[]</code></td><td>Per-logical-core utilization (0–100 each)</td><td>Identify hot cores and NUMA imbalance; not expressible as a single CSV scalar</td></tr>
+<tr><td>cpu</td><td><code>cpu.process_cores_used</code></td><td>Fractional cores consumed by tracked PID tree</td><td>Covers multi-process workloads (workers, MPI ranks); Python tracks only the root process</td></tr>
+<tr><td>cpu</td><td><code>cpu.process_child_count</code></td><td>Live descendants under tracked root PID</td><td>Detect fork/thread storms without external tooling</td></tr>
+<tr><td>memory</td><td><code>memory.total_mib</code></td><td>Total installed RAM</td><td>Baseline for capacity planning</td></tr>
+<tr><td>memory</td><td><code>memory.available_mib</code></td><td><code>MemAvailable</code>: free + reclaimable</td><td>Better headroom estimate than <code>free_mib</code> alone on systems with large page caches</td></tr>
+<tr><td>memory</td><td><code>memory.used_pct</code></td><td>RAM usage as a percentage</td><td>Convenient derived field; avoids client-side division</td></tr>
+<tr><td>memory</td><td><code>memory.active_mib</code> / <code>memory.inactive_mib</code></td><td>Active and inactive page counts</td><td>Distinguish working-set pressure from cold cache</td></tr>
+<tr><td>memory</td><td><code>memory.swap_total_mib</code> / <code>memory.swap_used_mib</code> / <code>memory.swap_used_pct</code></td><td>Swap metrics</td><td>Detect swap pressure before OOM; Python omits swap entirely</td></tr>
+<tr><td>network</td><td><code>network[].interface</code> etc.</td><td>Interface name, MAC, driver, operstate, speed, MTU</td><td>Identify which NIC is under load and whether the link is at full speed</td></tr>
+<tr><td>network</td><td><code>network[].rx_bytes_total</code> / <code>tx_bytes_total</code></td><td>Cumulative byte counters</td><td>Enables client-side rate computation at any granularity</td></tr>
+<tr><td>disk</td><td><code>disk[].device_type</code></td><td><code>nvme</code>, <code>ssd</code>, or <code>hdd</code></td><td>Correlate latency with drive class without parsing device names</td></tr>
+<tr><td>disk</td><td><code>disk[].capacity_bytes</code></td><td>Raw device capacity</td><td>Capacity planning without a separate <code>lsblk</code> call</td></tr>
+<tr><td>disk</td><td><code>disk[].mounts[]</code></td><td>Per-mount-point space (total/used/available/pct)</td><td>Python aggregates all mounts into three scalars; Rust retains per-volume detail</td></tr>
+<tr><td>disk</td><td><code>disk[].model</code> / <code>vendor</code> / <code>serial</code></td><td>Drive identity</td><td>Correlate metrics with physical hardware inventory</td></tr>
+<tr><td>gpu</td><td><code>gpu[].temperature_celsius</code></td><td>Die temperature</td><td>Detect thermal throttling in real time</td></tr>
+<tr><td>gpu</td><td><code>gpu[].power_watts</code></td><td>Power draw</td><td>Power-efficiency analysis; watts-per-FLOP budgeting</td></tr>
+<tr><td>gpu</td><td><code>gpu[].frequency_mhz</code></td><td>Core clock</td><td>Confirm boost clock is active; correlate with thermal state</td></tr>
+<tr><td>gpu</td><td><code>gpu[].vram_total_bytes</code></td><td>Total VRAM</td><td>Baseline for VRAM utilization percentage</td></tr>
+<tr><td>gpu</td><td><code>gpu[].uuid</code> / <code>name</code> / <code>device_type</code> / <code>host_id</code></td><td>GPU identity</td><td>Multi-GPU systems: attribute metrics to specific devices</td></tr>
+</tbody>
+</table>
+</div>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="Design.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="Usage.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="Design.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="Usage.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-c2a407aa.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

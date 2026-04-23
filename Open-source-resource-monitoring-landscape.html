@@ -1,0 +1,1088 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Open Source Alternatives - resource-tracker</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="This is a book to document the SpareCores resource-tracker project">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-2459343d.css">
+        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/custom-fa3bf03f.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-c01db0e6.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-a617d0e0.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">resource-tracker</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="open-source-resource-monitoring-landscape"><a class="header" href="#open-source-resource-monitoring-landscape">Open-Source Resource Monitoring Landscape</a></h1>
+<h2 id="competitive-analysis-for-resource-tracker-sparecores"><a class="header" href="#competitive-analysis-for-resource-tracker-sparecores">Competitive Analysis for <code>resource-tracker</code> (SpareCores)</a></h2>
+<p><strong>Prepared:</strong> March 25, 2026
+<strong>Context:</strong> Phase 1 feasibility assessment for a Rust/Linux CLI implementation of ResourceTracker
+<strong>Reference tool:</strong> https://github.com/SpareCores/resource-tracker</p>
+<hr>
+<h2 id="executive-summary"><a class="header" href="#executive-summary">Executive Summary</a></h2>
+<p><code>resource-tracker</code> occupies a specific and underserved niche: a <strong>lightweight, zero-dependency, batch-job-oriented process + system resource monitor</strong> with workflow framework integration (Metaflow), visualization via cards, and cloud server recommendations. The open-source landscape has many partial overlaps but no single tool matches all its characteristics simultaneously.</p>
+<p>The tools below are organized into meaningful categories. Most tools are either:</p>
+<ul>
+<li><strong>Too low-level</strong> (profilers that require code instrumentation or produce flame graphs rather than time-series resource logs)</li>
+<li><strong>Too heavy</strong> (system daemons, full observability stacks)</li>
+<li><strong>Too narrow</strong> (single-resource: CPU only, or memory only, or GPU only)</li>
+<li><strong>Not batch-job oriented</strong> (designed for long-running services, not scripts that run and exit)</li>
+</ul>
+<hr>
+<h2 id="category-1-python-libraries-for-processsystem-resource-monitoring"><a class="header" href="#category-1-python-libraries-for-processsystem-resource-monitoring">Category 1: Python Libraries for Process/System Resource Monitoring</a></h2>
+<p>These are the closest functional analogues to <code>resource-tracker</code> in the Python ecosystem.</p>
+<hr>
+<h3 id="11-psutil"><a class="header" href="#11-psutil">1.1 psutil</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/giampaolo/psutil</li>
+<li><strong>Language:</strong> Python (C extension)</li>
+<li><strong>Description:</strong> The foundational library for cross-platform system/process information in Python. <code>resource-tracker</code> itself uses psutil as an optional backend on non-Linux systems. psutil retrieves CPU, memory, disk, network, and process-level data programmatically but provides no time-series tracking, no decorator/wrapper API, no visualization, and no batch job reporting.</li>
+<li><strong>Key features:</strong> CPU %, memory (RSS/PSS/USS/VMS), per-process I/O, network I/O, disk usage, process tree traversal. Cross-platform (Linux, macOS, Windows).</li>
+<li><strong>Difference:</strong> Raw data API only. No tracking loop, no reports, no workflow integration. It is a building block, not a solution.</li>
+</ul>
+<hr>
+<h3 id="12-memory_profiler"><a class="header" href="#12-memory_profiler">1.2 memory_profiler</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/pythonprofilers/memory_profiler</li>
+<li><strong>Language:</strong> Python</li>
+<li><strong>Description:</strong> Line-by-line memory usage profiler for Python scripts. Uses <code>@profile</code> decorator and <code>mprof</code> CLI to record memory usage over time and plot it. Built on psutil.</li>
+<li><strong>Key features:</strong> Line-level memory profiling, time-series memory plot via <code>mprof</code>, <code>@profile</code> decorator, <code>memory_usage()</code> API.</li>
+<li><strong>Difference:</strong> Memory only (no CPU, GPU, disk, network). Requires code instrumentation for line-level profiling. Targeted at developers finding memory leaks, not at batch job operators seeking resource utilization logs.</li>
+</ul>
+<hr>
+<h3 id="13-scalene"><a class="header" href="#13-scalene">1.3 Scalene</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/plasma-umass/scalene</li>
+<li><strong>Language:</strong> Python + C++</li>
+<li><strong>Description:</strong> High-performance, high-precision CPU, GPU, and memory profiler for Python. Uniquely profiles CPU time, GPU time, and memory at the line level simultaneously. Includes AI-powered optimization suggestions and an interactive web UI.</li>
+<li><strong>Key features:</strong> Line-level CPU + GPU + memory profiling, separates Python vs native time, web-based interactive report, minimal overhead (~10-20%).</li>
+<li><strong>Difference:</strong> A developer profiler (find bottlenecks in code), not a resource utilization logger for batch jobs. Does not track network or disk I/O, does not integrate with workflow tools, does not produce time-series utilization logs for operational use.</li>
+</ul>
+<hr>
+<h3 id="14-memray"><a class="header" href="#14-memray">1.4 Memray</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/bloomberg/memray</li>
+<li><strong>Language:</strong> Python + C++</li>
+<li><strong>Description:</strong> Bloomberg’s memory profiler for Python. Tracks every allocation in Python, native extensions, and the interpreter itself. Produces flame graphs, heap charts, and other visualizations.</li>
+<li><strong>Key features:</strong> Full allocation tracking (Python + C/C++), flame graphs, live mode, Jupyter integration, reporter API.</li>
+<li><strong>Difference:</strong> Memory only, developer-oriented (find leaks/hotspots in code). Does not track CPU, GPU, disk, or network. Not designed for batch job monitoring.</li>
+</ul>
+<hr>
+<h3 id="15-fil-filprofiler"><a class="header" href="#15-fil-filprofiler">1.5 Fil (filprofiler)</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/pythonspeed/filprofiler</li>
+<li><strong>Language:</strong> Python + Rust</li>
+<li><strong>Description:</strong> Memory profiler from pythonspeed targeting data scientists and scientific computing. Finds peak memory usage and identifies what code caused the peak. Produces flame graphs.</li>
+<li><strong>Key features:</strong> Peak memory tracking (captures C and Python allocations), flame graphs, designed for NumPy/Pandas workloads, CLI usage.</li>
+<li><strong>Difference:</strong> Memory only, developer-oriented. No CPU, GPU, disk, network. Produces offline profiling reports, not operational time-series logs.</li>
+</ul>
+<hr>
+<h3 id="16-pyinstrument"><a class="header" href="#16-pyinstrument">1.6 pyinstrument</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/joerick/pyinstrument</li>
+<li><strong>Language:</strong> Python</li>
+<li><strong>Description:</strong> Sampling call-stack profiler for Python. Samples the call stack every 1ms and shows a readable summary of where time is spent. Supports context manager and decorator API.</li>
+<li><strong>Key features:</strong> Low-overhead sampling, context manager (<code>with Profiler()</code>), decorator, CLI, HTML/text/JSON output, async support.</li>
+<li><strong>Difference:</strong> CPU time only (call stack), no memory/GPU/disk/network. Developer-oriented (why is code slow?), not a resource utilization monitor.</li>
+</ul>
+<hr>
+<h3 id="17-py-spy"><a class="header" href="#17-py-spy">1.7 py-spy</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/benfred/py-spy</li>
+<li><strong>Language:</strong> Rust</li>
+<li><strong>Description:</strong> Sampling profiler for Python programs written in Rust. Attaches to a running Python process without modifying it. Can generate flame graphs or a top-like display.</li>
+<li><strong>Key features:</strong> Attaches to running process (no code changes), flame graphs, top-like live view, very low overhead, works across OS.</li>
+<li><strong>Difference:</strong> CPU only (call stack). No memory, GPU, disk, or network tracking. Attach-to-process model differs from <code>resource-tracker</code>’s wrap-a-job model.</li>
+</ul>
+<hr>
+<h3 id="18-austin"><a class="header" href="#18-austin">1.8 Austin</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/P403n1x87/austin</li>
+<li><strong>Language:</strong> C</li>
+<li><strong>Description:</strong> Python frame stack sampler for CPython. Samples the Python interpreter’s memory space directly to retrieve running thread stacks. Extremely low overhead.</li>
+<li><strong>Key features:</strong> Zero-instrumentation, pure C, very low overhead, multi-thread and multi-process support, output compatible with flame graph tools.</li>
+<li><strong>Difference:</strong> CPU/call stack profiling only. No resource utilization metrics (memory, GPU, disk, network).</li>
+</ul>
+<hr>
+<h3 id="19-glances"><a class="header" href="#19-glances">1.9 Glances</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/nicolargo/glances</li>
+<li><strong>Language:</strong> Python</li>
+<li><strong>Description:</strong> Cross-platform system monitoring tool with a rich curses/web UI. Shows CPU, memory, disk, network, process list, temperatures, GPU (via plugin), Docker containers, and more. Can export data to InfluxDB, CSV, Prometheus, etc.</li>
+<li><strong>Key features:</strong> Real-time monitoring, web UI, REST API, exporters (InfluxDB, Prometheus, CSV, JSON), Docker/container awareness, GPU plugin, cross-platform (Linux, macOS, Windows, BSD).</li>
+<li><strong>Difference:</strong> A long-running system monitor daemon/interactive tool, not designed to wrap a batch job, produce a per-job report, or integrate with workflow frameworks. No job-level summary reports.</li>
+</ul>
+<hr>
+<h3 id="110-nvitop"><a class="header" href="#110-nvitop">1.10 nvitop</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/XuehaiPan/nvitop</li>
+<li><strong>Language:</strong> Python</li>
+<li><strong>Description:</strong> Interactive NVIDIA GPU process viewer with a rich terminal UI. Goes beyond <code>nvidia-smi</code> by showing per-process GPU/VRAM usage in real time, supports programmatic API access.</li>
+<li><strong>Key features:</strong> Per-process GPU utilization and VRAM, process tree, interactive kill/signal, rich terminal UI, Python API (<code>ResourceMetricCollector</code>).</li>
+<li><strong>Difference:</strong> GPU-only (NVIDIA). Covers system + process level GPU metrics well. Its <code>ResourceMetricCollector</code> API is a meaningful overlap with <code>resource-tracker</code> for GPU tracking. No CPU/memory/disk/network integration.</li>
+</ul>
+<hr>
+<h3 id="111-gpustat"><a class="header" href="#111-gpustat">1.11 gpustat</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/wookayin/gpustat</li>
+<li><strong>Language:</strong> Python</li>
+<li><strong>Description:</strong> Simple command-line utility for querying and monitoring NVIDIA GPU status. Aggregates <code>nvidia-smi</code> output with color-coded display. Supports <code>--watch</code> mode.</li>
+<li><strong>Key features:</strong> GPU utilization, VRAM usage, temperature, power draw, per-process GPU use, JSON output, watch mode.</li>
+<li><strong>Difference:</strong> NVIDIA GPU only, read-only display tool, no time-series logging, no CPU/memory/disk/network.</li>
+</ul>
+<hr>
+<h3 id="112-pynvml--nvidia-ml-py"><a class="header" href="#112-pynvml--nvidia-ml-py">1.12 pynvml / nvidia-ml-py</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/gpuopenanalytics/pynvml</li>
+<li><strong>Language:</strong> Python (NVML binding)</li>
+<li><strong>Description:</strong> Python bindings for NVIDIA’s NVML C library, enabling programmatic GPU diagnostics. Used as a building block by gpustat, nvitop, and resource-tracker itself.</li>
+<li><strong>Key features:</strong> Full NVML API access: GPU utilization, VRAM, temperature, power, clock speed, process-level GPU usage, fan speed.</li>
+<li><strong>Difference:</strong> Raw API, no tracking loop, no reporting. A building block.</li>
+</ul>
+<hr>
+<h3 id="113-codecarbon"><a class="header" href="#113-codecarbon">1.13 CodeCarbon</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/mlco2/codecarbon</li>
+<li><strong>Language:</strong> Python</li>
+<li><strong>Description:</strong> Tracks CPU, GPU, and RAM energy consumption and converts it to estimated CO2 emissions. Designed for ML training runs. Provides decorator and context manager APIs.</li>
+<li><strong>Key features:</strong> <code>@track_emissions</code> decorator, context manager, estimates CO2 equivalent, per-run reporting, dashboard, supports Intel RAPL and NVML.</li>
+<li><strong>Difference:</strong> Focused on energy/carbon footprint rather than raw resource utilization metrics. Does not track disk I/O or network. Closest in UX philosophy (decorator for batch scripts) but different output goal.</li>
+</ul>
+<hr>
+<h3 id="114-carbontracker"><a class="header" href="#114-carbontracker">1.14 CarbonTracker</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/lfwa/carbontracker</li>
+<li><strong>Language:</strong> Python</li>
+<li><strong>Description:</strong> Tracks and predicts energy consumption and carbon footprint of deep learning model training. Can stop training when predicted impact exceeds a threshold.</li>
+<li><strong>Key features:</strong> Predictive carbon footprint, supports GPU and CPU energy, training-run oriented, can send alerts.</li>
+<li><strong>Difference:</strong> Energy/carbon focused, ML training specific, no disk/network tracking.</li>
+</ul>
+<hr>
+<h3 id="115-pyrapl"><a class="header" href="#115-pyrapl">1.15 pyRAPL</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/powerapi-ng/pyRAPL</li>
+<li><strong>Language:</strong> Python</li>
+<li><strong>Description:</strong> Measures energy consumption of Python code using Intel RAPL (Running Average Power Limit) hardware counters. Provides decorator and context manager APIs.</li>
+<li><strong>Key features:</strong> CPU socket, DRAM, and integrated GPU energy measurement, decorator and <code>with</code> block APIs, per-domain granularity.</li>
+<li><strong>Difference:</strong> Intel RAPL only (Intel CPUs since Sandy Bridge), energy not utilization percentage, no GPU computation metrics, no disk/network.</li>
+</ul>
+<hr>
+<h3 id="116-pyjoules"><a class="header" href="#116-pyjoules">1.16 pyJoules</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/powerapi-ng/pyJoules</li>
+<li><strong>Language:</strong> Python</li>
+<li><strong>Description:</strong> Captures energy consumption of code snippets using Intel RAPL and NVIDIA NVML. Provides decorator and context manager APIs with breakpoints.</li>
+<li><strong>Key features:</strong> Multi-device energy capture (CPU, DRAM, NVIDIA GPU), decorator API, MongoDB and Pandas export handlers.</li>
+<li><strong>Difference:</strong> Energy measurement, not utilization tracking. Requires Intel RAPL-capable hardware.</li>
+</ul>
+<hr>
+<h3 id="117-powerapi"><a class="header" href="#117-powerapi">1.17 PowerAPI</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/powerapi-ng/powerapi</li>
+<li><strong>Language:</strong> Python</li>
+<li><strong>Description:</strong> Middleware framework for building software-defined power meters. Estimates power at process, container, VM, or application level. Can use hardware counters or performance counters.</li>
+<li><strong>Key features:</strong> Pluggable sensors and estimators, multiple granularity levels (process, container, VM), real-time power estimation.</li>
+<li><strong>Difference:</strong> Power/energy framework requiring configuration and sensor setup. Not a drop-in decorator for batch jobs.</li>
+</ul>
+<hr>
+<h3 id="118-eco2ai"><a class="header" href="#118-eco2ai">1.18 eco2AI</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/sb-ai-lab/eco2AI</li>
+<li><strong>Language:</strong> Python</li>
+<li><strong>Description:</strong> Tracks carbon emissions while training/inferring Python ML models. Accounts for CPU, GPU, and RAM energy consumption.</li>
+<li><strong>Key features:</strong> <code>@track_emissions</code> decorator, real-time emission monitoring, CSV reporting.</li>
+<li><strong>Difference:</strong> Carbon/energy focus, similar decorator pattern to <code>resource-tracker</code>, no disk/network.</li>
+</ul>
+<hr>
+<h3 id="119-pyperf"><a class="header" href="#119-pyperf">1.19 pyperf</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/psf/pyperf</li>
+<li><strong>Language:</strong> Python</li>
+<li><strong>Description:</strong> Python Software Foundation toolkit for writing and running benchmarks. Includes memory tracking (<code>--track-memory</code>, <code>--tracemalloc</code>) as part of benchmark metadata collection.</li>
+<li><strong>Key features:</strong> Benchmark calibration, worker process management, memory peak tracking, JSON results, statistical analysis.</li>
+<li><strong>Difference:</strong> Benchmarking framework, not a general resource monitor. Memory tracking is incidental to benchmarking.</li>
+</ul>
+<hr>
+<h3 id="120-clearml"><a class="header" href="#120-clearml">1.20 ClearML</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/clearml/clearml</li>
+<li><strong>Language:</strong> Python</li>
+<li><strong>Description:</strong> Open-source MLOps platform. Automatically tracks GPU, CPU, memory, and network metrics during ML experiment runs. Provides an experiment tracker, data manager, orchestrator, and more.</li>
+<li><strong>Key features:</strong> Automatic system metric logging (GPU, CPU, memory, network), experiment tracking, model registry, pipeline orchestration, web UI.</li>
+<li><strong>Difference:</strong> Full MLOps platform (not a lightweight library). Requires a ClearML server. Targets ML experiments rather than general batch jobs.</li>
+</ul>
+<hr>
+<h3 id="121-python-resmon"><a class="header" href="#121-python-resmon">1.21 python-resmon</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/xybu/python-resmon</li>
+<li><strong>Language:</strong> Python</li>
+<li><strong>Description:</strong> Lightweight resource monitor that records CPU usage, RAM usage, disk I/O, and NIC speed, outputting data in CSV format for post-processing.</li>
+<li><strong>Key features:</strong> CSV output, configurable polling interval, system-level metrics, easy post-processing.</li>
+<li><strong>Difference:</strong> System-level only (no per-process tracking), no GPU, no visualization, no workflow integration. Small utility script rather than a library.</li>
+</ul>
+<hr>
+<h2 id="category-2-interactive-terminal-monitors-system-level"><a class="header" href="#category-2-interactive-terminal-monitors-system-level">Category 2: Interactive Terminal Monitors (System-Level)</a></h2>
+<p>These tools provide real-time visual monitoring of system resources. They do not produce per-job reports or integrate with batch workflows, but they are widely used for manual resource observation.</p>
+<hr>
+<h3 id="21-htop"><a class="header" href="#21-htop">2.1 htop</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/htop-dev/htop</li>
+<li><strong>Language:</strong> C</li>
+<li><strong>Description:</strong> Interactive process viewer and system monitor. The modern replacement for <code>top</code>. Shows per-CPU usage, memory, swap, and a process list with tree view.</li>
+<li><strong>Key features:</strong> Interactive (kill, renice, filter), color-coded per-CPU bars, tree view, mouse support, cross-platform.</li>
+<li><strong>Difference:</strong> Interactive visual tool only. No data capture, no time-series, no batch job integration.</li>
+</ul>
+<hr>
+<h3 id="22-btop--btop"><a class="header" href="#22-btop--btop">2.2 btop / btop++</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/aristocratos/btop</li>
+<li><strong>Language:</strong> C++</li>
+<li><strong>Description:</strong> Advanced terminal resource monitor. Third generation of bashtop-&gt;bpytop-&gt;btop++. Shows CPU, memory, disk I/O, network, and process list with rich ASCII art graphs.</li>
+<li><strong>Key features:</strong> Responsive UI, mouse support, GPU support (Nvidia/AMD/Intel via plugins), disk I/O, network I/O, process filtering, themes.</li>
+<li><strong>Difference:</strong> Interactive visual tool only. No data export, no batch job tracking.</li>
+</ul>
+<hr>
+<h3 id="23-bpytop"><a class="header" href="#23-bpytop">2.3 bpytop</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/aristocratos/bpytop</li>
+<li><strong>Language:</strong> Python</li>
+<li><strong>Description:</strong> Python predecessor to btop++. Linux/macOS/FreeBSD resource monitor with animated ASCII graphs.</li>
+<li><strong>Key features:</strong> CPU, memory, disk, network, process list, ASCII graphs.</li>
+<li><strong>Difference:</strong> Interactive visual tool. Superseded by btop++.</li>
+</ul>
+<hr>
+<h3 id="24-bashtop"><a class="header" href="#24-bashtop">2.4 bashtop</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/aristocratos/bashtop</li>
+<li><strong>Language:</strong> Bash</li>
+<li><strong>Description:</strong> Original Bash-based resource monitor from the same developer. Ancestor of bpytop and btop++.</li>
+<li><strong>Key features:</strong> CPU, memory, disk, network, process monitoring in pure Bash.</li>
+<li><strong>Difference:</strong> Superseded by btop++. Interactive visual only.</li>
+</ul>
+<hr>
+<h3 id="25-glances-see-19-above"><a class="header" href="#25-glances-see-19-above">2.5 glances (see 1.9 above)</a></h3>
+<ul>
+<li>Interactive + exportable, see Category 1 entry.</li>
+</ul>
+<hr>
+<h3 id="26-atop"><a class="header" href="#26-atop">2.6 atop</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/Atoptool/atop</li>
+<li><strong>Language:</strong> C</li>
+<li><strong>Description:</strong> Advanced interactive system and process monitor for Linux. Records all system activity and writes to binary log files for later replay/analysis. Integrates with <code>atopsar</code> for historical reporting.</li>
+<li><strong>Key features:</strong> Full system activity logging (CPU, memory, disk, network, process), persistent binary logs, replay mode, atopsar for reporting.</li>
+<li><strong>Difference:</strong> Long-running daemon for system-wide logging. Not designed to wrap a specific job; tracks the whole system. Closest among CLI tools to providing historical per-process data.</li>
+</ul>
+<hr>
+<h3 id="27-nmon-nigels-monitor"><a class="header" href="#27-nmon-nigels-monitor">2.7 nmon (Nigel’s Monitor)</a></h3>
+<ul>
+<li><strong>URL:</strong> http://nmon.sourceforge.net/</li>
+<li><strong>Language:</strong> C</li>
+<li><strong>Description:</strong> Performance monitoring tool for AIX and Linux. Provides real-time view and can capture data to CSV for later analysis with nmon Analyser.</li>
+<li><strong>Key features:</strong> CPU, memory, disk I/O, network, filesystem, processes; CSV capture mode, lightweight.</li>
+<li><strong>Difference:</strong> System-wide monitor. No batch job integration or workflow decorator. The CSV output mode is useful for offline analysis.</li>
+</ul>
+<hr>
+<h3 id="28-collectl"><a class="header" href="#28-collectl">2.8 collectl</a></h3>
+<ul>
+<li><strong>URL:</strong> http://collectl.sourceforge.net/</li>
+<li><strong>Language:</strong> Perl</li>
+<li><strong>Description:</strong> Collects a broad set of Linux system statistics (CPU, memory, network, disk, inodes, processes, NFS, TCP, sockets) and can write to files, print to stdout, or feed to Graphite/ganglia.</li>
+<li><strong>Key features:</strong> Wide metric coverage, multiple output formats (CSV, plot, etc.), daemon or one-shot mode.</li>
+<li><strong>Difference:</strong> System-wide collection daemon. No batch job wrapping, no workflow integration.</li>
+</ul>
+<hr>
+<h3 id="29-sysstat-sarsadcsadfiostatpidstatmpstat"><a class="header" href="#29-sysstat-sarsadcsadfiostatpidstatmpstat">2.9 sysstat (sar/sadc/sadf/iostat/pidstat/mpstat)</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/sysstat/sysstat</li>
+<li><strong>Language:</strong> C</li>
+<li><strong>Description:</strong> Collection of Linux performance monitoring utilities. <code>sar</code> collects and reports system activity historically. <code>pidstat</code> reports per-process CPU, memory, and I/O. <code>iostat</code> reports disk I/O. <code>sadc</code> is the backend data collector.</li>
+<li><strong>Key features:</strong> Historical data collection, per-process stats via <code>pidstat</code>, JSON/CSV/XML output via <code>sadf</code>, schedulable via cron/systemd, very low overhead.</li>
+<li><strong>Difference:</strong> System and process monitoring utilities, not designed for batch job wrapping. <code>pidstat</code> is the closest to per-job process monitoring but requires manual invocation.</li>
+</ul>
+<hr>
+<h3 id="210-nvtop"><a class="header" href="#210-nvtop">2.10 nvtop</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/Syllo/nvtop</li>
+<li><strong>Language:</strong> C</li>
+<li><strong>Description:</strong> (h)top-like task monitor for GPUs and accelerators. Supports AMD, Apple M1/M2 (limited), Huawei Ascend, Intel, NVIDIA, Qualcomm, Broadcom, Rockchip.</li>
+<li><strong>Key features:</strong> Multi-GPU and multi-vendor support, real-time GPU/VRAM utilization, per-process GPU use, interactive UI.</li>
+<li><strong>Difference:</strong> GPU-focused interactive monitor. No data export, no CPU/memory/disk/network integration.</li>
+</ul>
+<hr>
+<h3 id="211-vtop"><a class="header" href="#211-vtop">2.11 vtop</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/MrRio/vtop</li>
+<li><strong>Language:</strong> JavaScript (Node.js)</li>
+<li><strong>Description:</strong> Graphical terminal activity monitor with Unicode braille charts. Groups processes sharing the same name (e.g., NGINX master + workers).</li>
+<li><strong>Key features:</strong> ASCII charts, process grouping, extensible via plugins.</li>
+<li><strong>Difference:</strong> Interactive visual only, no data capture. Note: project appears unmaintained.</li>
+</ul>
+<hr>
+<h3 id="212-netdata"><a class="header" href="#212-netdata">2.12 Netdata</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/netdata/netdata</li>
+<li><strong>Language:</strong> C (agent core)</li>
+<li><strong>Description:</strong> Real-time performance monitoring with per-second metrics and a powerful web UI. 800+ integrations. Most-starred monitoring project on GitHub (76k+ stars).</li>
+<li><strong>Key features:</strong> Per-second metrics, web dashboard, alerts, ML anomaly detection, 800+ integrations (Docker, Kubernetes, StatsD, OpenMetrics), process-level metrics, GPU plugins.</li>
+<li><strong>Difference:</strong> Full-stack observability daemon. Requires installation as a service. Not designed for wrapping a batch job.</li>
+</ul>
+<hr>
+<h2 id="category-3-ebpf--kernel-level-tracing-tools"><a class="header" href="#category-3-ebpf--kernel-level-tracing-tools">Category 3: eBPF / Kernel-Level Tracing Tools</a></h2>
+<p>These tools use Linux eBPF (extended Berkeley Packet Filter) for highly efficient, zero-instrumentation tracing deep in the kernel. Most relevant for system-level visibility with very low overhead.</p>
+<hr>
+<h3 id="31-bcc-bpf-compiler-collection"><a class="header" href="#31-bcc-bpf-compiler-collection">3.1 BCC (BPF Compiler Collection)</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/iovisor/bcc</li>
+<li><strong>Language:</strong> C + Python/Lua frontends</li>
+<li><strong>Description:</strong> Toolkit for creating efficient kernel tracing and manipulation programs using eBPF. Includes ready-made tools (execsnoop, biolatency, tcplife, memleak, etc.) and a framework for writing custom eBPF programs with Python frontends.</li>
+<li><strong>Key features:</strong> Kernel + userspace tracing, network/disk/memory/CPU tools, Python API for custom programs, very low overhead.</li>
+<li><strong>Difference:</strong> Requires kernel support (Linux 4.1+), root privileges, and knowledge of eBPF to build custom tools. Not a drop-in batch job monitor.</li>
+</ul>
+<hr>
+<h3 id="32-bpftrace"><a class="header" href="#32-bpftrace">3.2 bpftrace</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/bpftrace/bpftrace</li>
+<li><strong>Language:</strong> C++ (awk/DTrace-like scripting language)</li>
+<li><strong>Description:</strong> High-level tracing language for Linux eBPF. Write concise one-liners or short scripts for ad-hoc analysis.</li>
+<li><strong>Key features:</strong> High-level scripting, LLVM backend, supports tracepoints, kprobes, uprobes, usdt. One-liner analysis.</li>
+<li><strong>Difference:</strong> Ad-hoc kernel tracing tool. Requires root and kernel support. Not designed for operational batch job monitoring.</li>
+</ul>
+<hr>
+<h3 id="33-parca--parca-agent"><a class="header" href="#33-parca--parca-agent">3.3 Parca / Parca Agent</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/parca-dev/parca</li>
+<li><strong>Language:</strong> Go</li>
+<li><strong>Description:</strong> Continuous profiling for CPU and memory usage, down to the line number and throughout time. Parca Agent is an eBPF-based always-on profiler with Kubernetes auto-discovery. Uses pprof format.</li>
+<li><strong>Key features:</strong> Zero-instrumentation eBPF profiling, &lt;1% overhead, continuous collection, icicle graph UI, SQL-queryable profile storage, multi-language support.</li>
+<li><strong>Difference:</strong> Continuous profiling infrastructure (runs as a DaemonSet on Kubernetes nodes). Not a per-job wrapper. Heavy infrastructure requirement.</li>
+</ul>
+<hr>
+<h3 id="34-pyroscope-grafana"><a class="header" href="#34-pyroscope-grafana">3.4 Pyroscope (Grafana)</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/grafana/pyroscope</li>
+<li><strong>Language:</strong> Go</li>
+<li><strong>Description:</strong> Continuous profiling database and platform (formed from merger of Phlare + Pyroscope). Stores profiling data from applications instrumented with Pyroscope SDKs or from eBPF agents. Integrates with Grafana.</li>
+<li><strong>Key features:</strong> SDK-based push profiling (Python, Go, Java, Ruby, .NET, Rust, PHP, Node.js), eBPF pull mode, flame graphs, Grafana integration, scalable storage.</li>
+<li><strong>Difference:</strong> Continuous profiling infrastructure. Requires a server and SDK integration. Not a lightweight batch job wrapper.</li>
+</ul>
+<hr>
+<h2 id="category-4-linux-performance-profiling-tools-ccnative"><a class="header" href="#category-4-linux-performance-profiling-tools-ccnative">Category 4: Linux Performance Profiling Tools (C/C++/Native)</a></h2>
+<p>These tools profile native code at a low level. Most are developer-focused profilers rather than operational monitors.</p>
+<hr>
+<h3 id="41-perf-linux-perf_events"><a class="header" href="#41-perf-linux-perf_events">4.1 perf (Linux perf_events)</a></h3>
+<ul>
+<li><strong>URL:</strong> https://perfwiki.github.io/main/</li>
+<li><strong>Language:</strong> C (Linux kernel subsystem)</li>
+<li><strong>Description:</strong> The primary Linux performance tool. Samples CPU events using hardware performance counters, traces system calls, and instruments kernel/userspace functions. Foundation for many other tools.</li>
+<li><strong>Key features:</strong> Hardware counter sampling, call graph recording, per-process and system-wide, flame graph generation (via FlameGraph scripts), supports all architectures.</li>
+<li><strong>Difference:</strong> Low-level developer profiler. Requires root for many features. No time-series resource logging, no workflow integration.</li>
+</ul>
+<hr>
+<h3 id="42-flamegraph"><a class="header" href="#42-flamegraph">4.2 FlameGraph</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/brendangregg/FlameGraph</li>
+<li><strong>Language:</strong> Perl</li>
+<li><strong>Description:</strong> Stack trace visualization toolkit by Brendan Gregg. Generates SVG flame graphs from perf, DTrace, SystemTap, and other profiler output.</li>
+<li><strong>Key features:</strong> CPU, memory, and off-CPU flame graphs, works with many backends.</li>
+<li><strong>Difference:</strong> Visualization tool for profiler output, not a monitoring tool itself.</li>
+</ul>
+<hr>
+<h3 id="43-gperftools-google-performance-tools"><a class="header" href="#43-gperftools-google-performance-tools">4.3 gperftools (Google Performance Tools)</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/gperftools/gperftools</li>
+<li><strong>Language:</strong> C++</li>
+<li><strong>Description:</strong> Collection from Google: fast malloc (TCMalloc), CPU profiler, heap profiler, and heap checker. Used via <code>LD_PRELOAD</code> or explicit linking.</li>
+<li><strong>Key features:</strong> CPU profiling (sampling), heap profiling, heap leak detection, pprof visualization, multi-threaded support.</li>
+<li><strong>Difference:</strong> Developer profiler requiring code linking or LD_PRELOAD. No time-series operational monitoring, no disk/network/GPU.</li>
+</ul>
+<hr>
+<h3 id="44-valgrind--massif--callgrind"><a class="header" href="#44-valgrind--massif--callgrind">4.4 Valgrind / Massif / Callgrind</a></h3>
+<ul>
+<li><strong>URL:</strong> https://valgrind.org/</li>
+<li><strong>Language:</strong> C</li>
+<li><strong>Description:</strong> Instrumentation framework for building dynamic analysis tools. Massif is its heap profiler; Callgrind is its call graph profiler; Memcheck is its memory error detector.</li>
+<li><strong>Key features:</strong> Complete heap tracking, memory leak detection, call graph analysis, massif-visualizer GUI.</li>
+<li><strong>Difference:</strong> High-overhead instrumentation (10-50x slowdown). Developer tool, not operational monitor. No GPU, disk, or network metrics.</li>
+</ul>
+<hr>
+<h3 id="45-heaptrack"><a class="header" href="#45-heaptrack">4.5 Heaptrack</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/KDE/heaptrack</li>
+<li><strong>Language:</strong> C++ + Python</li>
+<li><strong>Description:</strong> Fast heap memory profiler for Linux, designed as a faster, lower-overhead alternative to Valgrind/Massif. Traces all allocations and annotates with stack traces.</li>
+<li><strong>Key features:</strong> Lower overhead than Valgrind, flame graph output, heaptrack_gui for visualization, finds memory leaks and allocation hotspots.</li>
+<li><strong>Difference:</strong> Memory only, developer profiler. No GPU, CPU utilization, disk, or network.</li>
+</ul>
+<hr>
+<h3 id="46-perfetto"><a class="header" href="#46-perfetto">4.6 Perfetto</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/google/perfetto</li>
+<li><strong>Language:</strong> C++</li>
+<li><strong>Description:</strong> Google’s open-source production-grade system profiling and tracing tool. Default tracing system for Android and used in Chromium. Can capture CPU scheduling, memory, I/O, GPU events, and custom trace points.</li>
+<li><strong>Key features:</strong> Multi-process system trace, SQL-based analysis, browser-based UI, heap profiling (heapprofd), CPU frequency and scheduling, Android + Linux support.</li>
+<li><strong>Difference:</strong> Complex tracing infrastructure primarily targeting Android/embedded and browser use cases. Not a lightweight batch job wrapper.</li>
+</ul>
+<hr>
+<h3 id="47-async-profiler"><a class="header" href="#47-async-profiler">4.7 async-profiler</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/async-profiler/async-profiler</li>
+<li><strong>Language:</strong> C (JVM agent)</li>
+<li><strong>Description:</strong> Low-overhead sampling CPU and heap profiler for JVM (Java/Kotlin/Scala/Clojure). Uses AsyncGetCallTrace + perf_events to avoid safepoint bias.</li>
+<li><strong>Key features:</strong> CPU + heap sampling, flame graphs, JFR files, tracks native + JVM code, suitable for production.</li>
+<li><strong>Difference:</strong> JVM-specific. No Python/R/general process monitoring. No disk, network, or GPU.</li>
+</ul>
+<hr>
+<h3 id="48-tau-tuning-and-analysis-utilities"><a class="header" href="#48-tau-tuning-and-analysis-utilities">4.8 TAU (Tuning and Analysis Utilities)</a></h3>
+<ul>
+<li><strong>URL:</strong> https://www.cs.uoregon.edu/research/tau/home.php</li>
+<li><strong>Language:</strong> C++ (with Python, Fortran, Java support)</li>
+<li><strong>Description:</strong> Comprehensive profiling and tracing toolkit for HPC parallel programs (MPI, OpenMP, CUDA). Supports hardware counters, GPU profiling, and generates call graphs.</li>
+<li><strong>Key features:</strong> Parallel program profiling (MPI, OpenMP), hardware counters, GPU support, ParaProf visualization, call graph.</li>
+<li><strong>Difference:</strong> HPC research tool for parallel program performance analysis. Complex setup, not a lightweight batch job wrapper.</li>
+</ul>
+<hr>
+<h3 id="49-hpctoolkit"><a class="header" href="#49-hpctoolkit">4.9 HPCToolkit</a></h3>
+<ul>
+<li><strong>URL:</strong> https://hpctoolkit.org/</li>
+<li><strong>Language:</strong> C/C++</li>
+<li><strong>Description:</strong> Sampling-based measurement and analysis suite for HPC programs on CPUs and GPUs. Supports supercomputers.</li>
+<li><strong>Key features:</strong> 1-5% overhead sampling, full calling context, hpcviewer GUI, GPU support.</li>
+<li><strong>Difference:</strong> HPC research tool, complex setup, not designed for general batch jobs or Python/R scripts.</li>
+</ul>
+<hr>
+<h2 id="category-5-rust-tools"><a class="header" href="#category-5-rust-tools">Category 5: Rust Tools</a></h2>
+<hr>
+<h3 id="51-below-facebookmeta"><a class="header" href="#51-below-facebookmeta">5.1 below (Facebook/Meta)</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/facebookincubator/below</li>
+<li><strong>Language:</strong> Rust</li>
+<li><strong>Description:</strong> Time-traveling resource monitor for modern Linux systems. Records system activity to disk and allows replay of historical data. Cgroup-aware with PSI (Pressure Stall Information) support.</li>
+<li><strong>Key features:</strong> Record + replay mode, cgroup hierarchy view, PSI metrics, process-level stats, live mode, persistent storage. Built on cgroupv2.</li>
+<li><strong>Difference:</strong> System-wide monitoring daemon. Designed for Linux infrastructure monitoring, not for wrapping individual batch jobs. No workflow integration. Very strong on cgroup/container awareness.</li>
+</ul>
+<hr>
+<h3 id="52-samply"><a class="header" href="#52-samply">5.2 samply</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/mstange/samply</li>
+<li><strong>Language:</strong> Rust</li>
+<li><strong>Description:</strong> Command-line sampling CPU profiler for macOS, Linux, and Windows. Uses Linux perf events. Spawns the target process as a subprocess and profiles it, then opens Firefox Profiler UI.</li>
+<li><strong>Key features:</strong> Subprocess wrapping (<code>samply record ./your_program</code>), Firefox Profiler UI, local symbol resolution, flame graphs.</li>
+<li><strong>Difference:</strong> CPU profiling only (call stack). No memory, GPU, disk, or network tracking. Developer profiler.</li>
+</ul>
+<hr>
+<h3 id="53-bytehound"><a class="header" href="#53-bytehound">5.3 Bytehound</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/koute/bytehound</li>
+<li><strong>Language:</strong> Rust</li>
+<li><strong>Description:</strong> Memory profiler for Linux. Intercepts all heap allocations via <code>LD_PRELOAD</code>. Produces detailed allocation timelines with stack traces.</li>
+<li><strong>Key features:</strong> Full allocation tracking, web-based GUI, Rhai scripting for analysis, multi-architecture (AMD64, ARM, AArch64, MIPS64).</li>
+<li><strong>Difference:</strong> Memory only. Developer profiler. Requires <code>LD_PRELOAD</code>, no GPU/disk/network.</li>
+</ul>
+<hr>
+<h3 id="54-pprof-rs"><a class="header" href="#54-pprof-rs">5.4 pprof-rs</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/tikv/pprof-rs</li>
+<li><strong>Language:</strong> Rust</li>
+<li><strong>Description:</strong> Rust CPU profiler using backtrace-rs. Generates pprof-compatible output.</li>
+<li><strong>Key features:</strong> CPU profiling for Rust applications, pprof output, flame graphs, low overhead.</li>
+<li><strong>Difference:</strong> CPU profiler for Rust programs only.</li>
+</ul>
+<hr>
+<h2 id="category-6-system-level-daemons-and-metrics-collection-infrastructure"><a class="header" href="#category-6-system-level-daemons-and-metrics-collection-infrastructure">Category 6: System-Level Daemons and Metrics Collection Infrastructure</a></h2>
+<p>These tools are designed for long-running infrastructure monitoring, not individual batch jobs, but represent the broader ecosystem.</p>
+<hr>
+<h3 id="61-prometheus--node_exporter"><a class="header" href="#61-prometheus--node_exporter">6.1 Prometheus + node_exporter</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/prometheus/node_exporter</li>
+<li><strong>Language:</strong> Go</li>
+<li><strong>Description:</strong> Prometheus exporter for hardware and OS metrics from <code>/proc</code> and <code>/sys</code>. Exposes CPU, memory, disk, network, filesystem, and more as Prometheus metrics.</li>
+<li><strong>Key features:</strong> Pull-based metrics, scrape-able endpoint, very broad metric coverage, alerting via Prometheus + Alertmanager.</li>
+<li><strong>Difference:</strong> Infrastructure monitoring daemon. Requires Prometheus server. No per-job tracking.</li>
+</ul>
+<hr>
+<h3 id="62-prometheus-pushgateway"><a class="header" href="#62-prometheus-pushgateway">6.2 Prometheus Pushgateway</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/prometheus/pushgateway</li>
+<li><strong>Language:</strong> Go</li>
+<li><strong>Description:</strong> Push acceptor for ephemeral and batch jobs. Allows short-lived jobs to push metrics to Prometheus (which normally pulls). Stores last-received metrics until explicitly deleted.</li>
+<li><strong>Key features:</strong> HTTP push endpoint, labels/grouping by job, integrates with Prometheus.</li>
+<li><strong>Difference:</strong> Infrastructure component. Not a resource tracker itself; requires a separate process to collect and push metrics. <strong>Most relevant for a Rust implementation that needs to output to Prometheus.</strong></li>
+</ul>
+<hr>
+<h3 id="63-prometheus-process-exporter"><a class="header" href="#63-prometheus-process-exporter">6.3 Prometheus process-exporter</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/ncabatoff/process-exporter</li>
+<li><strong>Language:</strong> Go</li>
+<li><strong>Description:</strong> Prometheus exporter that reads <code>/proc</code> to report on selected processes. Groups processes by name or regex and exposes CPU, memory, file descriptors, I/O, and thread counts.</li>
+<li><strong>Key features:</strong> Per-process-group CPU and memory metrics, <code>/proc</code>-based, configurable process selection, Prometheus compatible.</li>
+<li><strong>Difference:</strong> Infrastructure daemon, not a batch job wrapper. Monitors selected processes continuously.</li>
+</ul>
+<hr>
+<h3 id="64-cadvisor-container-advisor"><a class="header" href="#64-cadvisor-container-advisor">6.4 cAdvisor (Container Advisor)</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/google/cadvisor</li>
+<li><strong>Language:</strong> Go</li>
+<li><strong>Description:</strong> Google’s container resource usage and performance analysis agent. Exposes Prometheus metrics for running containers.</li>
+<li><strong>Key features:</strong> Container-level CPU, memory, disk, and network metrics, Prometheus endpoint, supports Docker and other runtimes.</li>
+<li><strong>Difference:</strong> Container/cgroup focused daemon. Not for general process monitoring.</li>
+</ul>
+<hr>
+<h3 id="65-telegraf"><a class="header" href="#65-telegraf">6.5 Telegraf</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/influxdata/telegraf</li>
+<li><strong>Language:</strong> Go</li>
+<li><strong>Description:</strong> Plugin-driven metrics collection agent from InfluxData. Single agent collecting system metrics (CPU, memory, disk, network, GPU, containers) and writing to InfluxDB or other backends.</li>
+<li><strong>Key features:</strong> 300+ input plugins (system, Docker, SNMP, statsd, etc.), multiple output backends, flexible configuration.</li>
+<li><strong>Difference:</strong> Infrastructure agent daemon. Not designed for per-job wrapping.</li>
+</ul>
+<hr>
+<h3 id="66-netdata-see-212"><a class="header" href="#66-netdata-see-212">6.6 Netdata (see 2.12)</a></h3>
+<hr>
+<h3 id="67-kube-state-metrics"><a class="header" href="#67-kube-state-metrics">6.7 kube-state-metrics</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/kubernetes/kube-state-metrics</li>
+<li><strong>Language:</strong> Go</li>
+<li><strong>Description:</strong> Kubernetes add-on that generates metrics about Kubernetes object state (pod resource requests/limits, deployment status, etc.) for Prometheus.</li>
+<li><strong>Key features:</strong> Pod/node resource quota metrics, deployment health, Prometheus format.</li>
+<li><strong>Difference:</strong> Kubernetes-only, no process-level metrics.</li>
+</ul>
+<hr>
+<h3 id="68-opentelemetry-otel"><a class="header" href="#68-opentelemetry-otel">6.8 OpenTelemetry (OTel)</a></h3>
+<ul>
+<li><strong>URL:</strong> https://opentelemetry.io/ / https://github.com/open-telemetry/opentelemetry-python</li>
+<li><strong>Language:</strong> Multi-language (Go, Python, Java, .NET, etc.)</li>
+<li><strong>Description:</strong> CNCF standard for collecting traces, metrics, and logs. Includes system metrics via the OTel Collector. Growing support for profiling via OTel.</li>
+<li><strong>Key features:</strong> Traces + metrics + logs, vendor-neutral, collector, SDKs in all major languages, exporters to Prometheus, Jaeger, OTLP.</li>
+<li><strong>Difference:</strong> General observability framework, not a resource tracker per se. Relevant for instrumenting a Rust CLI to expose metrics in a standard format.</li>
+</ul>
+<hr>
+<h3 id="69-nvidia-dcgm--dcgm-exporter"><a class="header" href="#69-nvidia-dcgm--dcgm-exporter">6.9 NVIDIA DCGM + dcgm-exporter</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/NVIDIA/DCGM / https://github.com/NVIDIA/dcgm-exporter</li>
+<li><strong>Language:</strong> C (DCGM) + Go (exporter)</li>
+<li><strong>Description:</strong> NVIDIA Data Center GPU Manager for GPU telemetry in large Linux clusters. dcgm-exporter exposes GPU metrics for Prometheus.</li>
+<li><strong>Key features:</strong> Per-GPU and per-process GPU metrics, health monitoring, diagnostics, Kubernetes integration, Prometheus exporter.</li>
+<li><strong>Difference:</strong> NVIDIA GPU infrastructure daemon for data center clusters. Not a batch job wrapper.</li>
+</ul>
+<hr>
+<h2 id="category-7-per-process-network-and-disk-io-monitors"><a class="header" href="#category-7-per-process-network-and-disk-io-monitors">Category 7: Per-Process Network and Disk I/O Monitors</a></h2>
+<hr>
+<h3 id="71-nethogs"><a class="header" href="#71-nethogs">7.1 nethogs</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/raboof/nethogs</li>
+<li><strong>Language:</strong> C++</li>
+<li><strong>Description:</strong> Linux “net top” tool that groups network bandwidth by process using <code>/proc/net/tcp</code> and libpcap.</li>
+<li><strong>Key features:</strong> Per-process network bandwidth (upload/download), real-time top-like display.</li>
+<li><strong>Difference:</strong> Network only, interactive display, no data capture to file.</li>
+</ul>
+<hr>
+<h3 id="72-iftop"><a class="header" href="#72-iftop">7.2 iftop</a></h3>
+<ul>
+<li><strong>URL:</strong> https://www.ex-parrot.com/pdw/iftop/</li>
+<li><strong>Language:</strong> C</li>
+<li><strong>Description:</strong> Shows network bandwidth grouped by source/destination host pairs. Does not show per-process breakdown.</li>
+<li><strong>Key features:</strong> Per-connection bandwidth, host name resolution.</li>
+<li><strong>Difference:</strong> Network only, host-pair level (not process level).</li>
+</ul>
+<hr>
+<h3 id="73-iotop"><a class="header" href="#73-iotop">7.3 iotop</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/Tomas-M/iotop</li>
+<li><strong>Language:</strong> C (rewrite of original Python version)</li>
+<li><strong>Description:</strong> Top-like tool for disk I/O. Shows per-process disk read/write rates using kernel I/O accounting.</li>
+<li><strong>Key features:</strong> Per-process disk I/O, real-time display, accumulated I/O counters.</li>
+<li><strong>Difference:</strong> Disk I/O only, interactive display, no data capture.</li>
+</ul>
+<hr>
+<h3 id="74-dstat"><a class="header" href="#74-dstat">7.4 dstat</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/dagwieers/dstat</li>
+<li><strong>Language:</strong> Python</li>
+<li><strong>Description:</strong> Versatile system statistics tool combining vmstat, iostat, netstat, and ifstat. Outputs columns of metrics to terminal, can write to CSV.</li>
+<li><strong>Key features:</strong> CPU, disk, network, memory, system statistics; CSV output; pluggable.</li>
+<li><strong>Difference:</strong> System-wide only (not per-process), no GPU. CSV output mode is useful for offline analysis.</li>
+</ul>
+<hr>
+<h2 id="category-8-ml-experiment-tracking-platforms-with-resource-monitoring"><a class="header" href="#category-8-ml-experiment-tracking-platforms-with-resource-monitoring">Category 8: ML Experiment Tracking Platforms with Resource Monitoring</a></h2>
+<p>These platforms include resource metric tracking as one feature among many.</p>
+<hr>
+<h3 id="81-weights--biases-wb"><a class="header" href="#81-weights--biases-wb">8.1 Weights &amp; Biases (W&amp;B)</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/wandb/wandb</li>
+<li><strong>Language:</strong> Python</li>
+<li><strong>Description:</strong> ML experiment tracking platform with automatic system metric logging. Tracks GPU, CPU, memory, and network during training runs.</li>
+<li><strong>Key features:</strong> Automatic system metric logging (GPU, CPU, RAM, network), experiment tracking, model registry, artifacts, collaborative dashboards.</li>
+<li><strong>Difference:</strong> Primarily an ML experiment tracker. Resource monitoring is automatic and integrated but secondary to experiment logging. Requires W&amp;B account (cloud-first, has open-source local server option).</li>
+</ul>
+<hr>
+<h3 id="82-mlflow"><a class="header" href="#82-mlflow">8.2 MLflow</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/mlflow/mlflow</li>
+<li><strong>Language:</strong> Python</li>
+<li><strong>Description:</strong> Open-source ML lifecycle management. Does not natively log CPU/GPU metrics; requires external integration.</li>
+<li><strong>Key features:</strong> Experiment tracking, model registry, deployment. No built-in system resource monitoring.</li>
+<li><strong>Difference:</strong> No native resource tracking.</li>
+</ul>
+<hr>
+<h3 id="83-clearml-see-120"><a class="header" href="#83-clearml-see-120">8.3 ClearML (see 1.20)</a></h3>
+<hr>
+<h2 id="category-9-hpc-batch-job-monitoring"><a class="header" href="#category-9-hpc-batch-job-monitoring">Category 9: HPC Batch Job Monitoring</a></h2>
+<hr>
+<h3 id="91-jobstats"><a class="header" href="#91-jobstats">9.1 Jobstats</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/PrincetonUniversity/jobstats</li>
+<li><strong>Language:</strong> Python + Prometheus stack</li>
+<li><strong>Description:</strong> Slurm-compatible job monitoring platform for CPU and GPU clusters. Displays per-job CPU and GPU efficiency summaries using Prometheus, Grafana, and Slurm Prolog/Epilog hooks.</li>
+<li><strong>Key features:</strong> Per-Slurm-job efficiency report (CPU utilization, memory, GPU utilization), compares requested vs. used resources, automatically stores data in Slurm AdminComment field.</li>
+<li><strong>Difference:</strong> Slurm HPC specific. Requires full Prometheus + Grafana + Slurm infrastructure. Very close in concept to <code>resource-tracker</code> (per-job resource reports) but for HPC/Slurm, not general Python/R scripts.</li>
+</ul>
+<hr>
+<h3 id="92-open-xdmod"><a class="header" href="#92-open-xdmod">9.2 Open XDMoD</a></h3>
+<ul>
+<li><strong>URL:</strong> https://open.xdmod.org/</li>
+<li><strong>Language:</strong> PHP + Python</li>
+<li><strong>Description:</strong> Open-source tool for analyzing HPC center usage and job efficiency. Tracks CPU, memory, GPU, and I/O for Slurm/PBS/SGE jobs.</li>
+<li><strong>Key features:</strong> Job-level resource utilization reports, efficiency recommendations, web portal.</li>
+<li><strong>Difference:</strong> HPC management tool. Requires full HPC stack. Not for general batch jobs.</li>
+</ul>
+<hr>
+<h2 id="category-10-r-language-profiling-tools"><a class="header" href="#category-10-r-language-profiling-tools">Category 10: R Language Profiling Tools</a></h2>
+<p>Resource-tracker explicitly supports R scripts. These are the closest R-ecosystem analogues.</p>
+<hr>
+<h3 id="101-profvis"><a class="header" href="#101-profvis">10.1 profvis</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/rstudio/profvis</li>
+<li><strong>Language:</strong> R</li>
+<li><strong>Description:</strong> Interactive visualization of R code profiling data. Uses <code>Rprof()</code> to collect call stack samples and displays an interactive flame graph and memory timeline in a web browser.</li>
+<li><strong>Key features:</strong> Interactive flame graph, memory timeline, line-level time attribution, RStudio integration.</li>
+<li><strong>Difference:</strong> CPU + memory profiling for R code, developer-oriented. No disk, network, or GPU. No batch job wrapping or time-series operational logging.</li>
+</ul>
+<hr>
+<h3 id="102-bench"><a class="header" href="#102-bench">10.2 bench</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/r-lib/bench</li>
+<li><strong>Language:</strong> R</li>
+<li><strong>Description:</strong> High-precision benchmarking for R with memory tracking.</li>
+<li><strong>Key features:</strong> High-resolution timing, memory allocation tracking, comparison of multiple expressions.</li>
+<li><strong>Difference:</strong> Benchmarking tool. No operational resource monitoring.</li>
+</ul>
+<hr>
+<h3 id="103-microbenchmark"><a class="header" href="#103-microbenchmark">10.3 microbenchmark</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/joshuaulrich/microbenchmark</li>
+<li><strong>Language:</strong> R</li>
+<li><strong>Description:</strong> R package for sub-millisecond timing benchmarks.</li>
+<li><strong>Key features:</strong> High-precision CPU timing.</li>
+<li><strong>Difference:</strong> CPU timing only, micro-benchmarking specific.</li>
+</ul>
+<hr>
+<h3 id="104-profmem"><a class="header" href="#104-profmem">10.4 profmem</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/HenrikBengtsson/profmem</li>
+<li><strong>Language:</strong> R</li>
+<li><strong>Description:</strong> Simple memory profiling for R expressions. Uses <code>tracemem</code>/R internals to log all memory allocations.</li>
+<li><strong>Key features:</strong> Per-expression memory allocation log.</li>
+<li><strong>Difference:</strong> Memory only, developer-oriented.</li>
+</ul>
+<hr>
+<h2 id="category-11-python-standard-library--built-in-profiling"><a class="header" href="#category-11-python-standard-library--built-in-profiling">Category 11: Python Standard Library / Built-in Profiling</a></h2>
+<hr>
+<h3 id="111-cprofile--profile"><a class="header" href="#111-cprofile--profile">11.1 cProfile / profile</a></h3>
+<ul>
+<li><strong>URL:</strong> https://docs.python.org/3/library/profile.html</li>
+<li><strong>Language:</strong> Python (stdlib)</li>
+<li><strong>Description:</strong> Python’s built-in deterministic profiler. Records function call counts and cumulative time.</li>
+<li><strong>Key features:</strong> Function-level timing, call count, cumulative/per-call time, pstats for analysis.</li>
+<li><strong>Difference:</strong> CPU time only, function-level. No memory, GPU, disk, or network.</li>
+</ul>
+<hr>
+<h3 id="112-tracemalloc"><a class="header" href="#112-tracemalloc">11.2 tracemalloc</a></h3>
+<ul>
+<li><strong>URL:</strong> https://docs.python.org/3/library/tracemalloc.html</li>
+<li><strong>Language:</strong> Python (stdlib, since 3.4)</li>
+<li><strong>Description:</strong> Traces Python memory allocations with tracebacks to allocation sites.</li>
+<li><strong>Key features:</strong> Peak memory tracking, traceback to allocation sites, snapshot comparison.</li>
+<li><strong>Difference:</strong> Python-managed memory only. No native/C allocations, no GPU/disk/network.</li>
+</ul>
+<hr>
+<h3 id="113-yappi"><a class="header" href="#113-yappi">11.3 yappi</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/sumerc/yappi</li>
+<li><strong>Language:</strong> Python + C</li>
+<li><strong>Description:</strong> Yet Another Python Profiler. Supports both wall clock and CPU time, multi-threaded profiling, and async code.</li>
+<li><strong>Key features:</strong> Wall + CPU time, multi-thread awareness, async support, pstats/callgrind output.</li>
+<li><strong>Difference:</strong> CPU profiling only.</li>
+</ul>
+<hr>
+<h3 id="114-line_profiler"><a class="header" href="#114-line_profiler">11.4 line_profiler</a></h3>
+<ul>
+<li><strong>URL:</strong> https://github.com/pyutils/line_profiler</li>
+<li><strong>Language:</strong> Python + C</li>
+<li><strong>Description:</strong> Line-by-line CPU time profiler for Python using <code>@profile</code> decorator.</li>
+<li><strong>Key features:</strong> Line-level execution time, <code>@profile</code> decorator.</li>
+<li><strong>Difference:</strong> CPU time only, requires decoration.</li>
+</ul>
+<hr>
+<h2 id="summary-comparison-table"><a class="header" href="#summary-comparison-table">Summary Comparison Table</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Tool</th><th>Lang</th><th>CPU</th><th>Mem</th><th>GPU</th><th>Disk</th><th>Net</th><th>Batch-job wrap</th><th>Per-job report</th><th>Workflow integration</th><th>Output</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>resource-tracker</strong></td><td>Python</td><td>Y</td><td>Y</td><td>Y</td><td>Y</td><td>Y</td><td>Y</td><td>Y</td><td>Metaflow, Flyte, Airflow</td><td>Metrics + card visualization</td></tr>
+<tr><td>psutil</td><td>Python</td><td>Y</td><td>Y</td><td>—</td><td>Y</td><td>Y</td><td>—</td><td>—</td><td>—</td><td>Raw API</td></tr>
+<tr><td><code>memory_profiler</code></td><td>Python</td><td>—</td><td>Y</td><td>—</td><td>—</td><td>—</td><td>Y (mprof)</td><td>Y (plot)</td><td>—</td><td>Plot + log</td></tr>
+<tr><td>Scalene</td><td>Python</td><td>Y</td><td>Y</td><td>Y</td><td>—</td><td>—</td><td>Y (CLI)</td><td>Y (web UI)</td><td>—</td><td>Interactive web report</td></tr>
+<tr><td>Memray</td><td>Python</td><td>—</td><td>Y</td><td>—</td><td>—</td><td>—</td><td>Y (CLI)</td><td>Y (flame graph)</td><td>—</td><td>Flame graphs</td></tr>
+<tr><td>Fil</td><td>Python</td><td>—</td><td>Y</td><td>—</td><td>—</td><td>—</td><td>Y (CLI)</td><td>Y (flame graph)</td><td>—</td><td>Flame graph</td></tr>
+<tr><td>pyinstrument</td><td>Python</td><td>Y</td><td>—</td><td>—</td><td>—</td><td>—</td><td>Y</td><td>Y</td><td>—</td><td>HTML/text</td></tr>
+<tr><td>py-spy</td><td>Rust</td><td>Y</td><td>—</td><td>—</td><td>—</td><td>—</td><td>Y (attach)</td><td>Y (flame graph)</td><td>—</td><td>Flame graph</td></tr>
+<tr><td>Austin</td><td>C</td><td>Y</td><td>—</td><td>—</td><td>—</td><td>—</td><td>Y</td><td>—</td><td>—</td><td>Stack samples</td></tr>
+<tr><td>Glances</td><td>Python</td><td>Y</td><td>Y</td><td>Y*</td><td>Y</td><td>Y</td><td>—</td><td>—</td><td>—</td><td>TUI + web API</td></tr>
+<tr><td>nvitop</td><td>Python</td><td>—</td><td>—</td><td>Y</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>TUI + Python API</td></tr>
+<tr><td>gpustat</td><td>Python</td><td>—</td><td>—</td><td>Y</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>CLI display</td></tr>
+<tr><td>CodeCarbon</td><td>Python</td><td>Y*</td><td>Y*</td><td>Y*</td><td>—</td><td>—</td><td>Y (decorator)</td><td>Y (CSV)</td><td>—</td><td>CO2 report</td></tr>
+<tr><td>ClearML</td><td>Python</td><td>Y</td><td>Y</td><td>Y</td><td>—</td><td>Y</td><td>Y (auto)</td><td>Y (web)</td><td>ML frameworks</td><td>Web dashboard</td></tr>
+<tr><td>below</td><td>Rust</td><td>Y</td><td>Y</td><td>—</td><td>Y</td><td>Y</td><td>—</td><td>—</td><td>—</td><td>TUI + replay</td></tr>
+<tr><td>samply</td><td>Rust</td><td>Y</td><td>—</td><td>—</td><td>—</td><td>—</td><td>Y (subprocess)</td><td>Y (flame graph)</td><td>—</td><td>Firefox profiler</td></tr>
+<tr><td>Bytehound</td><td>Rust</td><td>—</td><td>Y</td><td>—</td><td>—</td><td>—</td><td>Y (LD_PRELOAD)</td><td>Y (web GUI)</td><td>—</td><td>Web GUI</td></tr>
+<tr><td>atop</td><td>C</td><td>Y</td><td>Y</td><td>—</td><td>Y</td><td>Y</td><td>—</td><td>—</td><td>—</td><td>TUI + binary log</td></tr>
+<tr><td>sysstat/pidstat</td><td>C</td><td>Y</td><td>Y</td><td>—</td><td>Y</td><td>Y</td><td>—</td><td>—</td><td>—</td><td>CLI + CSV</td></tr>
+<tr><td>htop</td><td>C</td><td>Y</td><td>Y</td><td>—</td><td>Y</td><td>Y</td><td>—</td><td>—</td><td>—</td><td>TUI</td></tr>
+<tr><td>btop++</td><td>C++</td><td>Y</td><td>Y</td><td>Y*</td><td>Y</td><td>Y</td><td>—</td><td>—</td><td>—</td><td>TUI</td></tr>
+<tr><td>Jobstats</td><td>Python</td><td>Y</td><td>Y</td><td>Y</td><td>—</td><td>—</td><td>Y* (Slurm)</td><td>Y (Slurm)</td><td>Slurm</td><td>CLI + DB</td></tr>
+<tr><td>Pyroscope</td><td>Go</td><td>Y</td><td>Y</td><td>—</td><td>—</td><td>—</td><td>Y (SDK)</td><td>—</td><td>—</td><td>Flame graphs</td></tr>
+<tr><td>Parca</td><td>Go</td><td>Y</td><td>Y</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>Kubernetes</td><td>Icicle graphs</td></tr>
+<tr><td>perf</td><td>C</td><td>Y</td><td>—</td><td>—</td><td>Y</td><td>—</td><td>Y (subprocess)</td><td>—</td><td>—</td><td>Raw perf data</td></tr>
+<tr><td>Valgrind</td><td>C</td><td>Y</td><td>Y</td><td>—</td><td>—</td><td>—</td><td>Y (subprocess)</td><td>Y</td><td>—</td><td>Text + GUI</td></tr>
+<tr><td>nethogs</td><td>C++</td><td>—</td><td>—</td><td>—</td><td>—</td><td>Y</td><td>—</td><td>—</td><td>—</td><td>TUI</td></tr>
+<tr><td>iotop</td><td>C</td><td>—</td><td>—</td><td>—</td><td>Y</td><td>—</td><td>—</td><td>—</td><td>—</td><td>TUI</td></tr>
+<tr><td>PowerAPI</td><td>Python</td><td>Y*</td><td>Y*</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>Power estimates</td></tr>
+<tr><td>W&amp;B</td><td>Python</td><td>Y</td><td>Y</td><td>Y</td><td>—</td><td>Y</td><td>Y (auto)</td><td>Y (web)</td><td>ML frameworks</td><td>Web dashboard</td></tr>
+<tr><td>Prometheus stack</td><td>Go</td><td>Y</td><td>Y</td><td>Y*</td><td>Y</td><td>Y</td><td>—</td><td>—</td><td>Kubernetes</td><td>Time-series DB</td></tr>
+</tbody>
+</table>
+</div>
+<p><em>Y</em> = partial/plugin-based support</p>
+<hr>
+<h2 id="key-findings-for-rust-cli-implementation"><a class="header" href="#key-findings-for-rust-cli-implementation">Key Findings for Rust CLI Implementation</a></h2>
+<p>Based on this landscape analysis, the following observations are most relevant to the planned Rust/Linux CLI implementation:</p>
+<ol>
+<li>
+<p><strong>No existing Rust tool covers the full feature set</strong> of resource-tracker (CPU + memory + GPU + disk + network + batch job wrapping + per-job reporting). <code>below</code> (Rust) is the closest in scope but is a system-wide daemon, not a per-job wrapper.</p>
+</li>
+<li>
+<p><strong>procfs is the right foundation for Linux.</strong> The <code>/proc</code> filesystem is used by psutil, process-exporter, sysstat, and resource-tracker itself. A Rust implementation can use the <code>procfs</code> crate or read <code>/proc</code> directly with zero external dependencies.</p>
+</li>
+<li>
+<p><strong>GPU support requires dynamic linking</strong> (NVML via <code>libpynvml</code> or direct <code>libnvidia-ml.so</code>). This is a hard constraint noted in the SOW. The Rust NVML binding (nvidia-management-library crate or similar) will be needed.</p>
+</li>
+<li>
+<p><strong>The Pushgateway integration</strong> (Extra Component: S3 PUT) is unique to resource-tracker and not present in any comparable tool. This makes it particularly well-suited for cloud batch job environments.</p>
+</li>
+<li>
+<p><strong>The decorator/wrapper pattern</strong> (similar to <code>samply record ./program</code>) is present in py-spy, samply, Austin, and Fil — wrapping a subprocess is the right architectural pattern for a CLI tool.</p>
+</li>
+<li>
+<p><strong>The closest functional analogues</strong> (tools that wrap a job, collect multi-resource metrics, and produce a per-job report) are:</p>
+<ul>
+<li>Scalene (Python, CPU+GPU+memory, developer-oriented)</li>
+<li>memory_profiler (Python, memory only, has mprof)</li>
+<li>Jobstats (HPC/Slurm specific)</li>
+<li>resource-tracker itself (the reference implementation)</li>
+</ul>
+<p>None of these is in Rust, none covers all six resource dimensions (CPU, memory, GPU, VRAM, network, disk) in a single zero-dependency binary.</p>
+</li>
+</ol>
+<hr>
+<h2 id="sources"><a class="header" href="#sources">Sources</a></h2>
+<ul>
+<li>https://github.com/SpareCores/resource-tracker</li>
+<li>https://github.com/giampaolo/psutil</li>
+<li>https://github.com/pythonprofilers/memory_profiler</li>
+<li>https://github.com/plasma-umass/scalene</li>
+<li>https://github.com/bloomberg/memray</li>
+<li>https://github.com/pythonspeed/filprofiler</li>
+<li>https://github.com/joerick/pyinstrument</li>
+<li>https://github.com/benfred/py-spy</li>
+<li>https://github.com/P403n1x87/austin</li>
+<li>https://github.com/nicolargo/glances</li>
+<li>https://github.com/XuehaiPan/nvitop</li>
+<li>https://github.com/wookayin/gpustat</li>
+<li>https://github.com/gpuopenanalytics/pynvml</li>
+<li>https://github.com/mlco2/codecarbon</li>
+<li>https://github.com/lfwa/carbontracker</li>
+<li>https://github.com/powerapi-ng/pyRAPL</li>
+<li>https://github.com/powerapi-ng/pyJoules</li>
+<li>https://github.com/powerapi-ng/powerapi</li>
+<li>https://github.com/sb-ai-lab/eco2AI</li>
+<li>https://github.com/psf/pyperf</li>
+<li>https://github.com/clearml/clearml</li>
+<li>https://github.com/xybu/python-resmon</li>
+<li>https://github.com/htop-dev/htop</li>
+<li>https://github.com/aristocratos/btop</li>
+<li>https://github.com/aristocratos/bpytop</li>
+<li>https://github.com/aristocratos/bashtop</li>
+<li>https://github.com/Atoptool/atop</li>
+<li>https://github.com/sysstat/sysstat</li>
+<li>https://github.com/Syllo/nvtop</li>
+<li>https://github.com/MrRio/vtop</li>
+<li>https://github.com/netdata/netdata</li>
+<li>https://github.com/iovisor/bcc</li>
+<li>https://github.com/bpftrace/bpftrace</li>
+<li>https://github.com/parca-dev/parca</li>
+<li>https://github.com/grafana/pyroscope</li>
+<li>https://github.com/brendangregg/FlameGraph</li>
+<li>https://github.com/gperftools/gperftools</li>
+<li>https://valgrind.org/</li>
+<li>https://github.com/KDE/heaptrack</li>
+<li>https://github.com/google/perfetto</li>
+<li>https://github.com/async-profiler/async-profiler</li>
+<li>https://github.com/facebookincubator/below</li>
+<li>https://github.com/mstange/samply</li>
+<li>https://github.com/koute/bytehound</li>
+<li>https://github.com/tikv/pprof-rs</li>
+<li>https://github.com/prometheus/node_exporter</li>
+<li>https://github.com/prometheus/pushgateway</li>
+<li>https://github.com/ncabatoff/process-exporter</li>
+<li>https://github.com/google/cadvisor</li>
+<li>https://github.com/influxdata/telegraf</li>
+<li>https://github.com/kubernetes/kube-state-metrics</li>
+<li>https://opentelemetry.io/</li>
+<li>https://github.com/NVIDIA/DCGM</li>
+<li>https://github.com/NVIDIA/dcgm-exporter</li>
+<li>https://github.com/raboof/nethogs</li>
+<li>https://github.com/wandb/wandb</li>
+<li>https://github.com/mlflow/mlflow</li>
+<li>https://github.com/PrincetonUniversity/jobstats</li>
+<li>https://github.com/rstudio/profvis</li>
+<li>https://github.com/r-lib/bench</li>
+<li>https://github.com/sumerc/yappi</li>
+<li>https://github.com/pyutils/line_profiler</li>
+<li>https://github.com/msaroufim/awesome-profiling</li>
+<li>https://lambda.ai/blog/keeping-an-eye-on-your-gpus-2</li>
+<li>https://sparecores.com/article/metaflow-resource-tracker</li>
+<li>https://developers.facebook.com/blog/post/2021/09/21/below-time-travelling-resource-monitoring-tool/</li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="Rationale.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="Similar-functionality-tools.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="Rationale.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="Similar-functionality-tools.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-c2a407aa.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

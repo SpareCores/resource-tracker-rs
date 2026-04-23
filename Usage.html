@@ -1,0 +1,591 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Usage - resource-tracker</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="This is a book to document the SpareCores resource-tracker project">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-2459343d.css">
+        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/custom-fa3bf03f.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-c01db0e6.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-a617d0e0.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">resource-tracker</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="resource-tracker--usage-guide"><a class="header" href="#resource-tracker--usage-guide">resource-tracker – Usage Guide</a></h1>
+<p><code>resource-tracker</code> is a lightweight Linux resource tracker. It polls CPU, memory,
+disk, network, and GPU metrics at a configurable interval and emits
+newline-delimited JSON (JSONL) to stdout.</p>
+<hr>
+<h2 id="quick-start"><a class="header" href="#quick-start">Quick start</a></h2>
+<pre><code class="language-sh"># Build
+cargo build --release
+
+# Run with defaults (1-second interval)
+./target/release/resource-tracker
+
+# Track a specific process tree (replace 1234 with the root PID)
+./target/release/resource-tracker --pid 1234 --job-name "my-benchmark"
+
+# Change the polling interval to 10 seconds
+./target/release/resource-tracker --interval 10
+</code></pre>
+<p>Each line of output is a complete JSON object representing one sample:</p>
+<pre><code class="language-json">{
+  "timestamp_secs": 1718000000,
+  "job_name": "my-benchmark",
+  "cpu": { "utilization_pct": 4.6, "per_core_pct": [12.5, 38.0, "..."], "process_cores_used": 3.8, "process_child_count": 4 },
+  "memory": { "total_mib": 64000, "used_mib": 30468, "used_pct": 47.6, "free_mib": 2289, "available_mib": 18432, "buffers_mib": 263, "cached_mib": 8472, "active_mib": 8157, "inactive_mib": 7404, "swap_total_mib": 0, "swap_used_mib": 0, "swap_used_pct": 0.0 },
+  "network": [{ "interface": "eth0", "rx_bytes_per_sec": 1200.0, "tx_bytes_per_sec": 400.0, "rx_bytes_total": 9834200, "tx_bytes_total": 312400, "driver": "virtio_net", "operstate": "up", "speed_mbps": 1000, "mtu": 1500, "mac_address": "02:00:00:aa:bb:cc" }],
+  "disk": [{ "device": "nvme0n1", "model": "Samsung SSD 990 PRO", "device_type": "nvme", "capacity_bytes": 1000204886016, "read_bytes_per_sec": 0.0, "write_bytes_per_sec": 204800.0, "mounts": [{ "mount_point": "/", "filesystem": "ext4", "total_bytes": 999292796928, "used_bytes": 841676800000, "available_bytes": 142023000000, "used_pct": 84.2 }] }],
+  "gpu": [{ "name": "NVIDIA GeForce RTX 4090", "utilization_pct": 98.0, "vram_used_pct": 72.3, "vram_used_bytes": 17394819072, "vram_total_bytes": 24026849280, "temperature_celsius": 74, "power_watts": 318.5, "frequency_mhz": 2520 }]
+}
+</code></pre>
+<hr>
+<h2 id="cli-flags"><a class="header" href="#cli-flags">CLI flags</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Short</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--job-name NAME</code></td><td><code>-n</code></td><td><em>(none)</em></td><td>Label attached to every sample. Useful for identifying runs in aggregated output.</td></tr>
+<tr><td><code>--pid PID</code></td><td><code>-p</code></td><td><em>(none)</em></td><td>Root PID of the process tree to attribute CPU usage to. Includes all child processes.</td></tr>
+<tr><td><code>--interval SECS</code></td><td><code>-i</code></td><td><code>1</code></td><td>How often to emit a sample, in seconds.</td></tr>
+<tr><td><code>--format FORMAT</code></td><td><code>-f</code></td><td><code>json</code></td><td>Output format: <code>json</code> or <code>csv</code>.</td></tr>
+<tr><td><code>--config FILE</code></td><td><code>-c</code></td><td><code>resource-tracker.toml</code></td><td>Path to a TOML config file. Silently ignored if the file does not exist.</td></tr>
+<tr><td><code>--help</code></td><td><code>-h</code></td><td></td><td>Print help.</td></tr>
+<tr><td><code>--version</code></td><td><code>-V</code></td><td></td><td>Print version.</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Precedence:</strong> CLI flags &gt; config file &gt; built-in defaults.</p>
+<hr>
+<h2 id="config-file-resource-trackertoml"><a class="header" href="#config-file-resource-trackertoml">Config file (<code>resource-tracker.toml</code>)</a></h2>
+<p>The TOML config file lets you persist settings so you don’t have to repeat CLI
+flags on every invocation. It is optional – the tool works with no config file
+at all. Any field set on the CLI overrides the corresponding field in the file.</p>
+<p>The default lookup path is <code>resource-tracker.toml</code> in the current working directory.
+Use <code>--config /path/to/file.toml</code> to point elsewhere.</p>
+<h3 id="full-reference"><a class="header" href="#full-reference">Full reference</a></h3>
+<pre><code class="language-toml">[job]
+# Human-readable label for this tracking session.
+# Appears as "job_name" in every emitted JSON sample.
+# Useful when multiple runs are collected into the same data store so you can
+# filter and group by job.
+name = "gpu-benchmark-run-42"
+
+# Root PID of the process to track.
+# resource-tracker will walk the full process tree (parent + all descendants)
+# and sum their CPU tick usage to report process_cores_used.
+# Leave unset to collect system-wide metrics only.
+pid = 12345
+
+[tracker]
+# Sampling interval in seconds.  Lower values give finer resolution at the
+# cost of more output volume and slightly higher observer overhead.
+# Default: 1
+interval_secs = 10
+</code></pre>
+<h3 id="minimal-example--system-wide-monitoring"><a class="header" href="#minimal-example--system-wide-monitoring">Minimal example – system-wide monitoring</a></h3>
+<pre><code class="language-toml">[tracker]
+interval_secs = 30
+</code></pre>
+<h3 id="example--named-job-with-process-tracking"><a class="header" href="#example--named-job-with-process-tracking">Example – named job with process tracking</a></h3>
+<pre><code class="language-toml">[job]
+name    = "my_job_i_want_to_track"
+pid     = 98231
+
+[tracker]
+interval_secs = 5
+</code></pre>
+<hr>
+<h2 id="sentinel-api-streaming-and-s3-output"><a class="header" href="#sentinel-api-streaming-and-s3-output">Sentinel API streaming and S3 output</a></h2>
+<p>When <code>SENTINEL_API_TOKEN</code> is set, the tracker registers the run with the
+Sentinel API and streams metric batches to S3 in the background.
+No network connections are ever made when the token is absent.</p>
+<h3 id="how-it-works"><a class="header" href="#how-it-works">How it works</a></h3>
+<ol>
+<li>At startup, <code>start_run</code> is called to register the run and obtain temporary
+S3 upload credentials from the Sentinel API.</li>
+<li>A background upload thread wakes every <code>TRACKER_UPLOAD_INTERVAL</code> seconds
+(default 60), drains the in-memory sample buffer, serializes as CSV,
+gzip-compresses, and PUTs the file to the S3 prefix returned by the API.</li>
+<li>On clean exit (SIGTERM, shell-wrapper child exits), any samples not yet
+uploaded are base64-encoded and sent inline to <code>finish_run</code> inside a
+gzip-compressed JSON body.  If S3 uploads did occur, only the S3 URIs
+are sent.</li>
+</ol>
+<h3 id="environment-variables"><a class="header" href="#environment-variables">Environment variables</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>Required</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>SENTINEL_API_TOKEN</code></td><td>Yes</td><td>–</td><td>Bearer token for the Sentinel API. Streaming is disabled when absent or empty.</td></tr>
+<tr><td><code>SENTINEL_API_URL</code></td><td>No</td><td><code>https://api.sentinel.sparecores.net</code></td><td>Override the Sentinel API base URL.</td></tr>
+<tr><td><code>TRACKER_UPLOAD_INTERVAL</code></td><td>No</td><td><code>60</code></td><td>Seconds between S3 batch uploads.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="job-metadata-environment-variables"><a class="header" href="#job-metadata-environment-variables">Job metadata environment variables</a></h3>
+<p>All Section 9.3 metadata fields can be set via environment variable instead of
+CLI flags.  Environment variables are overridden by the corresponding CLI flag
+when both are supplied.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>CLI flag</th></tr>
+</thead>
+<tbody>
+<tr><td><code>TRACKER_JOB_NAME</code></td><td><code>--job-name</code></td></tr>
+<tr><td><code>TRACKER_PROJECT_NAME</code></td><td><code>--project-name</code></td></tr>
+<tr><td><code>TRACKER_STAGE_NAME</code></td><td><code>--stage-name</code></td></tr>
+<tr><td><code>TRACKER_TASK_NAME</code></td><td><code>--task-name</code></td></tr>
+<tr><td><code>TRACKER_TEAM</code></td><td><code>--team</code></td></tr>
+<tr><td><code>TRACKER_ENV</code></td><td><code>--env</code></td></tr>
+<tr><td><code>TRACKER_LANGUAGE</code></td><td><code>--language</code></td></tr>
+<tr><td><code>TRACKER_ORCHESTRATOR</code></td><td><code>--orchestrator</code></td></tr>
+<tr><td><code>TRACKER_EXECUTOR</code></td><td><code>--executor</code></td></tr>
+<tr><td><code>TRACKER_EXTERNAL_RUN_ID</code></td><td><code>--external-run-id</code></td></tr>
+<tr><td><code>TRACKER_CONTAINER_IMAGE</code></td><td><code>--container-image</code></td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="example"><a class="header" href="#example">Example</a></h3>
+<pre><code class="language-sh">export SENTINEL_API_TOKEN="your-token-here"
+export TRACKER_JOB_NAME="gpu-benchmark"
+export TRACKER_UPLOAD_INTERVAL=30
+
+./resource-tracker --interval 1 -- python train.py
+</code></pre>
+<p>The tracker spawns <code>python train.py</code>, monitors it, uploads a gzip-compressed
+CSV batch to S3 every 30 seconds, and calls <code>finish_run</code> when the script exits.</p>
+<hr>
+<h2 id="when-to-use-the-config-file-vs-cli-flags"><a class="header" href="#when-to-use-the-config-file-vs-cli-flags">When to use the config file vs CLI flags</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Situation</th><th>Recommended approach</th></tr>
+</thead>
+<tbody>
+<tr><td>One-off interactive run</td><td>CLI flags – faster, no file to manage</td></tr>
+<tr><td>Recurring job (cron, SLURM, systemd unit)</td><td>TOML file alongside the job definition</td></tr>
+<tr><td>CI / benchmark pipeline</td><td>TOML file checked into the repository</td></tr>
+<tr><td>Multiple named jobs on the same host</td><td>One TOML file per job, point to it with <code>--config</code></td></tr>
+<tr><td>Containerized workload</td><td>Set config via CLI flags in the <code>CMD</code> / <code>ENTRYPOINT</code></td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="capturing-output"><a class="header" href="#capturing-output">Capturing output</a></h2>
+<p>Because samples are emitted as newline-delimited JSON to stdout, standard Unix
+tools work directly with the output.</p>
+<pre><code class="language-sh"># Write to a file
+./resource-tracker &gt; run.jsonl
+
+# Tail live output
+./resource-tracker | tee run.jsonl
+
+# Pretty-print with jq
+./resource-tracker | jq .
+
+# Extract only CPU utilization over time
+./resource-tracker | jq '{ t: .timestamp_secs, cpu: .cpu.utilization_pct }'
+
+# Watch GPU VRAM usage
+./resource-tracker --interval 1 | jq '.gpu[] | { name, vram_used_pct }'
+</code></pre>
+<hr>
+<h2 id="shell-wrapper-mode"><a class="header" href="#shell-wrapper-mode">Shell-wrapper mode</a></h2>
+<p>Pass a command after <code>--</code> to have the tracker spawn and monitor it:</p>
+<pre><code class="language-sh">./resource-tracker --interval 1 --job-name "training-run" -- python train.py --epochs 50
+</code></pre>
+<p>The tracker sets <code>--pid</code> automatically to the spawned child’s PID, emits one
+final sample when the child exits, then exits with the child’s exit code.</p>
+<p><strong>Rationale:</strong> eliminates the two-process boilerplate (<code>tracker &amp; python ...; wait</code>)
+and guarantees the tracker always exits with the job’s exit code, making it
+transparent to CI systems.</p>
+<hr>
+<h2 id="process-tree-tracking---pid"><a class="header" href="#process-tree-tracking---pid">Process tree tracking (<code>--pid</code>)</a></h2>
+<p>When <code>--pid</code> is set, every sample includes two extra fields under <code>cpu</code>:</p>
+<ul>
+<li><code>process_cores_used</code> – fractional cores consumed by the process tree
+(e.g. <code>3.8</code> means the tree is using the equivalent of 3.8 full cores).</li>
+<li><code>process_child_count</code> – number of live child/descendant processes at the
+time of sampling (does not include the root PID itself).</li>
+</ul>
+<p>If the tracked PID exits during a run, its contribution drops to zero and
+<code>process_child_count</code> drops to zero. The tracker itself keeps running.</p>
+<p><strong>Rationale:</strong> Python’s <code>SystemTracker</code> tracks only the calling process’s own
+ticks.  Rust walks the full <code>/proc</code> tree so multi-process and multi-threaded
+workloads (e.g. PyTorch data-loader workers, MPI ranks, Spark executors) are
+attributed correctly under a single root PID.</p>
+<p><strong>Finding the PID of a running process:</strong></p>
+<pre><code class="language-sh"># By name
+pgrep -x python
+
+# Most recently launched
+pgrep -n my-training-script
+
+# Already know the command? Launch and capture PID
+my-training-script &amp;
+./resource-tracker --pid $! --job-name "training-run-1"
+</code></pre>
+<hr>
+<h2 id="gpu-support"><a class="header" href="#gpu-support">GPU support</a></h2>
+<p>GPUs are detected automatically at startup via NVML (NVIDIA) and
+<code>libamdgpu_top</code> (AMD). No configuration is needed. On hosts without GPU
+hardware or without the relevant driver libraries installed, the <code>gpu</code> array
+in each sample will be empty – the tracker continues running normally.</p>
+<p>Supported accelerators: NVIDIA GPUs (NVML), AMD GPUs (ROCm/AMDGPU).</p>
+<p><strong>Rationale:</strong> per-GPU temperature, power draw, and clock frequency are not
+emitted by Python’s <code>SystemTracker</code>. These fields enable thermal throttle
+detection and power-efficiency analysis without a separate monitoring tool.</p>
+<hr>
+<h2 id="metrics-reference"><a class="header" href="#metrics-reference">Metrics reference</a></h2>
+<h3 id="cpu"><a class="header" href="#cpu"><code>cpu</code></a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Unit</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>utilization_pct</code></td><td>fractional cores</td><td>Aggregate cores in use (0.0..N_cores). 4.6 on a 16-core host means ~4.6 vCPUs fully utilized.</td></tr>
+<tr><td><code>per_core_pct</code></td><td>% each</td><td>Per-logical-core utilization array (0.0–100.0).</td></tr>
+<tr><td><code>utime_secs</code></td><td>seconds</td><td>User+nice CPU time across all cores this interval.</td></tr>
+<tr><td><code>stime_secs</code></td><td>seconds</td><td>System CPU time across all cores this interval.</td></tr>
+<tr><td><code>process_count</code></td><td>count</td><td>Runnable processes (<code>procs_running</code> from <code>/proc/stat</code>).</td></tr>
+<tr><td><code>process_cores_used</code></td><td>fractional cores</td><td>Cores consumed by tracked process tree (<code>null</code> if no PID).</td></tr>
+<tr><td><code>process_child_count</code></td><td>count</td><td>Live descendant processes (<code>null</code> if no PID).</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="memory"><a class="header" href="#memory"><code>memory</code></a></h3>
+<p>All values in <strong>mebibytes (MiB = 1,048,576 bytes)</strong>.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>total_mib</code></td><td>Total installed RAM</td></tr>
+<tr><td><code>free_mib</code></td><td>Truly free RAM (<code>MemFree</code> from <code>/proc/meminfo</code>)</td></tr>
+<tr><td><code>available_mib</code></td><td>Free + reclaimable RAM (<code>MemAvailable</code>); better estimate of headroom</td></tr>
+<tr><td><code>used_mib</code></td><td><code>total - free - buffers - cached</code> (excludes reclaimable cache)</td></tr>
+<tr><td><code>used_pct</code></td><td>Fraction of total RAM in use</td></tr>
+<tr><td><code>buffers_mib</code></td><td>Kernel I/O buffer cache</td></tr>
+<tr><td><code>cached_mib</code></td><td>Page cache including slab-reclaimable (<code>Cached + SReclaimable</code>)</td></tr>
+<tr><td><code>active_mib</code></td><td>Active pages (recently accessed)</td></tr>
+<tr><td><code>inactive_mib</code></td><td>Inactive pages (candidates for reclaim)</td></tr>
+<tr><td><code>swap_total_mib</code></td><td>Total swap space (0 if no swap)</td></tr>
+<tr><td><code>swap_used_mib</code></td><td>Used swap</td></tr>
+<tr><td><code>swap_used_pct</code></td><td>Fraction of swap in use</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Rationale:</strong> Python’s <code>SystemTracker</code> reports memory in KiB and omits
+<code>available_mib</code>, <code>active_mib</code>, <code>inactive_mib</code>, <code>swap_*</code>.  Rust reports all
+fields in MiB (matching Python resource-tracker PR #9) and adds
+<code>available_mib</code> (<code>MemAvailable</code>) which is a more reliable headroom estimate
+than <code>free_mib</code> alone on systems with large page caches.</p>
+<h3 id="disk-one-entry-per-whole-disk-block-device"><a class="header" href="#disk-one-entry-per-whole-disk-block-device"><code>disk</code> (one entry per whole-disk block device)</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Unit</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>device</code></td><td>–</td><td>Kernel device name, e.g. <code>nvme0n1</code>, <code>sda</code></td></tr>
+<tr><td><code>model</code></td><td>–</td><td>Drive model string from <code>/sys/block/</code></td></tr>
+<tr><td><code>vendor</code></td><td>–</td><td>Vendor string from <code>/sys/block/</code></td></tr>
+<tr><td><code>serial</code></td><td>–</td><td>Serial number or WWID</td></tr>
+<tr><td><code>device_type</code></td><td>–</td><td><code>nvme</code>, <code>ssd</code>, or <code>hdd</code></td></tr>
+<tr><td><code>capacity_bytes</code></td><td>bytes</td><td>Raw device capacity</td></tr>
+<tr><td><code>mounts</code></td><td>–</td><td>Array of mounted filesystems on this device</td></tr>
+<tr><td><code>mounts[].mount_point</code></td><td>–</td><td>e.g. <code>/</code>, <code>/home</code></td></tr>
+<tr><td><code>mounts[].filesystem</code></td><td>–</td><td>e.g. <code>ext4</code>, <code>xfs</code>, <code>btrfs</code></td></tr>
+<tr><td><code>mounts[].total_bytes</code></td><td>bytes</td><td>Filesystem total size</td></tr>
+<tr><td><code>mounts[].used_bytes</code></td><td>bytes</td><td>Space in use</td></tr>
+<tr><td><code>mounts[].available_bytes</code></td><td>bytes</td><td>Space available to non-root users</td></tr>
+<tr><td><code>mounts[].used_pct</code></td><td>%</td><td>Fraction of filesystem in use</td></tr>
+<tr><td><code>read_bytes_per_sec</code></td><td>bytes/s</td><td>Disk read throughput</td></tr>
+<tr><td><code>write_bytes_per_sec</code></td><td>bytes/s</td><td>Disk write throughput</td></tr>
+<tr><td><code>read_bytes_total</code></td><td>bytes</td><td>Cumulative bytes read since boot</td></tr>
+<tr><td><code>write_bytes_total</code></td><td>bytes</td><td>Cumulative bytes written since boot</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Rationale:</strong> Python aggregates disk space across all mounts into three
+scalar CSV columns.  Rust retains per-device, per-mount detail in the JSON
+output, enabling per-volume capacity tracking and per-device I/O attribution
+that the aggregated CSV cannot express.</p>
+<h3 id="network-one-entry-per-non-loopback-interface"><a class="header" href="#network-one-entry-per-non-loopback-interface"><code>network</code> (one entry per non-loopback interface)</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Unit</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>interface</code></td><td>–</td><td>Interface name, e.g. <code>eth0</code>, <code>ens3</code></td></tr>
+<tr><td><code>mac_address</code></td><td>–</td><td>Hardware MAC address</td></tr>
+<tr><td><code>driver</code></td><td>–</td><td>Kernel driver name, e.g. <code>igc</code>, <code>virtio_net</code></td></tr>
+<tr><td><code>operstate</code></td><td>–</td><td>Link state: <code>up</code>, <code>down</code>, <code>unknown</code></td></tr>
+<tr><td><code>speed_mbps</code></td><td>Mbps</td><td>Negotiated link speed (-1 if not reported)</td></tr>
+<tr><td><code>mtu</code></td><td>bytes</td><td>Maximum transmission unit</td></tr>
+<tr><td><code>rx_bytes_per_sec</code></td><td>bytes/s</td><td>Received throughput</td></tr>
+<tr><td><code>tx_bytes_per_sec</code></td><td>bytes/s</td><td>Transmitted throughput</td></tr>
+<tr><td><code>rx_bytes_total</code></td><td>bytes</td><td>Cumulative bytes received since boot</td></tr>
+<tr><td><code>tx_bytes_total</code></td><td>bytes</td><td>Cumulative bytes sent since boot</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Rationale:</strong> Python’s <code>SystemTracker</code> emits only cumulative rx/tx byte
+totals per interface.  Rust adds per-interval rates, driver identity,
+link state, negotiated speed, and MTU, enabling network saturation and
+driver-level diagnostics without a separate tool.</p>
+<h3 id="gpu-one-entry-per-detected-accelerator"><a class="header" href="#gpu-one-entry-per-detected-accelerator"><code>gpu</code> (one entry per detected accelerator)</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Unit</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>uuid</code></td><td>–</td><td>Vendor-assigned device UUID</td></tr>
+<tr><td><code>name</code></td><td>–</td><td>Device name, e.g. <code>NVIDIA GeForce RTX 4090</code></td></tr>
+<tr><td><code>device_type</code></td><td>–</td><td><code>GPU</code>, <code>NPU</code>, <code>TPU</code>, etc.</td></tr>
+<tr><td><code>host_id</code></td><td>–</td><td>Host-level device identifier (PCIe slot or platform index)</td></tr>
+<tr><td><code>detail</code></td><td>–</td><td>Driver-specific key/value map (PCI IDs, ASIC name, driver version, …)</td></tr>
+<tr><td><code>utilization_pct</code></td><td>%</td><td>Core utilization</td></tr>
+<tr><td><code>vram_total_bytes</code></td><td>bytes</td><td>Total VRAM</td></tr>
+<tr><td><code>vram_used_bytes</code></td><td>bytes</td><td>Used VRAM</td></tr>
+<tr><td><code>vram_used_pct</code></td><td>%</td><td>Fraction of VRAM in use</td></tr>
+<tr><td><code>temperature_celsius</code></td><td>deg C</td><td>Die temperature</td></tr>
+<tr><td><code>power_watts</code></td><td>W</td><td>Power draw</td></tr>
+<tr><td><code>frequency_mhz</code></td><td>MHz</td><td>Core clock</td></tr>
+<tr><td><code>core_count</code></td><td>count</td><td>Shader/compute cores (<code>null</code> if not reported)</td></tr>
+</tbody>
+</table>
+</div>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="Benchmarks.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="cargo/doc/resource_tracker/index.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="Benchmarks.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="cargo/doc/resource_tracker/index.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-c2a407aa.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

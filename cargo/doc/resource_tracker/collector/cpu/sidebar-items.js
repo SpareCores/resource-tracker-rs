@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["aggregate_util_cores","core_util_pct","cpu_idle","cpu_total","process_tree_io","process_tree_rss_mib","process_tree_ticks","util_pct_from_ticks"],"struct":["CpuCollector","Snapshot"],"type":["Result"]};

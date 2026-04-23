@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["cpu","disk","disk_mount","disk_type","gpu","host","memory","network"],"struct":["Sample"]};

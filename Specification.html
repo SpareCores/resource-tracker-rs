@@ -1,0 +1,1012 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Specification - resource-tracker</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="This is a book to document the SpareCores resource-tracker project">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-2459343d.css">
+        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/custom-fa3bf03f.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-c01db0e6.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-a617d0e0.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">resource-tracker</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="specification-proposal--resource-tracker"><a class="header" href="#specification-proposal--resource-tracker">Specification Proposal — <code>resource-tracker</code></a></h1>
+<ul>
+<li>Status: Proposal / Work-in-Progress</li>
+<li>Date: 2026-03-30</li>
+<li>Based on:  README.md (SpareCores), <code>src/</code> prototype, Python PR #9, <code>s3_upload.py</code></li>
+<li>AI large language model tools were used throughout research, specification, and implementation phases of this project to accelerate and improve the quality of the work.</li>
+</ul>
+<hr>
+<h2 id="0-conventions"><a class="header" href="#0-conventions">0. Conventions</a></h2>
+<p>The key words <strong>MUST</strong>, <strong>MUST NOT</strong>, <strong>REQUIRED</strong>, <strong>SHALL</strong>, <strong>SHOULD</strong>,
+<strong>SHOULD NOT</strong>, <strong>RECOMMENDED</strong>, <strong>MAY</strong>, and <strong>OPTIONAL</strong> in this document are
+to be interpreted as described in <a href="https://www.rfc-editor.org/rfc/rfc2119">RFC 2119</a>.</p>
+<p>A <strong>verifiable requirement</strong> is one that can be confirmed by an automated test
+without manual inspection.  Every normative statement below (MUST/SHALL) is
+intended to be verifiable.</p>
+<hr>
+<h2 id="1-purpose-and-scope"><a class="header" href="#1-purpose-and-scope">1. Purpose and Scope</a></h2>
+<p><code>resource-tracker</code> is a lightweight, statically self-contained Linux binary that:</p>
+<ol>
+<li>Polls system- and process-level resource utilization at a configurable interval.</li>
+<li>Emits structured samples to stdout (JSON Lines or CSV).</li>
+<li>Optionally streams those samples to the <u>Sentinel API</u> (SpareCores data
+ingestion endpoint) via gzip-compressed (CVS, TSV, or JSONL) files uploaded to S3 using
+temporary STS credentials.</li>
+</ol>
+<p>The binary is intended as a drop-in CLI wrapper: run it alongside any process
+and it will transparently record how that process consumes hardware.</p>
+<p><strong>Out of scope (v1):</strong> macOS, Windows, eBPF, EBPF-based tracing, container
+image introspection beyond environment variables, multi-host federation.</p>
+<hr>
+<h2 id="2-platform-requirements"><a class="header" href="#2-platform-requirements">2. Platform Requirements</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Requirement</th><th>Detail</th></tr>
+</thead>
+<tbody>
+<tr><td>Operating System</td><td>Linux only (kernel ≥ 4.18 recommended for full <code>/proc</code> coverage)</td></tr>
+<tr><td>CPU Architectures</td><td>x86_64 and aarch64 (ARM64)</td></tr>
+<tr><td>Linkage</td><td>Dynamic linkage for GPU libraries; all other code statically linked or carried as crate dependencies</td></tr>
+<tr><td>Minimum Rust Edition</td><td>2024</td></tr>
+</tbody>
+</table>
+</div>
+<p>GPU support MUST NOT be required for the binary to build or run.<br>On a CPU-only host <code>GpuCollector::collect()</code> SHALL return an empty <code>Vec</code> and no error.</p>
+<hr>
+<h2 id="3-configuration"><a class="header" href="#3-configuration">3. Configuration</a></h2>
+<h3 id="31-precedence-highest-to-lowest"><a class="header" href="#31-precedence-highest-to-lowest">3.1 Precedence (highest to lowest)</a></h3>
+<pre><code>CLI flags  &gt;  TOML config file  &gt;  built-in defaults
+</code></pre>
+<blockquote>
+<p><strong>Future enhancement:</strong> Support <code>RESOURCE_TRACKER_</code>-prefixed environment
+variables (e.g. <code>RESOURCE_TRACKER_INTERVAL</code>, <code>RESOURCE_TRACKER_FORMAT</code>) as
+an additional configuration layer between CLI flags and the TOML file.
+Environment variables are more practical than file-based config for
+containerized and scripted workloads and are preferred for the Sentinel
+integration use case.</p>
+</blockquote>
+<h3 id="32-cli-parameters"><a class="header" href="#32-cli-parameters">3.2 CLI Parameters</a></h3>
+<p>The binary MUST accept the following flags via a command line parser:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Short</th><th>Long</th><th>Type</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>-n</code></td><td><code>--job-name</code></td><td><code>String</code></td><td>none</td><td>Human-readable label attached to every sample</td></tr>
+<tr><td><code>-p</code></td><td><code>--pid</code></td><td><code>i32</code></td><td>none</td><td>Root PID of the process tree to track (CPU attribution)</td></tr>
+<tr><td><code>-i</code></td><td><code>--interval</code></td><td><code>u64</code></td><td><code>1</code></td><td>Polling interval in seconds (≥ 1)</td></tr>
+<tr><td><code>-c</code></td><td><code>--config</code></td><td>path</td><td><code>resource-tracker.toml</code></td><td>Path to TOML config file</td></tr>
+<tr><td><code>-f</code></td><td><code>--format</code></td><td>enum</td><td><code>json</code></td><td>Output format: <code>json</code> or <code>csv</code></td></tr>
+<tr><td></td><td><code>--version</code></td><td>flag</td><td></td><td>Print binary version and exit</td></tr>
+</tbody>
+</table>
+</div>
+<p>All metadata fields listed in Section 9.3 (job_name, project_name, stage_name, etc.)
+MUST also be accepted as CLI flags.  See Section 9.3 for the full flag and environment
+variable table.</p>
+<p><strong>Shell-wrapper mode (MVP target):</strong> The binary SHOULD support being used as a
+transparent process wrapper, where the command to monitor is passed as trailing
+arguments after a <code>--</code> separator or as positional arguments:</p>
+<pre><code class="language-shell">resource-tracker Rscript model.R
+resource-tracker -- python train.py --epochs 10
+</code></pre>
+<p>In this mode the binary spawns the given command as a child process, sets
+<code>--pid</code> to that child’s PID automatically, and exits when the child exits
+(propagating the child exit code).  This is a significant usability improvement
+over the Python implementation and is a first-class v1 goal.</p>
+<p><code>--interval</code> MUST be &gt; 0. Values of 0 SHALL be rejected with a non-zero exit code and a descriptive error message.</p>
+<h3 id="33-toml-config-file"><a class="header" href="#33-toml-config-file">3.3 TOML Config File</a></h3>
+<p>The config file is optional.  If the file does not exist or cannot be parsed,
+the binary MUST continue using defaults (no error, no warning).</p>
+<p>Schema:</p>
+<pre><code class="language-toml">[job]
+name = "my-benchmark"   # String; optional
+pid  = 12345            # i32;   optional
+
+[tracker]
+interval_secs = 5       # u64;   optional; default 1
+</code></pre>
+<p>Unrecognized keys MUST be silently ignored.</p>
+<h3 id="34-verifiable-configuration-tests"><a class="header" href="#34-verifiable-configuration-tests">3.4 Verifiable Configuration Tests</a></h3>
+<ul>
+<li><code>T-CFG-01</code>: Running with no flags produces valid JSON Lines output on stdout.</li>
+<li><code>T-CFG-02</code>: <code>--format csv</code> emits a header line matching the exact column list in Section 6.2 before the first data row.</li>
+<li><code>T-CFG-03</code>: <code>--interval 0</code> exits with code ≠ 0.</li>
+<li><code>T-CFG-04</code>: A TOML file with <code>[tracker] interval_secs = 3</code> results in
+samples separated by ≈ 3 seconds when no <code>--interval</code> flag is provided.</li>
+<li><code>T-CFG-05</code>: A CLI <code>--interval 2</code> overrides a TOML <code>interval_secs = 5</code>.</li>
+<li><code>T-CFG-06</code>: A missing TOML file path silently falls back to defaults.</li>
+</ul>
+<hr>
+<h2 id="4-startup-behavior"><a class="header" href="#4-startup-behavior">4. Startup Behavior</a></h2>
+<p>On startup the binary MUST:</p>
+<ol>
+<li>Parse configuration (Section 3).</li>
+<li>Initialize all collectors.</li>
+<li>Execute one warm-up collection pass to prime delta state in stateful collectors (<code>CpuCollector</code>, <code>NetworkCollector</code>, <code>DiskCollector</code>).</li>
+<li>Sleep exactly one full interval.</li>
+<li>Emit the CSV header (if format = CSV) <u>before</u> the first data row.</li>
+<li>Enter the polling loop (Section 5).</li>
+</ol>
+<p>The warm-up pass result MUST NOT be emitted to stdout.</p>
+<hr>
+<h2 id="5-polling-loop"><a class="header" href="#5-polling-loop">5. Polling Loop</a></h2>
+<p>The loop MUST:</p>
+<ol>
+<li>Record <code>timestamp_secs</code> = current Unix time as <code>u64</code> (seconds since UNIX epoch, UTC).</li>
+<li>Collect all metric subsystems (Section 6.1) in the order: CPU, Memory, Network, Disk, GPU.</li>
+<li>Serialize and emit one line to stdout per the chosen format (Section 6.2, Section 6.3).</li>
+<li>Sleep the configured interval.</li>
+<li>Repeat indefinitely until killed.</li>
+</ol>
+<p>Collection of any subsystem MUST NOT block the other subsystems.  Failures in
+optional subsystems (GPU) MUST be surfaced as empty/zero values, not panics.</p>
+<hr>
+<h2 id="6-data-model"><a class="header" href="#6-data-model">6. Data Model</a></h2>
+<h3 id="61-sample"><a class="header" href="#61-sample">6.1 Sample</a></h3>
+<p>A <code>Sample</code> is a point-in-time snapshot of all tracked resources.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct Sample {
+    pub timestamp_secs: u64,          // Unix time (seconds)
+    pub job_name:       Option&lt;String&gt;,
+    pub cpu:            CpuMetrics,
+    pub memory:         MemoryMetrics,
+    pub network:        Vec&lt;NetworkMetrics&gt;,  // one per interface
+    pub disk:           Vec&lt;DiskMetrics&gt;,     // one per block device
+    pub gpu:            Vec&lt;GpuMetrics&gt;,      // one per GPU; empty if none
+}
+<span class="boring">}</span></code></pre>
+<h4 id="611-cpumetrics"><a class="header" href="#611-cpumetrics">6.1.1 CpuMetrics</a></h4>
+<p>Source: <code>/proc/stat</code> tick deltas; <code>/proc/&lt;pid&gt;/stat</code> for process tracking.</p>
+<blockquote>
+<p><strong>Note:</strong> <code>total_cores</code> (logical CPU count) is a static host property that
+rarely changes.  It belongs in the host discovery snapshot (Section 8.1) rather than
+in every per-second sample.  It is referenced here only for computing
+<code>cpu_usage</code> in the CSV output (Section 7.2).</p>
+</blockquote>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Type</th><th>Unit</th><th>Source</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>utilization_pct</code></td><td><code>f64</code></td><td>fractional cores</td><td><code>/proc/stat</code></td><td>Aggregate utilization expressed as cores-in-use (0.0..N_cores)</td></tr>
+<tr><td><code>per_core_pct</code></td><td><code>Vec&lt;f64&gt;</code></td><td>%</td><td><code>/proc/stat</code></td><td>Per logical CPU percentage; len == <code>host_vcpus</code>; range 0.0–100.0</td></tr>
+<tr><td><code>utime_secs</code></td><td><code>f64</code></td><td>seconds</td><td><code>/proc/stat</code></td><td>Δ(user+nice ticks) / ticks_per_second for this interval</td></tr>
+<tr><td><code>stime_secs</code></td><td><code>f64</code></td><td>seconds</td><td><code>/proc/stat</code></td><td>Δ(system ticks) / ticks_per_second for this interval</td></tr>
+<tr><td><code>process_count</code></td><td><code>u32</code></td><td>count</td><td><code>/proc</code> numeric dirs</td><td>Number of running processes visible to the OS</td></tr>
+<tr><td><code>process_cores_used</code></td><td><code>Option&lt;f64&gt;</code></td><td>fractional cores</td><td><code>/proc/&lt;pid&gt;/stat</code></td><td>None when no PID tracked</td></tr>
+<tr><td><code>process_child_count</code></td><td><code>Option&lt;u32&gt;</code></td><td>count</td><td><code>/proc/&lt;pid&gt;/stat</code></td><td>Descendant count; excludes root PID; None when no PID tracked</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Computation rules:</strong></p>
+<ul>
+<li><code>utilization_pct</code> = <code>(Δtotal − Δidle) / Δtotal × N_cores</code> where N_cores is
+the logical CPU count from host discovery.  The result is expressed as
+<strong>fractional cores in use</strong> (e.g. 4.6 on a 16-core host means ~4.6 vCPUs
+are fully utilized).  Do NOT clamp this value; values very slightly above
+N_cores are valid under kernel accounting rounding.
+Δtotal = Δ(user + nice + system + idle + iowait + irq + softirq + steal).
+Δidle = Δ(idle + iowait).</li>
+<li><code>utime_secs</code> = Δ(user + nice) / <code>ticks_per_second</code>.</li>
+<li><code>stime_secs</code> = Δ(system) / <code>ticks_per_second</code>.</li>
+<li><code>process_cores_used</code> = Σ Δ(utime+stime) for root PID and all descendants /
+(elapsed_wall_clock_seconds × ticks_per_second).  Must be ≥ 0.</li>
+<li>On the first collection call (no previous snapshot), all delta-based fields
+MUST return 0.  The caller MUST discard this result (warm-up pass).</li>
+</ul>
+<p><strong>Verifiable CpuMetrics Tests:</strong></p>
+<ul>
+<li><code>T-CPU-01</code>: <code>utilization_pct</code> is in [0.0, N_cores] for all samples (N_cores from host discovery).</li>
+<li><code>T-CPU-02</code>: <code>len(per_core_pct)</code> == <code>host_vcpus</code> for all samples.</li>
+<li><code>T-CPU-03</code>: When <code>--pid</code> is not set, <code>process_cores_used</code> and <code>process_child_count</code> are <code>None</code>.</li>
+<li><code>T-CPU-04</code>: When <code>--pid &lt;self&gt;</code> is set, <code>process_cores_used</code> ≥ 0.</li>
+<li><code>T-CPU-05</code>: <code>process_count</code> ≥ 1 on any running Linux system.</li>
+<li><code>T-CPU-06</code>: First <code>collect()</code> call returns 0.0 for all delta fields.</li>
+</ul>
+<h4 id="612-memorymetrics"><a class="header" href="#612-memorymetrics">6.1.2 MemoryMetrics</a></h4>
+<p>Source: <code>/proc/meminfo</code>.  All values in <strong>mebibytes (MiB = 1024 × 1024 bytes)</strong>,
+standardized to match Python <code>resource-tracker</code> PR #9 which also adopts MiB
+throughout.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Type</th><th>Unit</th><th><code>/proc/meminfo</code> key(s)</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>total_mib</code></td><td><code>u64</code></td><td>MiB</td><td><code>MemTotal</code></td><td></td></tr>
+<tr><td><code>free_mib</code></td><td><code>u64</code></td><td>MiB</td><td><code>MemFree</code></td><td>Truly free RAM</td></tr>
+<tr><td><code>available_mib</code></td><td><code>u64</code></td><td>MiB</td><td><code>MemAvailable</code></td><td>Free + reclaimable</td></tr>
+<tr><td><code>used_mib</code></td><td><code>u64</code></td><td>MiB</td><td><code>MemTotal − MemFree − Buffers − Cached</code></td><td>Matches Python <code>memory_used</code></td></tr>
+<tr><td><code>used_pct</code></td><td><code>f64</code></td><td>%</td><td>derived</td><td><code>used_mib / total_mib × 100</code>; range 0.0–100.0</td></tr>
+<tr><td><code>buffers_mib</code></td><td><code>u64</code></td><td>MiB</td><td><code>Buffers</code></td><td>Kernel I/O buffers</td></tr>
+<tr><td><code>cached_mib</code></td><td><code>u64</code></td><td>MiB</td><td><code>Cached + SReclaimable</code></td><td>Page cache + slab reclaimable</td></tr>
+<tr><td><code>swap_total_mib</code></td><td><code>u64</code></td><td>MiB</td><td><code>SwapTotal</code></td><td></td></tr>
+<tr><td><code>swap_used_mib</code></td><td><code>u64</code></td><td>MiB</td><td><code>SwapTotal − SwapFree</code></td><td></td></tr>
+<tr><td><code>swap_used_pct</code></td><td><code>f64</code></td><td>%</td><td>derived</td><td>0.0 when <code>SwapTotal</code> == 0</td></tr>
+<tr><td><code>active_mib</code></td><td><code>u64</code></td><td>MiB</td><td><code>Active</code></td><td></td></tr>
+<tr><td><code>inactive_mib</code></td><td><code>u64</code></td><td>MiB</td><td><code>Inactive</code></td><td></td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Verifiable MemoryMetrics Tests:</strong></p>
+<ul>
+<li><code>T-MEM-01</code>: <code>free_mib + used_mib + buffers_mib + cached_mib ≤ total_mib</code> (accounting for kernel reserved memory).</li>
+<li><code>T-MEM-02</code>: <code>used_pct</code> is in [0.0, 100.0].</li>
+<li><code>T-MEM-03</code>: <code>swap_used_pct</code> is 0.0 when <code>swap_total_mib</code> == 0.</li>
+<li><code>T-MEM-04</code>: <code>available_mib ≤ total_mib</code>.</li>
+</ul>
+<h4 id="613-networkmetrics"><a class="header" href="#613-networkmetrics">6.1.3 NetworkMetrics</a></h4>
+<p>Source: <code>/proc/net/dev</code> (throughput), <code>/sys/class/net/&lt;iface&gt;/</code> (identity/link state).
+One <code>NetworkMetrics</code> record per non-loopback interface.</p>
+<blockquote>
+<p><strong>Architecture note:</strong> Fields such as <code>mac_address</code>, <code>driver</code>, <code>operstate</code>,
+<code>speed_mbps</code>, and <code>mtu</code> are static properties that do not change every
+second.  They are candidates for promotion to a host-discovery snapshot
+(Section 8.1) rather than being repeated in every per-second sample.  This
+applies similarly to static fields in Section 6.1.4 (disk) and Section 6.1.5
+(GPU).  The current spec includes them here for completeness; a future
+revision should separate static identity fields from dynamic rate fields.</p>
+</blockquote>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Type</th><th>Unit</th><th>Source</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>interface</code></td><td><code>String</code></td><td>—</td><td>interface name</td><td>e.g. <code>"eth0"</code></td></tr>
+<tr><td><code>mac_address</code></td><td><code>Option&lt;String&gt;</code></td><td>—</td><td><code>/sys/class/net/&lt;iface&gt;/address</code></td><td><code>"00:11:22:33:44:55"</code></td></tr>
+<tr><td><code>driver</code></td><td><code>Option&lt;String&gt;</code></td><td>—</td><td><code>/sys/class/net/&lt;iface&gt;/device/driver</code> symlink</td><td>e.g. <code>"igc"</code></td></tr>
+<tr><td><code>operstate</code></td><td><code>Option&lt;String&gt;</code></td><td>—</td><td><code>/sys/class/net/&lt;iface&gt;/operstate</code></td><td><code>"up"</code>, <code>"down"</code>, <code>"unknown"</code></td></tr>
+<tr><td><code>speed_mbps</code></td><td><code>Option&lt;i64&gt;</code></td><td>Mbps</td><td><code>/sys/class/net/&lt;iface&gt;/speed</code></td><td>−1 when not reported</td></tr>
+<tr><td><code>mtu</code></td><td><code>Option&lt;u32&gt;</code></td><td>bytes</td><td><code>/sys/class/net/&lt;iface&gt;/mtu</code></td><td></td></tr>
+<tr><td><code>rx_bytes_per_sec</code></td><td><code>f64</code></td><td>bytes/s</td><td><code>/proc/net/dev</code> Δ</td><td>Rate for this interval</td></tr>
+<tr><td><code>tx_bytes_per_sec</code></td><td><code>f64</code></td><td>bytes/s</td><td><code>/proc/net/dev</code> Δ</td><td>Rate for this interval</td></tr>
+<tr><td><code>rx_bytes_total</code></td><td><code>u64</code></td><td>bytes</td><td><code>/proc/net/dev</code></td><td>Cumulative since boot</td></tr>
+<tr><td><code>tx_bytes_total</code></td><td><code>u64</code></td><td>bytes</td><td><code>/proc/net/dev</code></td><td>Cumulative since boot</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Verifiable NetworkMetrics Tests:</strong></p>
+<ul>
+<li><code>T-NET-01</code>: <code>rx_bytes_per_sec</code> ≥ 0.0 and <code>tx_bytes_per_sec</code> ≥ 0.0 for all interfaces.</li>
+<li><code>T-NET-02</code>: <code>rx_bytes_total</code> monotonically non-decreasing between consecutive samples (absent interface reset).</li>
+<li><code>T-NET-03</code>: The loopback interface (<code>lo</code>) is NOT included in the output.</li>
+</ul>
+<h4 id="614-diskmetrics"><a class="header" href="#614-diskmetrics">6.1.4 DiskMetrics</a></h4>
+<p>Source: <code>/proc/diskstats</code> (throughput), <code>/sys/block/&lt;dev&gt;/</code> (identity),
+<code>statvfs(3)</code> (space).  One <code>DiskMetrics</code> record per block device (excluding
+partitions and device-mapper synthetic devices unless mounted independently).</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Type</th><th>Unit</th><th>Source</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>device</code></td><td><code>String</code></td><td>—</td><td>kernel device name</td><td>e.g. <code>"sda"</code>, <code>"nvme0n1"</code></td></tr>
+<tr><td><code>model</code></td><td><code>Option&lt;String&gt;</code></td><td>—</td><td><code>/sys/block/&lt;dev&gt;/device/model</code></td><td></td></tr>
+<tr><td><code>vendor</code></td><td><code>Option&lt;String&gt;</code></td><td>—</td><td><code>/sys/block/&lt;dev&gt;/device/vendor</code></td><td></td></tr>
+<tr><td><code>serial</code></td><td><code>Option&lt;String&gt;</code></td><td>—</td><td><code>/sys/block/&lt;dev&gt;/device/wwid</code> or <code>serial</code></td><td></td></tr>
+<tr><td><code>device_type</code></td><td><code>Option&lt;DiskType&gt;</code></td><td>—</td><td><code>/sys/block/&lt;dev&gt;/queue/rotational</code></td><td><code>Nvme</code>, <code>Ssd</code>, or <code>Hdd</code>; <code>None</code> when type cannot be determined</td></tr>
+<tr><td><code>capacity_bytes</code></td><td><code>Option&lt;u64&gt;</code></td><td>bytes</td><td><code>/sys/block/&lt;dev&gt;/size × 512</code></td><td></td></tr>
+<tr><td><code>mounts</code></td><td><code>Vec&lt;DiskMountMetrics&gt;</code></td><td>—</td><td><code>statvfs(3)</code></td><td>One per mount point</td></tr>
+<tr><td><code>read_bytes_per_sec</code></td><td><code>f64</code></td><td>bytes/s</td><td><code>/proc/diskstats</code> Δ</td><td></td></tr>
+<tr><td><code>write_bytes_per_sec</code></td><td><code>f64</code></td><td>bytes/s</td><td><code>/proc/diskstats</code> Δ</td><td></td></tr>
+<tr><td><code>read_bytes_total</code></td><td><code>u64</code></td><td>bytes</td><td><code>/proc/diskstats</code> sectors × sector_size</td><td>Cumulative since boot; see sector size note</td></tr>
+<tr><td><code>write_bytes_total</code></td><td><code>u64</code></td><td>bytes</td><td><code>/proc/diskstats</code> sectors × sector_size</td><td>Cumulative since boot; see sector size note</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>DiskMountMetrics</code> fields:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Type</th><th>Unit</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>mount_point</code></td><td><code>String</code></td><td>—</td><td>e.g. <code>"/"</code></td></tr>
+<tr><td><code>filesystem</code></td><td><code>String</code></td><td>—</td><td>Filesystem type from <code>/proc/mounts</code>; e.g. <code>"ext4"</code>, <code>"xfs"</code></td></tr>
+<tr><td><code>total_bytes</code></td><td><code>u64</code></td><td>bytes</td><td><code>statvfs.f_blocks × f_bsize</code></td></tr>
+<tr><td><code>available_bytes</code></td><td><code>u64</code></td><td>bytes</td><td><code>statvfs.f_bavail × f_bsize</code> (unprivileged)</td></tr>
+<tr><td><code>used_bytes</code></td><td><code>u64</code></td><td>bytes</td><td><code>total_bytes − (statvfs.f_bfree × f_bsize)</code></td></tr>
+<tr><td><code>used_pct</code></td><td><code>f64</code></td><td>%</td><td><code>used_bytes / total_bytes × 100</code>; 0.0 when total == 0</td></tr>
+</tbody>
+</table>
+</div>
+<blockquote>
+<p><strong>Sector size note:</strong> The current implementation hard-codes 512 bytes/sector for
+<code>/proc/diskstats</code> conversions.  Python’s <code>get_sector_sizes()</code> reads
+<code>/sys/block/&lt;dev&gt;/queue/hw_sector_size</code> (fallback 512).  On 4K-native drives
+(some NVMe) the Rust code will under-count I/O bytes by up to 8×.  A future
+fix should read <code>/sys/block/&lt;dev&gt;/queue/logical_block_size</code> at startup and use
+the actual sector size.  See implementation plan P-DSK-SECTOR.</p>
+</blockquote>
+<p><strong>Verifiable DiskMetrics Tests:</strong></p>
+<ul>
+<li><code>T-DSK-01</code>: <code>read_bytes_per_sec</code> ≥ 0.0 and <code>write_bytes_per_sec</code> ≥ 0.0.</li>
+<li><code>T-DSK-02</code>: For each mount, <code>used_bytes + available_bytes ≤ total_bytes</code>.</li>
+<li><code>T-DSK-03</code>: <code>capacity_bytes</code> (when Some) &gt; 0.</li>
+</ul>
+<h4 id="615-gpumetrics"><a class="header" href="#615-gpumetrics">6.1.5 GpuMetrics</a></h4>
+<p>Source: NVML (<code>nvml-wrapper</code> crate, runtime-loads <code>libnvidia-ml.so</code>) for
+NVIDIA GPUs; <code>libamdgpu_top</code> (runtime-loads <code>libdrm</code>) for AMD GPUs.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Type</th><th>Unit</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>uuid</code></td><td><code>String</code></td><td>—</td><td>Stable vendor UUID; AMD uses PCI bus address</td></tr>
+<tr><td><code>name</code></td><td><code>String</code></td><td>—</td><td>Human-readable device name</td></tr>
+<tr><td><code>device_type</code></td><td><code>String</code></td><td>—</td><td><code>"GPU"</code>, <code>"NPU"</code>, <code>"TPU"</code></td></tr>
+<tr><td><code>host_id</code></td><td><code>String</code></td><td>—</td><td>Host-level device identifier</td></tr>
+<tr><td><code>detail</code></td><td><code>HashMap&lt;String,String&gt;</code></td><td>—</td><td>Vendor-specific extras (driver version, PCI bus ID, ROCm version)</td></tr>
+<tr><td><code>utilization_pct</code></td><td><code>f64</code></td><td>%</td><td>Core utilization; range 0.0–100.0</td></tr>
+<tr><td><code>vram_total_bytes</code></td><td><code>u64</code></td><td>bytes</td><td></td></tr>
+<tr><td><code>vram_used_bytes</code></td><td><code>u64</code></td><td>bytes</td><td></td></tr>
+<tr><td><code>vram_used_pct</code></td><td><code>f64</code></td><td>%</td><td><code>vram_used / vram_total × 100</code>; 0.0 when total == 0</td></tr>
+<tr><td><code>temperature_celsius</code></td><td><code>u32</code></td><td>°C</td><td>Die temperature</td></tr>
+<tr><td><code>power_watts</code></td><td><code>f64</code></td><td>W</td><td>NVML reports mW; converted to W</td></tr>
+<tr><td><code>frequency_mhz</code></td><td><code>u32</code></td><td>MHz</td><td>Core/graphics clock</td></tr>
+<tr><td><code>core_count</code></td><td><code>Option&lt;u32&gt;</code></td><td>count</td><td>Shader/compute cores; None if not reported</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>AMD-specific:</strong> When <code>/sys/module/amdgpu</code> does not exist the AMD collection path MUST be skipped entirely (no panic).</p>
+<p><strong>NVIDIA-specific:</strong> <code>power_watts</code> = raw NVML milliwatt value / 1000.</p>
+<p><strong>Verifiable GpuMetrics Tests:</strong></p>
+<ul>
+<li><code>T-GPU-01</code>: On a CPU-only host, <code>gpu</code> Vec is empty and no error is returned.</li>
+<li><code>T-GPU-02</code>: <code>utilization_pct</code> is in [0.0, 100.0] for each GPU.</li>
+<li><code>T-GPU-03</code>: <code>vram_used_bytes ≤ vram_total_bytes</code> for each GPU.</li>
+<li><code>T-GPU-04</code>: <code>vram_used_pct</code> is 0.0 when <code>vram_total_bytes</code> == 0.</li>
+<li><code>T-GPU-05</code>: On a host with AMD GPU, <code>uuid</code> equals the PCI bus address string.</li>
+</ul>
+<hr>
+<h2 id="7-output-formats"><a class="header" href="#7-output-formats">7. Output Formats</a></h2>
+<h3 id="71-json-lines-default"><a class="header" href="#71-json-lines-default">7.1 JSON Lines (default)</a></h3>
+<p>Each sample is emitted as a single JSON object followed by <code>\n</code>.  The binary
+MUST include a version field keyed as <code>"&lt;crate-name&gt;-version"</code> with the value
+being the Cargo package version string.</p>
+<p>Example (abbreviated):</p>
+<pre><code class="language-json">{"timestamp_secs":1743300000,"job_name":null,"cpu":{...},"memory":{...},"network":[...],"disk":[...],"gpu":[],"resource-tracker-version":"0.1.0"}
+</code></pre>
+<p>Requirements:</p>
+<ul>
+<li><code>T-OUT-01</code>: Each line MUST be valid JSON parseable with any standard JSON library.</li>
+<li><code>T-OUT-02</code>: <code>timestamp_secs</code> MUST be present and be a positive integer.</li>
+<li><code>T-OUT-03</code>: The version key <code>"resource-tracker-version"</code> MUST be present.</li>
+<li><code>T-OUT-04</code>: Consecutive samples MUST have non-decreasing <code>timestamp_secs</code>.</li>
+</ul>
+<h3 id="72-csv-format"><a class="header" href="#72-csv-format">7.2 CSV Format</a></h3>
+<p>CSV is the <strong>primary and required</strong> output format for Sentinel S3 streaming
+(Section 9.2.2).  It uses the same column names and units as the Python
+<code>resource-tracker</code> so the Sentinel backend can ingest both without schema
+changes.  When uploaded to S3 the CSV content MUST be gzip-compressed and the
+object key MUST carry the extension <code>.csv.gz</code>.</p>
+<p>When <code>--format csv</code> is selected for stdout output the raw (uncompressed) CSV
+bytes are written.  Gzip compression is applied only when writing the S3 batch
+upload payload (Section 9.2.2).</p>
+<p>When <code>--format csv</code> is selected:</p>
+<ul>
+<li>The header line MUST be emitted <strong>exactly once</strong>, before the first data row.</li>
+<li>The header MUST match the following column names in this exact order:</li>
+</ul>
+<pre><code>timestamp,processes,utime,stime,cpu_usage,memory_free,memory_used,memory_buffers,memory_cached,memory_active,memory_inactive,disk_read_bytes,disk_write_bytes,disk_space_total_gb,disk_space_used_gb,disk_space_free_gb,net_recv_bytes,net_sent_bytes,gpu_usage,gpu_vram,gpu_utilized
+</code></pre>
+<p>Column definitions:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>CSV Column</th><th>Source Field</th><th>Unit</th><th>Computation</th></tr>
+</thead>
+<tbody>
+<tr><td><code>timestamp</code></td><td><code>timestamp_secs</code></td><td>Unix seconds</td><td>direct</td></tr>
+<tr><td><code>processes</code></td><td><code>cpu.process_count</code></td><td>count</td><td>direct</td></tr>
+<tr><td><code>utime</code></td><td><code>cpu.utime_secs</code></td><td>seconds</td><td>direct; 3 decimal places</td></tr>
+<tr><td><code>stime</code></td><td><code>cpu.stime_secs</code></td><td>seconds</td><td>direct; 3 decimal places</td></tr>
+<tr><td><code>cpu_usage</code></td><td><code>cpu.utilization_pct</code></td><td>fractional cores</td><td><code>utilization_pct</code> directly; field is already in fractional cores (0..N_cores); 4 decimal places</td></tr>
+<tr><td><code>memory_free</code></td><td><code>memory.free_mib</code></td><td>MiB</td><td>direct</td></tr>
+<tr><td><code>memory_used</code></td><td><code>memory.used_mib</code></td><td>MiB</td><td>direct</td></tr>
+<tr><td><code>memory_buffers</code></td><td><code>memory.buffers_mib</code></td><td>MiB</td><td>direct</td></tr>
+<tr><td><code>memory_cached</code></td><td><code>memory.cached_mib</code></td><td>MiB</td><td>direct</td></tr>
+<tr><td><code>memory_active</code></td><td><code>memory.active_mib</code></td><td>MiB</td><td>direct</td></tr>
+<tr><td><code>memory_inactive</code></td><td><code>memory.inactive_mib</code></td><td>MiB</td><td>direct</td></tr>
+<tr><td><code>disk_read_bytes</code></td><td>disk subsystem</td><td>bytes</td><td>Σ <code>read_bytes_per_sec × interval_secs</code> across all devices; integer</td></tr>
+<tr><td><code>disk_write_bytes</code></td><td>disk subsystem</td><td>bytes</td><td>Σ <code>write_bytes_per_sec × interval_secs</code> across all devices; integer</td></tr>
+<tr><td><code>disk_space_total_gb</code></td><td>disk mounts</td><td>GB (10⁹)</td><td>Σ <code>total_bytes / 1_000_000_000</code> across all mounts; 6 decimal places</td></tr>
+<tr><td><code>disk_space_used_gb</code></td><td>disk mounts</td><td>GB (10⁹)</td><td><code>disk_space_total_gb − disk_space_free_gb</code>; 6 decimal places</td></tr>
+<tr><td><code>disk_space_free_gb</code></td><td>disk mounts</td><td>GB (10⁹)</td><td>Σ <code>available_bytes / 1_000_000_000</code> across all mounts; 6 decimal places</td></tr>
+<tr><td><code>net_recv_bytes</code></td><td>network subsystem</td><td>bytes</td><td>Σ <code>rx_bytes_per_sec × interval_secs</code> across all interfaces; integer</td></tr>
+<tr><td><code>net_sent_bytes</code></td><td>network subsystem</td><td>bytes</td><td>Σ <code>tx_bytes_per_sec × interval_secs</code> across all interfaces; integer</td></tr>
+<tr><td><code>gpu_usage</code></td><td>gpu subsystem</td><td>fractional GPUs</td><td>Σ <code>utilization_pct / 100</code> across all GPUs; 4 decimal places</td></tr>
+<tr><td><code>gpu_vram</code></td><td>gpu subsystem</td><td>MiB</td><td>Σ <code>vram_used_bytes / 1_048_576</code>; 4 decimal places</td></tr>
+<tr><td><code>gpu_utilized</code></td><td>gpu subsystem</td><td>count</td><td>count of GPUs where <code>utilization_pct &gt; 0.0</code></td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Verifiable CSV Tests:</strong></p>
+<ul>
+<li><code>T-CSV-01</code>: Header is emitted exactly once, as the first line.</li>
+<li><code>T-CSV-02</code>: Column count per data row equals column count in header.</li>
+<li><code>T-CSV-03</code>: <code>cpu_usage</code> column equals <code>utilization_pct</code> directly (field is already fractional cores, 0..N_cores) to 4 dp.</li>
+<li><code>T-CSV-04</code>: <code>disk_space_used_gb = disk_space_total_gb − disk_space_free_gb</code> for all rows.</li>
+<li><code>T-CSV-05</code>: CSV output for a given sample is byte-for-byte reproducible (deterministic).</li>
+<li><code>T-CSV-06</code>: No trailing commas; no quoted fields (all values are numbers or bare identifiers).</li>
+</ul>
+<hr>
+<h2 id="8-host-and-cloud-discovery"><a class="header" href="#8-host-and-cloud-discovery">8. Host and Cloud Discovery</a></h2>
+<p>The binary SHOULD collect machine-level metadata once at startup and include it
+in the Sentinel API registration payload (Section 9.1).  Collected fields use the prefix <code>host_</code> or <code>cloud_</code>.</p>
+<h3 id="81-host-discovery"><a class="header" href="#81-host-discovery">8.1 Host Discovery</a></h3>
+<p>All fields are optional; collection failure MUST be silently swallowed.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Type</th><th>Source</th></tr>
+</thead>
+<tbody>
+<tr><td><code>host_id</code></td><td><code>Option&lt;String&gt;</code></td><td>AWS: <code>/sys/class/dmi/id/board_asset_tag</code>; fallback: <code>/etc/machine-id</code></td></tr>
+<tr><td><code>host_name</code></td><td><code>Option&lt;String&gt;</code></td><td><code>gethostname(3)</code></td></tr>
+<tr><td><code>host_ip</code></td><td><code>Option&lt;String&gt;</code></td><td>First non-loopback IPv4 from <code>getifaddrs(3)</code></td></tr>
+<tr><td><code>host_allocation</code></td><td><code>Option&lt;String&gt;</code></td><td><code>"dedicated"</code> or <code>"shared"</code>; heuristic TBD</td></tr>
+<tr><td><code>host_vcpus</code></td><td><code>Option&lt;u32&gt;</code></td><td>Count of logical CPUs (<code>/proc/cpuinfo</code> processor entries)</td></tr>
+<tr><td><code>host_cpu_model</code></td><td><code>Option&lt;String&gt;</code></td><td><code>/proc/cpuinfo</code> <code>model name</code> field</td></tr>
+<tr><td><code>host_memory_mib</code></td><td><code>Option&lt;u64&gt;</code></td><td><code>MemTotal / 1024</code> from <code>/proc/meminfo</code></td></tr>
+<tr><td><code>host_gpu_model</code></td><td><code>Option&lt;String&gt;</code></td><td>First GPU name from <code>GpuCollector</code></td></tr>
+<tr><td><code>host_gpu_count</code></td><td><code>Option&lt;u32&gt;</code></td><td>Length of GPU Vec</td></tr>
+<tr><td><code>host_gpu_vram_mib</code></td><td><code>Option&lt;u64&gt;</code></td><td>Sum of <code>vram_total_bytes / 1_048_576</code> across all GPUs</td></tr>
+<tr><td><code>host_storage_gb</code></td><td><code>Option&lt;f64&gt;</code></td><td>Sum of <code>capacity_bytes / 1_000_000_000</code> across all block devices</td></tr>
+</tbody>
+</table>
+</div>
+<p>Users MUST be able to suppress any field by setting the corresponding
+environment variable to <code>"0"</code> or <code>""</code> (exact mechanism TBD in implementation).</p>
+<h3 id="82-cloud-discovery"><a class="header" href="#82-cloud-discovery">8.2 Cloud Discovery</a></h3>
+<p>Cloud metadata is probed by making HTTP GET requests to each cloud provider’s
+Instance Metadata Service (IMDS) with a short timeout (≤ 2 seconds per
+provider).  Probes MUST be attempted in the background and MUST NOT delay
+the first sample emission.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Probe endpoint</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>cloud_vendor_id</code></td><td>AWS: <code>169.254.169.254/latest/meta-data/</code>; GCP: <code>metadata.google.internal</code>; Azure: <code>169.254.169.254/metadata/instance</code></td><td>Infer vendor from which endpoint responds</td></tr>
+<tr><td><code>cloud_account_id</code></td><td>AWS: <code>/latest/meta-data/identity-credentials/ec2/info</code></td><td></td></tr>
+<tr><td><code>cloud_region_id</code></td><td>AWS: <code>/latest/meta-data/placement/region</code></td><td></td></tr>
+<tr><td><code>cloud_zone_id</code></td><td>AWS: <code>/latest/meta-data/placement/availability-zone</code></td><td></td></tr>
+<tr><td><code>cloud_instance_type</code></td><td>AWS: <code>/latest/meta-data/instance-type</code></td><td></td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Verifiable Cloud Discovery Tests:</strong></p>
+<ul>
+<li><code>T-CLD-01</code>: On a non-cloud host, all <code>cloud_*</code> fields are <code>None</code> and the binary does not hang for more than 5 seconds total on startup.</li>
+<li><code>T-CLD-02</code>: IMDS probe timeout is ≤ 2 seconds per provider.</li>
+</ul>
+<hr>
+<h2 id="9-sentinel-api-streaming-extra-component"><a class="header" href="#9-sentinel-api-streaming-extra-component">9. Sentinel API Streaming (Extra Component)</a></h2>
+<p>Activation is gated on the <code>SENTINEL_API_TOKEN</code> environment variable being set.</p>
+<blockquote>
+<p><strong>Resolved design decisions:</strong></p>
+<ol>
+<li>Streaming is enabled automatically whenever <code>SENTINEL_API_TOKEN</code> is set; no additional flag needed.</li>
+<li>Upload format is <code>csv.gz</code> only; <code>jsonl.gz</code> is not supported.</li>
+<li>Streaming is not separately configurable via TOML or CLI beyond the token env var.</li>
+<li>On network unavailability: <code>start_run</code> logs a warning and disables streaming; local stdout output continues normally (see Section 11 error handling).</li>
+</ol>
+</blockquote>
+<h3 id="91-authentication"><a class="header" href="#91-authentication">9.1 Authentication</a></h3>
+<p>The binary MUST read the API token from the environment variable
+<code>SENTINEL_API_TOKEN</code>.  Every Sentinel API request MUST include the HTTP header:</p>
+<pre><code>Authorization: Bearer &lt;token&gt;
+</code></pre>
+<p>If <code>SENTINEL_API_TOKEN</code> is not set, all streaming functionality MUST be silently disabled.  Local stdout emission continues normally.</p>
+<h3 id="92-run-lifecycle"><a class="header" href="#92-run-lifecycle">9.2 Run Lifecycle</a></h3>
+<h4 id="921-start-of-run"><a class="header" href="#921-start-of-run">9.2.1 Start of Run</a></h4>
+<p>At startup (after host/cloud discovery), the binary MUST POST to the data ingestion endpoint to register a new Run.</p>
+<p>POST <code>/runs</code> (default base URL: <code>https://api.sentinel.sparecores.net</code>).</p>
+<p>Request payload (JSON, Content-Type: <code>application/json</code>): all metadata, host, and
+cloud fields are merged into a <strong>flat</strong> top-level object (no nesting):</p>
+<pre><code class="language-json">{
+  "job_name": "...",
+  "project_name": "...",
+  "pid": 12345,
+  "host_vcpus": 8,
+  "cloud_vendor_id": "aws",
+  ...
+}
+</code></pre>
+<p>Response fields the binary MUST store:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Response Field</th><th>Type</th><th>Usage</th></tr>
+</thead>
+<tbody>
+<tr><td><code>run_id</code></td><td><code>String</code></td><td>Referenced in all subsequent API calls</td></tr>
+<tr><td><code>upload_uri_prefix</code></td><td><code>String</code></td><td>S3 URI prefix for metric uploads</td></tr>
+<tr><td><code>upload_credentials.access_key</code></td><td><code>String</code></td><td>STS credential</td></tr>
+<tr><td><code>upload_credentials.secret_key</code></td><td><code>String</code></td><td>STS credential</td></tr>
+<tr><td><code>upload_credentials.session_token</code></td><td><code>String</code></td><td>STS credential</td></tr>
+<tr><td><code>upload_credentials.expiration</code></td><td><code>String</code> (ISO 8601)</td><td>STS credential expiry; optional</td></tr>
+</tbody>
+</table>
+</div>
+<h4 id="922-batch-upload-background-thread"><a class="header" href="#922-batch-upload-background-thread">9.2.2 Batch Upload (Background Thread)</a></h4>
+<p>The binary MUST start a background thread that:</p>
+<ol>
+<li>Every <strong>60 seconds</strong> (configurable, default 60), takes all samples collected since the previous upload.</li>
+<li>Serializes them as CSV (same column layout as Section 7.2) – CSV is the only accepted format for the Sentinel S3 bucket.</li>
+<li>Gzip-compresses the CSV bytes.</li>
+<li>Generates a unique S3 object key under <code>upload_uri_prefix</code>:
+<code>&lt;upload_uri_prefix&gt;/&lt;run_id&gt;/&lt;batch_seq_number&gt;.csv.gz</code></li>
+<li>Uploads via AWS Signature V4 (Section 10).</li>
+<li>Appends the uploaded URI to an internal list <code>uploaded_uris</code>.</li>
+</ol>
+<p>If STS credentials are within <strong>5 minutes</strong> of <code>expiration</code>, the binary MUST refresh
+them by POSTing to <code>/runs/{run_id}/refresh-credentials</code> before attempting the upload.</p>
+<p>Upload failures MUST be retried at least once with exponential back-off before
+being recorded as errors.  After 3 consecutive upload failures the background
+thread MUST log a warning and continue buffering (data is not lost).</p>
+<p><strong>Verifiable Streaming Tests:</strong></p>
+<ul>
+<li><code>T-STR-01</code>: Without <code>SENTINEL_API_TOKEN</code>, no HTTP connection is made.</li>
+<li><code>T-STR-02</code>: A batch upload request contains <code>Content-Encoding: gzip</code> and the body decompresses to valid CSV or JSONL.</li>
+<li><code>T-STR-03</code>: <code>uploaded_uris</code> contains the S3 URIs of all successfully uploaded batches.</li>
+<li><code>T-STR-04</code>: Credential refresh is triggered when ≤ 5 minutes remain before expires_at.</li>
+</ul>
+<h4 id="923-end-of-run"><a class="header" href="#923-end-of-run">9.2.3 End of Run</a></h4>
+<p>When the tracked process terminates (or the binary receives SIGTERM), the binary MUST:</p>
+<blockquote>
+<p><strong>SIGINT note:</strong> An explicit SIGINT handler is not installed.  When the binary
+is used in shell-wrapper mode, Ctrl-C is delivered to the entire process group,
+so both the child and the tracker receive SIGINT and exit together.  Explicit
+SIGTERM forwarding to the child process is a future enhancement.</p>
+</blockquote>
+<ol>
+<li>Flush any remaining samples as a final batch upload (if <code>uploaded_uris</code> is non-empty).</li>
+<li>POST to <code>/runs/{run_id}/finish</code> to close the Run, including:
+<ul>
+<li><code>run_id</code></li>
+<li><code>exit_code</code> (i32, if tracked process exited cleanly; else None)</li>
+<li><code>run_status</code> enum: <code>"finished"</code> (exit 0 or SIGTERM) or <code>"failed"</code> (non-zero exit)</li>
+<li><code>data_source</code>:
+<ul>
+<li><code>"s3"</code> + <code>data_uris: Vec&lt;String&gt;</code> if any S3 uploads succeeded.</li>
+<li><code>"inline"</code> + <code>data_csv: &lt;base64(gzip(csv))&gt;</code> for short runs with no S3 uploads.</li>
+</ul>
+</li>
+</ul>
+</li>
+</ol>
+<p><strong>Verifiable End-of-Run Tests:</strong></p>
+<ul>
+<li><code>T-EOR-01</code>: On SIGTERM, the binary exits with code 0 after flushing remaining data.</li>
+<li><code>T-EOR-02</code>: The close-run request body contains <code>run_id</code> matching the start-run response.</li>
+<li><code>T-EOR-03</code>: <code>data_source</code> is <code>"inline"</code> when no S3 uploads occurred.</li>
+<li><code>T-EOR-04</code>: <code>data_source</code> is <code>"s3"</code> when at least one S3 upload succeeded.</li>
+</ul>
+<h3 id="93-metadata-fields"><a class="header" href="#93-metadata-fields">9.3 Metadata Fields</a></h3>
+<p>The following metadata MAY be supplied by the user via CLI flags or environment
+variables.  All are optional strings unless noted.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>CLI Flag</th><th>Env Variable</th></tr>
+</thead>
+<tbody>
+<tr><td><code>job_name</code></td><td><code>--job-name</code></td><td><code>TRACKER_JOB_NAME</code></td></tr>
+<tr><td><code>project_name</code></td><td><code>--project-name</code></td><td><code>TRACKER_PROJECT_NAME</code></td></tr>
+<tr><td><code>stage_name</code></td><td><code>--stage-name</code></td><td><code>TRACKER_STAGE_NAME</code></td></tr>
+<tr><td><code>task_name</code></td><td><code>--task-name</code></td><td><code>TRACKER_TASK_NAME</code></td></tr>
+<tr><td><code>team</code></td><td><code>--team</code></td><td><code>TRACKER_TEAM</code></td></tr>
+<tr><td><code>env</code></td><td><code>--env</code></td><td><code>TRACKER_ENV</code></td></tr>
+<tr><td><code>language</code></td><td><code>--language</code></td><td><code>TRACKER_LANGUAGE</code></td></tr>
+<tr><td><code>orchestrator</code></td><td><code>--orchestrator</code></td><td><code>TRACKER_ORCHESTRATOR</code></td></tr>
+<tr><td><code>executor</code></td><td><code>--executor</code></td><td><code>TRACKER_EXECUTOR</code></td></tr>
+<tr><td><code>external_run_id</code></td><td><code>--external-run-id</code></td><td><code>TRACKER_EXTERNAL_RUN_ID</code></td></tr>
+<tr><td><code>container_image</code></td><td><code>--container-image</code></td><td><code>TRACKER_CONTAINER_IMAGE</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>Users MUST also be able to supply arbitrary key-value tags via repeated <code>--tag key=value</code> flags.</p>
+<hr>
+<h2 id="10-s3-upload--aws-signature-v4"><a class="header" href="#10-s3-upload--aws-signature-v4">10. S3 Upload — AWS Signature V4</a></h2>
+<p>The upload is implemented in pure Rust <strong>without any AWS SDK dependency</strong> (zero
+additional transitive deps for this path).  The implementation mirrors the
+Python <code>s3_upload.py</code> module from PR #9.</p>
+<h3 id="101-uri-parsing"><a class="header" href="#101-uri-parsing">10.1 URI Parsing</a></h3>
+<p>An S3 URI has the form <code>s3://bucket/path/to/object</code>.  Parsing MUST:</p>
+<ul>
+<li>Require scheme == <code>"s3"</code>.</li>
+<li>Require a non-empty bucket name.</li>
+<li>Require a non-empty key (path after bucket).</li>
+<li>Return an error for any other form.</li>
+</ul>
+<h3 id="102-bucket-region-detection"><a class="header" href="#102-bucket-region-detection">10.2 Bucket Region Detection</a></h3>
+<p>If the upload region is not supplied, the binary MUST determine it by sending
+an HTTP HEAD request to <code>https://&lt;bucket&gt;.s3.amazonaws.com/</code> and reading the
+<code>x-amz-bucket-region</code> response header.  The header is present even on 3xx/4xx
+responses.  Results MUST be cached in-process for the lifetime of the run.
+Default fallback: <code>"eu-central-1"</code>.</p>
+<h3 id="103-request-construction"><a class="header" href="#103-request-construction">10.3 Request Construction</a></h3>
+<p>A PUT request to <code>https://&lt;bucket&gt;.s3.&lt;region&gt;.amazonaws.com/&lt;key&gt;</code> with:</p>
+<ul>
+<li><code>Content-Length</code>: byte count of body.</li>
+<li><code>x-amz-content-sha256</code>: SHA-256 hex of body.</li>
+<li><code>x-amz-date</code>: <code>YYYYMMDDTHHmmSSZ</code> UTC.</li>
+<li><code>x-amz-security-token</code>: STS session token.</li>
+<li><code>Authorization</code>: AWS4-HMAC-SHA256 signature (see Section 10.4).</li>
+</ul>
+<h3 id="104-aws-signature-v4"><a class="header" href="#104-aws-signature-v4">10.4 AWS Signature V4</a></h3>
+<p>Signing key derivation:</p>
+<pre><code>kDate    = HMAC-SHA256("AWS4" + secret_key, date_stamp)
+kRegion  = HMAC-SHA256(kDate, region)
+kService = HMAC-SHA256(kRegion, "s3")
+kSigning = HMAC-SHA256(kService, "aws4_request")
+</code></pre>
+<p>Canonical request:</p>
+<pre><code>PUT
+/&lt;key&gt;
+
+host:&lt;bucket&gt;.s3.&lt;region&gt;.amazonaws.com
+x-amz-content-sha256:&lt;payload_hash&gt;
+x-amz-date:&lt;amz_date&gt;
+x-amz-security-token:&lt;session_token&gt;
+
+host;x-amz-content-sha256;x-amz-date;x-amz-security-token
+&lt;payload_hash&gt;
+</code></pre>
+<p>String to sign:</p>
+<pre><code>AWS4-HMAC-SHA256
+&lt;amz_date&gt;
+&lt;date_stamp&gt;/&lt;region&gt;/s3/aws4_request
+&lt;canonical_request_sha256&gt;
+</code></pre>
+<p>Authorization header:</p>
+<pre><code>AWS4-HMAC-SHA256 Credential=&lt;access_key&gt;/&lt;credential_scope&gt;, SignedHeaders=host;x-amz-content-sha256;x-amz-date;x-amz-security-token, Signature=&lt;hex_sig&gt;
+</code></pre>
+<h3 id="105-upload-success-criteria"><a class="header" href="#105-upload-success-criteria">10.5 Upload Success Criteria</a></h3>
+<p>HTTP 200 or 201 response from S3 = success.  Any other status = error (with
+response body included in the error message).</p>
+<h3 id="106-verifiable-s3-upload-tests"><a class="header" href="#106-verifiable-s3-upload-tests">10.6 Verifiable S3 Upload Tests</a></h3>
+<ul>
+<li><code>T-S3-01</code>: <code>parse_s3_uri("s3://bucket/path/obj")</code> returns <code>("bucket", "path/obj")</code>.</li>
+<li><code>T-S3-02</code>: <code>parse_s3_uri("https://bucket/path")</code> returns an error.</li>
+<li><code>T-S3-03</code>: <code>parse_s3_uri("s3://bucket/")</code> returns an error (empty key).</li>
+<li><code>T-S3-04</code>: Given known access_key, secret_key, session_token, region, and a
+fixed timestamp, the generated <code>Authorization</code> header MUST match a
+pre-computed golden value.</li>
+<li><code>T-S3-05</code>: Bucket region cache prevents duplicate HEAD requests for the same bucket.</li>
+<li><code>T-S3-06</code>: An upload to a mock S3 server returns the S3 URI on success.</li>
+</ul>
+<hr>
+<h2 id="11-error-handling"><a class="header" href="#11-error-handling">11. Error Handling</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Scenario</th><th>Required behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><code>/proc</code> file is unreadable for a single metric</td><td>Return 0 / None for that field; do not abort</td></tr>
+<tr><td>GPU library absent</td><td>GPU Vec is empty; no error propagated</td></tr>
+<tr><td>Sentinel API unreachable at start</td><td>Log warning; streaming disabled; local output continues</td></tr>
+<tr><td>S3 upload fails</td><td>Retry once; after 3 consecutive failures log warning and continue</td></tr>
+<tr><td>Config TOML parse error</td><td>Silently fall back to defaults</td></tr>
+<tr><td><code>--interval 0</code></td><td>Exit with code ≠ 0 before starting collectors</td></tr>
+<tr><td>Tracked PID not found</td><td><code>process_cores_used</code> = None; do not abort</td></tr>
+</tbody>
+</table>
+</div>
+<p>The binary MUST NEVER panic in production code.  <code>expect()</code> is only permissible during development;
+all <code>expect()</code> calls MUST be replaced with proper error handling before v1.0 release.</p>
+<hr>
+<h2 id="12-non-functional-requirements"><a class="header" href="#12-non-functional-requirements">12. Non-Functional Requirements</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Requirement</th><th>Target</th></tr>
+</thead>
+<tbody>
+<tr><td>Binary size</td><td>&lt; 15 MiB stripped (CPU-only build)</td></tr>
+<tr><td>Startup latency</td><td>&lt; 1 × configured interval before first sample</td></tr>
+<tr><td>CPU overhead of the tracker itself</td><td>&lt; 1% of one core at 1-second interval on a 4-core host</td></tr>
+<tr><td>Memory footprint</td><td>&lt; 20 MiB RSS at steady state</td></tr>
+<tr><td>Stdout buffering</td><td>Each line MUST be flushed atomically (no partial lines)</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="13-compatibility-with-python-resource-tracker"><a class="header" href="#13-compatibility-with-python-resource-tracker">13. Compatibility with Python <code>resource-tracker</code></a></h2>
+<p>The CSV output format MUST maintain byte-for-byte column-name compatibility
+with the Python <code>SystemTracker</code> output so that the Sentinel API backend can
+ingest both without schema changes.</p>
+<p>Confirmed equivalent columns (see Section 7.2 for derivation):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Python column</th><th>Rust CSV column</th><th>Python unit</th><th>Rust unit</th></tr>
+</thead>
+<tbody>
+<tr><td><code>timestamp</code></td><td><code>timestamp</code></td><td>Unix seconds</td><td>Unix seconds</td></tr>
+<tr><td><code>processes</code></td><td><code>processes</code></td><td>count</td><td>count</td></tr>
+<tr><td><code>utime</code></td><td><code>utime</code></td><td>seconds</td><td>seconds</td></tr>
+<tr><td><code>stime</code></td><td><code>stime</code></td><td>seconds</td><td>seconds</td></tr>
+<tr><td><code>cpu_usage</code></td><td><code>cpu_usage</code></td><td>fractional cores</td><td>fractional cores</td></tr>
+<tr><td><code>memory_free</code></td><td><code>memory_free</code></td><td>MiB</td><td>MiB</td></tr>
+<tr><td><code>memory_used</code></td><td><code>memory_used</code></td><td>MiB</td><td>MiB</td></tr>
+<tr><td><code>memory_buffers</code></td><td><code>memory_buffers</code></td><td>MiB</td><td>MiB</td></tr>
+<tr><td><code>memory_cached</code></td><td><code>memory_cached</code></td><td>MiB</td><td>MiB</td></tr>
+<tr><td><code>memory_active</code></td><td><code>memory_active</code></td><td>MiB</td><td>MiB</td></tr>
+<tr><td><code>memory_inactive</code></td><td><code>memory_inactive</code></td><td>MiB</td><td>MiB</td></tr>
+<tr><td><code>disk_read_bytes</code></td><td><code>disk_read_bytes</code></td><td>bytes/interval</td><td>bytes/interval</td></tr>
+<tr><td><code>disk_write_bytes</code></td><td><code>disk_write_bytes</code></td><td>bytes/interval</td><td>bytes/interval</td></tr>
+<tr><td><code>disk_space_total_gb</code></td><td><code>disk_space_total_gb</code></td><td>GB (10⁹)</td><td>GB (10⁹)</td></tr>
+<tr><td><code>disk_space_used_gb</code></td><td><code>disk_space_used_gb</code></td><td>GB (10⁹)</td><td>GB (10⁹)</td></tr>
+<tr><td><code>disk_space_free_gb</code></td><td><code>disk_space_free_gb</code></td><td>GB (10⁹)</td><td>GB (10⁹)</td></tr>
+<tr><td><code>net_recv_bytes</code></td><td><code>net_recv_bytes</code></td><td>bytes/interval</td><td>bytes/interval</td></tr>
+<tr><td><code>net_sent_bytes</code></td><td><code>net_sent_bytes</code></td><td>bytes/interval</td><td>bytes/interval</td></tr>
+<tr><td><code>gpu_usage</code></td><td><code>gpu_usage</code></td><td>fractional GPUs</td><td>fractional GPUs</td></tr>
+<tr><td><code>gpu_vram</code></td><td><code>gpu_vram</code></td><td>MiB</td><td>MiB</td></tr>
+<tr><td><code>gpu_utilized</code></td><td><code>gpu_utilized</code></td><td>count</td><td>count</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Verifiable compatibility test:</strong></p>
+<ul>
+<li><code>T-COMPAT-01</code>: Run Python and Rust trackers in parallel on the same host for
+60 seconds.  For each interval, the difference between corresponding scalar
+columns MUST be within 5% of the Python value (allowing for measurement-time
+skew).</li>
+</ul>
+<hr>
+<h2 id="14-open-questions--future-work"><a class="header" href="#14-open-questions--future-work">14. Open Questions / Future Work</a></h2>
+<ol>
+<li><strong>eBPF integration</strong>: Using <code>aya-rs</code> or <code>libbpf-rs</code> for sub-millisecond
+tracing (CPU saturation, IPC, TLB misses, cache hit rates) — currently
+considered v2.</li>
+<li><strong>Process-level memory (PSS)</strong>: Preferred over RSS; requires reading
+<code>/proc/&lt;pid&gt;/smaps_rollup</code> which may be slow for large processes.</li>
+<li><strong>Per-process disk and network I/O</strong>: <code>/proc/&lt;pid&gt;/io</code> and network
+namespaces; currently only system-wide.</li>
+<li><strong>Configurable metric suppression</strong>: Allow users to opt out of fields
+containing PII (e.g. <code>host_ip</code>, hostname).</li>
+<li><strong>ARM-specific GPU support</strong>: Apple Metal not in scope (Linux only);
+Qualcomm Adreno / Mali GPU metrics TBD.</li>
+<li><strong>Static linking of NVML</strong>: Currently not possible; NVML requires a
+dynamically loaded vendor library.</li>
+<li><strong>Heartbeat endpoint</strong>: Periodic ping to Sentinel API while tracking is
+active (distinct from batch S3 uploads).</li>
+</ol>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="Rust-crate-level-landscape.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="Dependencies.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="Rust-crate-level-landscape.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="Dependencies.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-c2a407aa.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

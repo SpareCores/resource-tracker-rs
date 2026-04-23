@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["SECTOR_BYTES"],"fn":["block_attr","discover_devices","mounts_for_device","read_device_info","statvfs_space","sysfs_read"],"struct":["DeviceInfo","DiskCollector","Snapshot"],"type":["Result"]};

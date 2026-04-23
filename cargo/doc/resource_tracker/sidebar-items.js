@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["handle_sigterm","main","shutdown"],"mod":["collector","config","metrics","output","sentinel"],"static":["SIGTERM_RECEIVED"]};

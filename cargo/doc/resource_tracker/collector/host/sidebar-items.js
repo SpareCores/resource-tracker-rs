@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["IMDS_TIMEOUT"],"fn":["collect_host_info","imds_get","probe_aws","probe_azure","probe_cloud","probe_gcp","read_host_id","read_host_ip","read_host_name","read_memory_mib","read_storage_gb","read_vcpus_and_model","spawn_cloud_discovery"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["detect_bucket_region","detect_region_at","epoch_to_utc","format_amz_date","hmac_sha256","parse_s3_uri","s3_put","s3_put_to","sha256_hex","sign_put_request"],"struct":["RegionCache","S3Uri","UploadCredentials"],"type":["HmacSha256"]};
