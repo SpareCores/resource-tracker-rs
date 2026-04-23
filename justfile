@@ -10,15 +10,15 @@ format:
 build: format
     cargo build
 
-## (cargo build --release) && upx target/release/resource-tracker-rs
+## (cargo build --release) && upx target/release/resource-tracker
 build_release:  format
 	cargo build --release
 
 install: build_release
-	(mkdir -p ~/bin) && cp -p ./target/release/resource-tracker-rs ~/bin && echo "resource-tracker-rs is now installed in ~/bin"
+	(mkdir -p ~/bin) && cp -p ./target/release/resource-tracker ~/bin && echo "resource-tracker is now installed in ~/bin"
 
 run_only_show_key_names:
-     target/release/resource-tracker-rs --interval 3 | jq -r 'paths(scalars) as $p | "\($p | join(".")): \(getpath($p) | type)"'
+     target/release/resource-tracker --interval 3 | jq -r 'paths(scalars) as $p | "\($p | join(".")): \(getpath($p) | type)"'
 
 # Build mdbook and then cargo doc bundled inside, then open the main page
 document:
@@ -29,14 +29,14 @@ test:
     cargo test -- --test-threads=1
 
 real_test1: build_release
-	./target/release/resource-tracker-rs  --format csv
+	./target/release/resource-tracker  --format csv
 
 real_test2: build_release
-	./target/release/resource-tracker-rs --format csv Rscript stress.r
+	./target/release/resource-tracker --format csv Rscript stress.r
 
 
 real_test3: build_release
-	./target/release/resource-tracker-rs --format csv Rscript stress.r --cpu 4 --vm 1 --vm-bytes 12024M --timeout 63s
+	./target/release/resource-tracker --format csv Rscript stress.r --cpu 4 --vm 1 --vm-bytes 12024M --timeout 63s
 
 
 report_coverage:

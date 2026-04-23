@@ -1,4 +1,4 @@
-# resource-tracker-rs — Design Notes
+# resource-tracker — Design Notes
 
 ## Spec Summary
 

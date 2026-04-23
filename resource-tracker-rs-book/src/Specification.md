@@ -1,4 +1,4 @@
-# Specification Proposal — `resource-tracker-rs`
+# Specification Proposal — `resource-tracker`
 
  - Status: Proposal / Work-in-Progress
  - Date: 2026-03-30
@@ -21,7 +21,7 @@ intended to be verifiable.
 
 ## 1. Purpose and Scope
 
-`resource-tracker-rs` is a lightweight, statically self-contained Linux binary that:
+`resource-tracker` is a lightweight, statically self-contained Linux binary that:
 
 1. Polls system- and process-level resource utilization at a configurable interval.
 2. Emits structured samples to stdout (JSON Lines or CSV).
@@ -75,7 +75,7 @@ The binary MUST accept the following flags via a command line parser:
 | `-n`  | `--job-name`       | `String` | none                       | Human-readable label attached to every sample           |
 | `-p`  | `--pid`            | `i32`    | none                       | Root PID of the process tree to track (CPU attribution) |
 | `-i`  | `--interval`       | `u64`    | `1`                        | Polling interval in seconds (≥ 1)                       |
-| `-c`  | `--config`         | path     | `resource-tracker-rs.toml` | Path to TOML config file                                |
+| `-c`  | `--config`         | path     | `resource-tracker.toml` | Path to TOML config file                                |
 | `-f`  | `--format`         | enum     | `json`                     | Output format: `json` or `csv`                          |
 |       | `--version`        | flag     |                            | Print binary version and exit                           |
 
@@ -88,8 +88,8 @@ transparent process wrapper, where the command to monitor is passed as trailing
 arguments after a `--` separator or as positional arguments:
 
 ```shell
-resource-tracker-rs Rscript model.R
-resource-tracker-rs -- python train.py --epochs 10
+resource-tracker Rscript model.R
+resource-tracker -- python train.py --epochs 10
 ```
 
 In this mode the binary spawns the given command as a child process, sets
@@ -372,14 +372,14 @@ being the Cargo package version string.
 Example (abbreviated):
 
 ```json
-{"timestamp_secs":1743300000,"job_name":null,"cpu":{...},"memory":{...},"network":[...],"disk":[...],"gpu":[],"resource-tracker-rs-version":"0.1.0"}
+{"timestamp_secs":1743300000,"job_name":null,"cpu":{...},"memory":{...},"network":[...],"disk":[...],"gpu":[],"resource-tracker-version":"0.1.0"}
 ```
 
 Requirements:
 
 - `T-OUT-01`: Each line MUST be valid JSON parseable with any standard JSON library.
 - `T-OUT-02`: `timestamp_secs` MUST be present and be a positive integer.
-- `T-OUT-03`: The version key `"resource-tracker-rs-version"` MUST be present.
+- `T-OUT-03`: The version key `"resource-tracker-version"` MUST be present.
 - `T-OUT-04`: Consecutive samples MUST have non-decreasing `timestamp_secs`.
 
 ### 7.2 CSV Format

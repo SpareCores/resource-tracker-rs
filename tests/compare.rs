@@ -1,6 +1,6 @@
 /// Cross-implementation comparison tests.
 ///
-/// Runs Python resource-tracker (via `uv`) and resource-tracker-rs (`--format csv`)
+/// Runs Python resource-tracker (via `uv`) and resource-tracker (`--format csv`)
 /// simultaneously for a short duration, then aligns their CSV output by
 /// timestamp and computes a numeric error assessment for each shared column.
 ///
@@ -12,7 +12,7 @@
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
-const BINARY: &str = env!("CARGO_BIN_EXE_resource-tracker-rs");
+const BINARY: &str = env!("CARGO_BIN_EXE_resource-tracker");
 
 /// How long to collect from each implementation.
 const DURATION_SECS: u64 = 10;
@@ -553,10 +553,10 @@ fn test_python_rust_csv_numeric_comparison() {
     // -----------------------------------------------------------------------
     // Header
     // -----------------------------------------------------------------------
-    println!("\n========== resource-tracker-rs vs resource-tracker comparison ==========");
+    println!("\n========== resource-tracker vs resource-tracker comparison ==========");
     println!("  Python version      : {}", python_version);
     println!("  resource-tracker    : {}", rt_version);
-    println!("  resource-tracker-rs       : {}", rust_binary_version);
+    println!("  resource-tracker       : {}", rust_binary_version);
     println!(
         "  duration / interval : {}s / {}s",
         DURATION_SECS, INTERVAL_SECS

@@ -500,7 +500,7 @@ Binary-level integration tests (19 new in `tests/smoke.rs`):
 - T-DSK-03: `capacity_bytes > 0` when present
 - T-GPU-01: `gpu` array empty on CPU-only host (skipped when GPU device detected)
 - T-OUT-02: `timestamp_secs` is a positive integer
-- T-OUT-03: `resource-tracker-rs-version` is a semver string
+- T-OUT-03: `resource-tracker-version` is a semver string
 - T-CLD-01: first sample arrives within 5s on a non-cloud host
 - T-CFG-04: TOML `interval_secs = 2` controls sample spacing (~4s for 2 samples)
 - T-CFG-05: CLI `--interval 2` overrides TOML `interval_secs = 5` (2 samples in < 8s)
