@@ -1,4 +1,5 @@
 use crate::metrics::{CloudInfo, GpuMetrics, HostInfo};
+use serde::Deserialize;
 use std::time::Duration;
 use ureq::config::Config as UreqConfig;
 
@@ -164,131 +165,255 @@ pub fn collect_host_info(gpus: &[GpuMetrics]) -> HostInfo {
 // Cloud discovery (background thread, non-blocking)
 // ---------------------------------------------------------------------------
 
-const IMDS_TIMEOUT: Duration = Duration::from_secs(2);
+/// Upper bound for each HTTP call made by a vendor probe (`ureq` global timeout).
+const IMDS_TIMEOUT: Duration = Duration::from_secs(1);
+
+fn new_imds_agent() -> ureq::Agent {
+    UreqConfig::builder()
+        .timeout_global(Some(IMDS_TIMEOUT))
+        .build()
+        .new_agent()
+}
 
 /// Make a GET request and return the trimmed response body, or `None` on error.
 fn imds_get(agent: &ureq::Agent, url: &str) -> Option<String> {
-    agent
-        .get(url)
-        .call()
+    imds_get_headers(agent, url, &[])
+}
+
+fn imds_get_headers(agent: &ureq::Agent, url: &str, headers: &[(&str, &str)]) -> Option<String> {
+    let mut req = agent.get(url);
+    for (k, v) in headers {
+        req = req.header(*k, *v);
+    }
+    req.call()
         .ok()
         .and_then(|mut r| r.body_mut().read_to_string().ok())
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
 }
 
-/// Attempt AWS IMDS. Returns a populated `CloudInfo` if this is an AWS host,
-/// otherwise returns `CloudInfo::default()`.
-fn probe_aws() -> CloudInfo {
-    let config = UreqConfig::builder()
-        .timeout_global(Some(IMDS_TIMEOUT))
-        .build();
-    let agent = config.new_agent();
-    const BASE: &str = "http://169.254.169.254";
-
-    // Probe the metadata root; if it fails, this is not an AWS host.
-    if agent
-        .get(&format!("{}/latest/meta-data/", BASE))
-        .call()
-        .is_err()
-    {
-        return CloudInfo::default();
+/// Derive the region from a GCP zone basename (e.g. `us-central1-a` → `us-central1`).
+fn gcp_zone_basename_to_region(zone: &str) -> String {
+    match zone.rsplit_once('-') {
+        Some((prefix, _)) => prefix.to_string(),
+        None => zone.to_string(),
     }
+}
 
-    // AWS confirmed. Fetch the remaining fields individually.
-    let cloud_region_id = imds_get(
+fn aws_fetch_imdsv2_token(agent: &ureq::Agent) -> Option<String> {
+    const TOKEN_URL: &str = "http://169.254.169.254/latest/api/token";
+    agent
+        .put(TOKEN_URL)
+        .header("X-aws-ec2-metadata-token-ttl-seconds", "21600")
+        .send_empty()
+        .ok()
+        .and_then(|mut r| {
+            if !r.status().is_success() {
+                return None;
+            }
+            r.body_mut().read_to_string().ok()
+        })
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+fn aws_imds_get(agent: &ureq::Agent, path: &str, token: Option<&str>) -> Option<String> {
+    let url = format!("http://169.254.169.254{path}");
+    match token {
+        Some(t) => imds_get_headers(agent, &url, &[("X-aws-ec2-metadata-token", t)]),
+        None => imds_get(agent, &url),
+    }
+}
+
+const AWS_META_ROOT: &str = "http://169.254.169.254/latest/meta-data/";
+
+/// AWS IMDSv2 (token + header) with IMDSv1 fallback. Returns `None` if not on EC2.
+///
+/// When the IMDSv2 token `PUT` succeeds, the token is valid—no extra validation `GET`
+/// to `AWS_META_ROOT` (avoids an unnecessary timeout on non-AWS hosts). If the token
+/// fetch fails, fall back to unauthenticated IMDSv1 `GET` on `AWS_META_ROOT`.
+fn probe_aws() -> Option<CloudInfo> {
+    let agent = new_imds_agent();
+    let token = aws_fetch_imdsv2_token(&agent);
+
+    let read_token: Option<&str> = if token.is_some() {
+        token.as_deref()
+    } else if imds_get(&agent, AWS_META_ROOT).is_some() {
+        None
+    } else {
+        return None;
+    };
+
+    let cloud_region_id = aws_imds_get(&agent, "/latest/meta-data/placement/region", read_token);
+    let cloud_zone_id = aws_imds_get(
         &agent,
-        &format!("{}/latest/meta-data/placement/region", BASE),
+        "/latest/meta-data/placement/availability-zone",
+        read_token,
     );
-    let cloud_zone_id = imds_get(
+    let cloud_instance_type = aws_imds_get(&agent, "/latest/meta-data/instance-type", read_token);
+    let cloud_account_id = aws_imds_get(
         &agent,
-        &format!("{}/latest/meta-data/placement/availability-zone", BASE),
-    );
-    let cloud_instance_type = imds_get(&agent, &format!("{}/latest/meta-data/instance-type", BASE));
-    // Account ID lives inside a JSON document; extract the AccountId field.
-    let cloud_account_id = imds_get(
-        &agent,
-        &format!("{}/latest/meta-data/identity-credentials/ec2/info", BASE),
+        "/latest/meta-data/identity-credentials/ec2/info",
+        read_token,
     )
     .and_then(|body| {
-        // Simple extraction without pulling in a JSON parser: find "AccountId":"..."
         let marker = "\"AccountId\":\"";
         let start = body.find(marker)? + marker.len();
         let end = body[start..].find('"')? + start;
         Some(body[start..end].to_string())
     });
 
-    CloudInfo {
+    Some(CloudInfo {
         cloud_vendor_id: Some("aws".to_string()),
         cloud_account_id,
         cloud_region_id,
         cloud_zone_id,
         cloud_instance_type,
-    }
+    })
 }
 
-/// Probe GCP IMDS. Returns `true` if this is a GCP host.
-fn probe_gcp() -> bool {
-    let config = UreqConfig::builder()
-        .timeout_global(Some(IMDS_TIMEOUT))
-        .build();
-    let agent = config.new_agent();
-    agent
-        .get("http://metadata.google.internal/computeMetadata/v1/")
-        .header("Metadata-Flavor", "Google")
-        .call()
-        .is_ok()
+fn probe_gcp() -> Option<CloudInfo> {
+    let agent = new_imds_agent();
+    const FLAVOR: &[(&str, &str)] = &[("Metadata-Flavor", "Google")];
+    let machine_type = imds_get_headers(
+        &agent,
+        "http://metadata.google.internal/computeMetadata/v1/instance/machine-type",
+        FLAVOR,
+    )?;
+    let zone_full = imds_get_headers(
+        &agent,
+        "http://metadata.google.internal/computeMetadata/v1/instance/zone",
+        FLAVOR,
+    )?;
+
+    // projects/PROJECT_NUM/machineTypes/MACHINE_TYPE
+    let instance_type = machine_type.rsplit('/').next()?.to_string();
+    let zone = zone_full.rsplit('/').next()?.to_string();
+    let cloud_region_id = gcp_zone_basename_to_region(&zone);
+
+    Some(CloudInfo {
+        cloud_vendor_id: Some("gcp".to_string()),
+        cloud_account_id: None,
+        cloud_region_id: Some(cloud_region_id),
+        cloud_zone_id: Some(zone),
+        cloud_instance_type: Some(instance_type),
+    })
 }
 
-/// Probe Azure IMDS. Returns `true` if this is an Azure host.
-fn probe_azure() -> bool {
-    let config = UreqConfig::builder()
-        .timeout_global(Some(IMDS_TIMEOUT))
-        .build();
-    let agent = config.new_agent();
-    agent
-        .get("http://169.254.169.254/metadata/instance?api-version=2021-02-01")
+#[derive(Debug, Deserialize)]
+struct AzureInstanceMetadata {
+    compute: Option<AzureCompute>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AzureCompute {
+    #[serde(rename = "vmSize")]
+    vm_size: Option<String>,
+    location: Option<String>,
+}
+
+fn probe_azure() -> Option<CloudInfo> {
+    let agent = new_imds_agent();
+    let url = "http://169.254.169.254/metadata/instance?api-version=2021-02-01";
+    let body = agent
+        .get(url)
         .header("Metadata", "true")
         .call()
-        .is_ok()
+        .ok()
+        .and_then(|mut r| r.body_mut().read_to_string().ok())?;
+    let meta: AzureInstanceMetadata = serde_json::from_str(&body).ok()?;
+    let compute = meta.compute?;
+
+    Some(CloudInfo {
+        cloud_vendor_id: Some("azure".to_string()),
+        cloud_account_id: None,
+        cloud_region_id: compute.location.filter(|s| !s.is_empty()),
+        cloud_zone_id: None,
+        cloud_instance_type: compute.vm_size.filter(|s| !s.is_empty()),
+    })
 }
 
-/// Probe all three cloud providers in parallel and return the first match.
-/// Each probe has a ≤ 2-second timeout; total wall time is bounded by the
-/// slowest thread (at most 2 seconds when no provider responds).
+fn probe_hetzner() -> Option<CloudInfo> {
+    let agent = new_imds_agent();
+    let text = imds_get(&agent, "http://169.254.169.254/hetzner/v1/metadata")?;
+
+    let mut instance_type: Option<String> = None;
+    let mut region: Option<String> = None;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let Some((key, value)) = line.split_once(':') else {
+            continue;
+        };
+        match key.trim() {
+            "instance-id" => instance_type = Some(value.trim().to_string()),
+            "region" => region = Some(value.trim().to_string()),
+            _ => {}
+        }
+    }
+
+    Some(CloudInfo {
+        cloud_vendor_id: Some("hcloud".to_string()),
+        cloud_account_id: None,
+        cloud_region_id: region.filter(|s| !s.is_empty() && s != "unknown"),
+        cloud_zone_id: None,
+        cloud_instance_type: instance_type.filter(|s| !s.is_empty() && s != "unknown"),
+    })
+}
+
+#[derive(Debug, Deserialize)]
+struct UpcloudMetadata {
+    cloud_name: Option<String>,
+    region: Option<String>,
+}
+
+fn probe_upcloud() -> Option<CloudInfo> {
+    let agent = new_imds_agent();
+    let body = imds_get(&agent, "http://169.254.169.254/metadata/v1.json")?;
+    let meta: UpcloudMetadata = serde_json::from_str(&body).ok()?;
+    if meta.cloud_name.as_deref() != Some("upcloud") {
+        return None;
+    }
+
+    Some(CloudInfo {
+        cloud_vendor_id: Some("upcloud".to_string()),
+        cloud_account_id: None,
+        cloud_region_id: meta.region.filter(|s| !s.is_empty() && s != "unknown"),
+        cloud_zone_id: None,
+        cloud_instance_type: None,
+    })
+}
+
+/// Run all vendor probes in parallel (one OS thread per vendor).
+///
+/// Join order follows precedence **AWS → GCP → Azure → Hetzner → UpCloud**: we return
+/// the first successful probe and **drop** the remaining [`JoinHandle`]s without
+/// joining, so those threads keep running until their own timeouts (avoids waiting
+/// for every vendor on e.g. a confirmed AWS host). Each HTTP call uses [`IMDS_TIMEOUT`].
 fn probe_cloud() -> CloudInfo {
-    let aws = std::thread::spawn(probe_aws);
-    let gcp = std::thread::spawn(probe_gcp);
-    let azure = std::thread::spawn(probe_azure);
-
-    let aws_result = aws.join().unwrap_or_default();
-    if aws_result.cloud_vendor_id.is_some() {
-        let _ = gcp.join();
-        let _ = azure.join();
-        return aws_result;
+    let handles = [
+        std::thread::spawn(probe_aws),
+        std::thread::spawn(probe_gcp),
+        std::thread::spawn(probe_azure),
+        std::thread::spawn(probe_hetzner),
+        std::thread::spawn(probe_upcloud),
+    ];
+    for handle in handles {
+        if let Ok(Some(info)) = handle.join() {
+            return info;
+        }
     }
-
-    if gcp.join().unwrap_or(false) {
-        let _ = azure.join();
-        return CloudInfo {
-            cloud_vendor_id: Some("gcp".to_string()),
-            ..CloudInfo::default()
-        };
-    }
-
-    if azure.join().unwrap_or(false) {
-        return CloudInfo {
-            cloud_vendor_id: Some("azure".to_string()),
-            ..CloudInfo::default()
-        };
-    }
-
     CloudInfo::default()
 }
 
 /// Spawn a background thread that probes cloud IMDS endpoints.
-/// The caller should join the handle after the warm-up sleep so that cloud
-/// discovery runs concurrently with the first sample interval.
+///
+/// Call this **before** the warm-up sleep so probes run **in parallel** with the
+/// main thread’s warm-up (stateful collector priming + one `interval` sleep).
+/// Join the handle **after** warm-up to read results; if probes finished during
+/// sleep, `join` returns immediately.
 pub fn spawn_cloud_discovery() -> std::thread::JoinHandle<CloudInfo> {
     std::thread::spawn(probe_cloud)
 }
@@ -385,12 +510,25 @@ mod tests {
     }
 
     // T-HOST-06: spawn_cloud_discovery resolves without panic.
-    // Cloud probes time out after 2 s each; on a non-cloud machine this fast-paths.
+    // Each vendor's HTTP calls use IMDS_TIMEOUT; five vendor probes run in parallel.
     #[test]
     fn test_spawn_cloud_discovery_joins_without_panic() {
         let handle = spawn_cloud_discovery();
         let _cloud = handle.join().expect("cloud discovery thread panicked");
         // Result may be default (no cloud) or populated (running on a cloud VM).
         // Either outcome is valid; the test only checks for no panic.
+    }
+
+    #[test]
+    fn test_gcp_zone_basename_to_region() {
+        assert_eq!(
+            super::gcp_zone_basename_to_region("us-central1-a"),
+            "us-central1"
+        );
+        assert_eq!(super::gcp_zone_basename_to_region("x"), "x");
+        assert_eq!(
+            super::gcp_zone_basename_to_region("europe-west4-b"),
+            "europe-west4"
+        );
     }
 }

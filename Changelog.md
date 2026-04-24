@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Small documentation fixes.
+- Deploy documentation to GitHub Pages.
+- Extend cloud discovery helpers based on the existing Python implementation.
+
+## [0.1.3] - 2026-04-23
+
 ### Populate process_gpu_usage and handle SIGINT gracefully (2026-04-08)
 
 #### `src/collector/gpu.rs` -- per-process GPU utilization for NVIDIA and AMD
