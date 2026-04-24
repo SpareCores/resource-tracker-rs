@@ -165,7 +165,8 @@ pub fn collect_host_info(gpus: &[GpuMetrics]) -> HostInfo {
 // Cloud discovery (background thread, non-blocking)
 // ---------------------------------------------------------------------------
 
-const IMDS_TIMEOUT: Duration = Duration::from_secs(2);
+/// Upper bound for each HTTP call made by a vendor probe (`ureq` global timeout).
+const IMDS_TIMEOUT: Duration = Duration::from_secs(1);
 
 fn new_imds_agent() -> ureq::Agent {
     UreqConfig::builder()
@@ -191,13 +192,11 @@ fn imds_get_headers(agent: &ureq::Agent, url: &str, headers: &[(&str, &str)]) ->
         .filter(|s| !s.is_empty())
 }
 
-/// GCP zone basename (e.g. `us-central1-a`) → region (`us-central1`), matching Python logic.
+/// Derive the region from a GCP zone basename (e.g. `us-central1-a` → `us-central1`).
 fn gcp_zone_basename_to_region(zone: &str) -> String {
-    let parts: Vec<&str> = zone.split('-').collect();
-    if parts.len() > 1 {
-        parts[..parts.len() - 1].join("-")
-    } else {
-        zone.to_string()
+    match zone.rsplit_once('-') {
+        Some((prefix, _)) => prefix.to_string(),
+        None => zone.to_string(),
     }
 }
 
@@ -229,16 +228,16 @@ fn aws_imds_get(agent: &ureq::Agent, path: &str, token: Option<&str>) -> Option<
 const AWS_META_ROOT: &str = "http://169.254.169.254/latest/meta-data/";
 
 /// AWS IMDSv2 (token + header) with IMDSv1 fallback. Returns `None` if not on EC2.
+///
+/// When the IMDSv2 token `PUT` succeeds, the token is valid—no extra validation `GET`
+/// to `AWS_META_ROOT` (avoids an unnecessary timeout on non-AWS hosts). If the token
+/// fetch fails, fall back to unauthenticated IMDSv1 `GET` on `AWS_META_ROOT`.
 fn probe_aws() -> Option<CloudInfo> {
     let agent = new_imds_agent();
     let token = aws_fetch_imdsv2_token(&agent);
 
-    let read_token: Option<&str> = token.as_deref().filter(|t| {
-        imds_get_headers(&agent, AWS_META_ROOT, &[("X-aws-ec2-metadata-token", t)]).is_some()
-    });
-
-    let read_token = if read_token.is_some() {
-        read_token
+    let read_token: Option<&str> = if token.is_some() {
+        token.as_deref()
     } else if imds_get(&agent, AWS_META_ROOT).is_some() {
         None
     } else {
@@ -336,7 +335,10 @@ fn probe_azure() -> Option<CloudInfo> {
 
 fn probe_hetzner() -> Option<CloudInfo> {
     let agent = new_imds_agent();
-    let text = imds_get(&agent, "http://169.254.169.254/hetzner/v1/metadata")?;
+    let text = imds_get(
+        &agent,
+        "http://169.254.169.254/hetzner/v1/metadata",
+    )?;
 
     let mut instance_type: Option<String> = None;
     let mut region: Option<String> = None;
@@ -366,9 +368,7 @@ fn probe_hetzner() -> Option<CloudInfo> {
 
 #[derive(Debug, Deserialize)]
 struct UpcloudMetadata {
-    #[serde(default)]
     cloud_name: Option<String>,
-    #[serde(default)]
     region: Option<String>,
 }
 
@@ -389,31 +389,34 @@ fn probe_upcloud() -> Option<CloudInfo> {
     })
 }
 
-/// Run all vendor probes in parallel. If more than one returned a result (theoretical),
-/// precedence is AWS → GCP → Azure → Hetzner → UpCloud. Each probe uses a 2-second timeout.
+/// Run all vendor probes in parallel (one OS thread per vendor).
+///
+/// Join order follows precedence **AWS → GCP → Azure → Hetzner → UpCloud**: we return
+/// the first successful probe and **drop** the remaining [`JoinHandle`]s without
+/// joining, so those threads keep running until their own timeouts (avoids waiting
+/// for every vendor on e.g. a confirmed AWS host). Each HTTP call uses [`IMDS_TIMEOUT`].
 fn probe_cloud() -> CloudInfo {
-    let aws = std::thread::spawn(probe_aws);
-    let gcp = std::thread::spawn(probe_gcp);
-    let azure = std::thread::spawn(probe_azure);
-    let hetzner = std::thread::spawn(probe_hetzner);
-    let upcloud = std::thread::spawn(probe_upcloud);
-
-    let aws = aws.join().unwrap_or(None);
-    let gcp = gcp.join().unwrap_or(None);
-    let azure = azure.join().unwrap_or(None);
-    let hetzner = hetzner.join().unwrap_or(None);
-    let upcloud = upcloud.join().unwrap_or(None);
-
-    aws.or(gcp)
-        .or(azure)
-        .or(hetzner)
-        .or(upcloud)
-        .unwrap_or_default()
+    let handles = [
+        std::thread::spawn(probe_aws),
+        std::thread::spawn(probe_gcp),
+        std::thread::spawn(probe_azure),
+        std::thread::spawn(probe_hetzner),
+        std::thread::spawn(probe_upcloud),
+    ];
+    for handle in handles {
+        if let Ok(Some(info)) = handle.join() {
+            return info;
+        }
+    }
+    CloudInfo::default()
 }
 
 /// Spawn a background thread that probes cloud IMDS endpoints.
-/// The caller should join the handle after the warm-up sleep so that cloud
-/// discovery runs concurrently with the first sample interval.
+///
+/// Call this **before** the warm-up sleep so probes run **in parallel** with the
+/// main thread’s warm-up (stateful collector priming + one `interval` sleep).
+/// Join the handle **after** warm-up to read results; if probes finished during
+/// sleep, `join` returns immediately.
 pub fn spawn_cloud_discovery() -> std::thread::JoinHandle<CloudInfo> {
     std::thread::spawn(probe_cloud)
 }
@@ -510,7 +513,7 @@ mod tests {
     }
 
     // T-HOST-06: spawn_cloud_discovery resolves without panic.
-    // Each vendor probe times out after 1 s; on a non-cloud machine all miss in parallel.
+    // Each vendor's HTTP calls use IMDS_TIMEOUT; five vendor probes run in parallel.
     #[test]
     fn test_spawn_cloud_discovery_joins_without_panic() {
         let handle = spawn_cloud_discovery();
