@@ -18,21 +18,32 @@ jobs:
         include:
           - runner: ubuntu-latest
             arch_label: amd64
+            rust_target: x86_64-unknown-linux-musl
           - runner: ubuntu-24.04-arm
             arch_label: arm64
+            rust_target: aarch64-unknown-linux-musl
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6.0.2
 
-      - name: Install Rust toolchain (stable)
+      - name: Install musl C toolchain for static linking
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      - name: Install Rust toolchain (stable) + musl target
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
 
       - name: Cache cargo dependencies
         uses: Swatinem/rust-cache@v2.9.1
+        with:
+          shared-key: musl-${{ matrix.rust_target }}
 
-      - name: Build release binary
-        run: cargo build --locked --release
+      - name: Build static release binary (musl)
+        run: cargo build --locked --release --target ${{ matrix.rust_target }}
 
       - name: Package release artifact
         env:
@@ -40,8 +51,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          archive="resource-tracker-${TAG}-linux-${{ matrix.arch_label }}.tar.gz"
-          tar -czf "dist/${archive}" -C target/release resource-tracker -C "$GITHUB_WORKSPACE" README.md LICENSE
+          archive="resource-tracker-${TAG}-linux-${{ matrix.arch_label }}-musl.tar.gz"
+          tar -czf "dist/${archive}" -C "target/${{ matrix.rust_target }}/release" resource-tracker -C "$GITHUB_WORKSPACE" README.md LICENSE
           sha256sum "dist/${archive}" > "dist/${archive}.sha256"
 
       - name: Upload build artifacts

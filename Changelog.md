@@ -5,6 +5,7 @@
 - Small documentation fixes.
 - Deploy documentation to GitHub Pages.
 - Extend cloud discovery helpers based on the existing Python implementation.
+- GitHub Actions workflow for building and releasing static binaries for Linux.
 
 ## [0.1.3] - 2026-04-23
 
