@@ -335,10 +335,7 @@ fn probe_azure() -> Option<CloudInfo> {
 
 fn probe_hetzner() -> Option<CloudInfo> {
     let agent = new_imds_agent();
-    let text = imds_get(
-        &agent,
-        "http://169.254.169.254/hetzner/v1/metadata",
-    )?;
+    let text = imds_get(&agent, "http://169.254.169.254/hetzner/v1/metadata")?;
 
     let mut instance_type: Option<String> = None;
     let mut region: Option<String> = None;
