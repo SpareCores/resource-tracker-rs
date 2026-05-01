@@ -105,19 +105,94 @@ fn discover_devices() -> HashMap<String, DeviceInfo> {
 ///
 /// Most devices map 1-to-1: `/dev/sda` → `["/dev/sda"]` (matches `sda1`, `sda2` …).
 ///
-/// Device-mapper devices (`dm-*`) are the exception: the kernel exposes them in
-/// `/proc/mounts` as `/dev/mapper/<name>` (the human-readable name), **not** as
-/// `/dev/dm-N`. We read the canonical name from
-/// `/sys/block/<dev>/dm/name` and add the mapper path as a second prefix so
-/// that LVM volumes, LUKS containers, and similar stacks are not missed.
+/// Two special cases add extra prefixes:
+///
+/// - **Device-mapper** (`dm-*`): `/proc/mounts` uses `/dev/mapper/<name>`, not
+///   `/dev/dm-N`. The canonical name is read from `/sys/block/<dev>/dm/name`.
+///
+/// - **`/dev/root`**: some distros (Ubuntu/AWS, cloud-init images) expose the
+///   root partition under this alias in `/proc/mounts` instead of the real
+///   device path. Resolution is attempted first via `read_link` (covers
+///   distros that make it a symlink) and then via a `major:minor` comparison
+///   between `/proc/self/mountinfo` and `/sys/block/<dev>/<part>/dev` (covers
+///   distros where it is a plain device node). See `dev_root_is_on_device`.
 fn device_source_prefixes(device_name: &str) -> Vec<String> {
-    let mut prefixes = vec![format!("/dev/{}", device_name)];
+    let primary = format!("/dev/{}", device_name);
+    let mut prefixes = vec![primary.clone()];
+
     if device_name.starts_with("dm-") {
         if let Some(name) = sysfs_read(&format!("/sys/block/{}/dm/name", device_name)) {
             prefixes.push(format!("/dev/mapper/{}", name));
         }
     }
+
+    if dev_root_is_on_device(device_name, &primary) {
+        prefixes.push("/dev/root".to_string());
+    }
+
     prefixes
+}
+
+/// Return `true` if `/dev/root` (a root-partition alias used by Ubuntu/AWS and
+/// similar cloud images) belongs to `device_name`.
+///
+/// Two strategies, tried in order:
+///
+/// 1. **Symlink** (`read_link`): common on Debian and some Ubuntu builds.
+///    The symlink target (e.g. `nvme0n1p1`) is resolved and matched against
+///    the device prefix.
+///
+/// 2. **`/proc/self/mountinfo` + sysfs**: when `/dev/root` is a device node
+///    (not a symlink), we read the `major:minor` string from mountinfo field 3
+///    for the `/` mount whose source is `/dev/root`, then scan
+///    `/sys/block/<device>/<partition>/dev` for a matching string.
+///    Both sources use the same `"major:minor"` text format, so no encoding or
+///    `makedev(3)` arithmetic is needed.
+fn dev_root_is_on_device(device_name: &str, primary: &str) -> bool {
+    // Strategy 1: symlink
+    if let Ok(target) = std::fs::read_link("/dev/root") {
+        let t = target.to_string_lossy();
+        let resolved = if t.starts_with('/') {
+            t.to_string()
+        } else {
+            format!("/dev/{}", t)
+        };
+        return resolved.starts_with(primary);
+    }
+
+    // Strategy 2: mountinfo major:minor comparison
+    let mountinfo = std::fs::read_to_string("/proc/self/mountinfo").unwrap_or_default();
+    let Some(root_devnum) = mountinfo.lines().find_map(|line| {
+        // mountinfo fields (space-separated):
+        //   mount_id parent_id major:minor root mount_point options [optionals] - fstype source super_opts
+        let mut f = line.splitn(6, ' ');
+        f.next()?; // mount_id
+        f.next()?; // parent_id
+        let devnum = f.next()?.to_string(); // major:minor  ← what we need
+        f.next()?; // root within fs
+        let mpt = f.next()?; // mount_point
+        if mpt != "/" {
+            return None;
+        }
+        // Source is the second word after the " - " separator.
+        let sep = line.find(" - ")?;
+        let source = line[sep + 3..].split_whitespace().nth(1)?;
+        if source == "/dev/root" { Some(devnum) } else { None }
+    }) else {
+        return false;
+    };
+
+    // Does any partition of device_name carry this major:minor?
+    let sys_base = format!("/sys/block/{}", device_name);
+    let Ok(entries) = std::fs::read_dir(&sys_base) else {
+        return false;
+    };
+    entries.flatten().any(|e| {
+        let pname = e.file_name().to_string_lossy().to_string();
+        pname.starts_with(device_name)
+            && sysfs_read(&format!("{}/{}/dev", sys_base, pname))
+                .map_or(false, |dev| dev == root_devnum)
+    })
 }
 
 fn statvfs_space(path: &str) -> Option<(u64, u64, u64)> {
