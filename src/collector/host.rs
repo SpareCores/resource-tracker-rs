@@ -232,6 +232,11 @@ const AWS_META_ROOT: &str = "http://169.254.169.254/latest/meta-data/";
 /// When the IMDSv2 token `PUT` succeeds, the token is valid—no extra validation `GET`
 /// to `AWS_META_ROOT` (avoids an unnecessary timeout on non-AWS hosts). If the token
 /// fetch fails, fall back to unauthenticated IMDSv1 `GET` on `AWS_META_ROOT`.
+///
+/// After reachability is confirmed the probe additionally verifies
+/// `/latest/meta-data/services/domain` equals `"amazonaws.com"` so that other
+/// cloud providers exposing an EC2-compatible metadata service are not mistaken
+/// for AWS.
 fn probe_aws() -> Option<CloudInfo> {
     let agent = new_imds_agent();
     let token = aws_fetch_imdsv2_token(&agent);
@@ -243,6 +248,12 @@ fn probe_aws() -> Option<CloudInfo> {
     } else {
         return None;
     };
+
+    // Guard against EC2-compatible metadata services on other clouds.
+    let domain = aws_imds_get(&agent, "/latest/meta-data/services/domain", read_token);
+    if domain.as_deref() != Some("amazonaws.com") {
+        return None;
+    }
 
     let cloud_region_id = aws_imds_get(&agent, "/latest/meta-data/placement/region", read_token);
     let cloud_zone_id = aws_imds_get(
