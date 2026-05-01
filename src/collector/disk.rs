@@ -210,6 +210,79 @@ fn mounts_for_device(device_name: &str) -> Vec<DiskMountMetrics> {
 }
 
 // ---------------------------------------------------------------------------
+// ZFS pool space - statvfs on the root dataset, no subprocess needed
+// ---------------------------------------------------------------------------
+
+/// Collect space stats for every ZFS pool visible in `/proc/mounts`.
+///
+/// ZFS dataset entries in `/proc/mounts` use the pool/dataset path as the
+/// source (e.g. `tank` or `tank/data`), not a `/dev/…` path, so they are
+/// invisible to the block-device loop.  This function handles them separately.
+///
+/// Strategy (mirrors `helpers.py::get_zfs_pools_space` but without `zpool`):
+///
+/// 1. Parse `/proc/mounts` for lines whose filesystem type is `zfs`.
+/// 2. Group entries by pool name (the part before the first `/`).
+/// 3. For each pool, prefer the root-dataset mount (source == pool name, no
+///    `/`); fall back to the shallowest source otherwise.  Calling `statvfs`
+///    on the root dataset — which carries no per-dataset quota by default —
+///    returns the same pool-level total, allocated, and free numbers that
+///    `zpool list` would report.
+/// 4. Return one `(pool_name, DiskMountMetrics)` pair per pool.
+fn collect_zfs_spaces() -> Vec<(String, DiskMountMetrics)> {
+    let content = match std::fs::read_to_string("/proc/mounts") {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+
+    // pool_name -> Vec<(source, mount_point)>
+    let mut pools: HashMap<String, Vec<(String, String)>> = HashMap::new();
+    for line in content.lines() {
+        let mut parts = line.split_whitespace();
+        let (Some(source), Some(mount_point), Some(fs_type)) =
+            (parts.next(), parts.next(), parts.next())
+        else {
+            continue;
+        };
+        if fs_type != "zfs" {
+            continue;
+        }
+        let pool_name = source.split('/').next().unwrap_or(source).to_string();
+        pools
+            .entry(pool_name)
+            .or_default()
+            .push((source.to_string(), mount_point.to_string()));
+    }
+
+    let mut result = Vec::new();
+    for (pool_name, mut mounts) in pools {
+        // Root dataset first (no '/'), then shallowest path as fallback.
+        mounts.sort_by_key(|(src, _)| (src.contains('/') as u8, src.len()));
+        let (_, mount_point) = mounts.remove(0);
+
+        let Some((total, used, avail)) = statvfs_space(&mount_point) else {
+            continue;
+        };
+        if total == 0 {
+            continue;
+        }
+        let used_pct = used as f64 / total as f64 * 100.0;
+        result.push((
+            pool_name,
+            DiskMountMetrics {
+                mount_point,
+                filesystem: "zfs".to_string(),
+                total_bytes: total,
+                used_bytes: used,
+                available_bytes: avail,
+                used_pct,
+            },
+        ));
+    }
+    result
+}
+
+// ---------------------------------------------------------------------------
 // Delta snapshot + Collector
 // ---------------------------------------------------------------------------
 
@@ -307,6 +380,26 @@ impl DiskCollector {
                 }
             })
             .collect();
+
+        // Append one synthetic entry per ZFS pool.  ZFS datasets don't appear
+        // in /sys/block or /proc/diskstats, so they need a separate path.
+        // The device name follows Python's convention: "zfs:<pool_name>".
+        for (pool_name, mount) in collect_zfs_spaces() {
+            let total = mount.total_bytes;
+            metrics.push(DiskMetrics {
+                device: format!("zfs:{}", pool_name),
+                model: None,
+                vendor: None,
+                serial: None,
+                device_type: None,
+                capacity_bytes: Some(total),
+                mounts: vec![mount],
+                read_bytes_per_sec: 0.0,
+                write_bytes_per_sec: 0.0,
+                read_bytes_total: 0,
+                write_bytes_total: 0,
+            });
+        }
 
         metrics.sort_by(|a, b| a.device.cmp(&b.device));
         self.prev = Some(Snapshot {
