@@ -123,54 +123,70 @@ fn statvfs_space(path: &str) -> Option<(u64, u64, u64)> {
 /// Read /proc/mounts and return filesystem space for all mount points whose
 /// source device path starts with `/dev/<device_name>` (covers partitions too).
 ///
-/// Two filters mirror the Python implementation's guards:
-/// - Mount points under `/proc`, `/sys`, `/dev`, `/run` are skipped; these are
-///   virtual hierarchies and frequent bind-mount targets (Docker creates bind
-///   mounts from the root device into container paths, which would otherwise
-///   inflate totals by reporting the root filesystem size once per container).
-/// - Pseudo-filesystems with `f_blocks == 0` are skipped after `statvfs`.
+/// Three filters/guards mirror the Python implementation and prevent inflation:
+///
+/// 1. Mount points under `/proc`, `/sys`, `/dev`, `/run` are skipped — these
+///    are virtual hierarchies and frequent bind-mount targets.
+/// 2. Each unique source path (e.g. `/dev/sda1`) is counted only once. The
+///    same source can appear at multiple mount points via bind mounts or btrfs
+///    subvolumes; without deduplication, `statvfs` returns the same pool size
+///    for each entry, multiplying the reported total by the subvolume count.
+/// 3. Pseudo-filesystems with `f_blocks == 0` are skipped after `statvfs`.
 fn mounts_for_device(device_name: &str) -> Vec<DiskMountMetrics> {
     let content = match std::fs::read_to_string("/proc/mounts") {
         Ok(c) => c,
         Err(_) => return vec![],
     };
     let prefix = format!("/dev/{}", device_name);
-    content
-        .lines()
-        .filter(|line| line.starts_with(&prefix))
-        .filter_map(|line| {
-            let mut parts = line.split_whitespace();
-            let _source = parts.next()?;
-            let mount_point = parts.next()?.to_string();
-            let filesystem = parts.next()?.to_string();
+    let mut seen_sources: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut result = Vec::new();
 
-            // Skip virtual filesystem mount-point hierarchies.
-            if mount_point.starts_with("/proc")
-                || mount_point.starts_with("/sys")
-                || mount_point.starts_with("/dev")
-                || mount_point.starts_with("/run")
-            {
-                return None;
-            }
+    for line in content.lines() {
+        if !line.starts_with(&prefix) {
+            continue;
+        }
+        let mut parts = line.split_whitespace();
+        let (Some(source), Some(mount_point), Some(filesystem)) =
+            (parts.next(), parts.next(), parts.next())
+        else {
+            continue;
+        };
 
-            let (total, used, avail) = statvfs_space(&mount_point)?;
+        // Skip virtual filesystem mount-point hierarchies.
+        if mount_point.starts_with("/proc")
+            || mount_point.starts_with("/sys")
+            || mount_point.starts_with("/dev")
+            || mount_point.starts_with("/run")
+        {
+            continue;
+        }
 
-            // Skip pseudo-filesystems that report no blocks.
-            if total == 0 {
-                return None;
-            }
+        // Deduplicate by source: btrfs subvolumes and bind mounts share the
+        // same source device and report the same pool total each — count once.
+        if !seen_sources.insert(source.to_string()) {
+            continue;
+        }
 
-            let used_pct = used as f64 / total as f64 * 100.0;
-            Some(DiskMountMetrics {
-                mount_point,
-                filesystem,
-                total_bytes: total,
-                used_bytes: used,
-                available_bytes: avail,
-                used_pct,
-            })
-        })
-        .collect()
+        let Some((total, used, avail)) = statvfs_space(mount_point) else {
+            continue;
+        };
+
+        // Skip pseudo-filesystems that report no blocks.
+        if total == 0 {
+            continue;
+        }
+
+        let used_pct = used as f64 / total as f64 * 100.0;
+        result.push(DiskMountMetrics {
+            mount_point: mount_point.to_string(),
+            filesystem: filesystem.to_string(),
+            total_bytes: total,
+            used_bytes: used,
+            available_bytes: avail,
+            used_pct,
+        });
+    }
+    result
 }
 
 // ---------------------------------------------------------------------------
