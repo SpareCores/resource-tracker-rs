@@ -100,6 +100,26 @@ fn discover_devices() -> HashMap<String, DeviceInfo> {
 // Filesystem space - statvfs, polled each interval
 // ---------------------------------------------------------------------------
 
+/// Build the list of source-path prefixes to look for in `/proc/mounts` for
+/// a given block device.
+///
+/// Most devices map 1-to-1: `/dev/sda` → `["/dev/sda"]` (matches `sda1`, `sda2` …).
+///
+/// Device-mapper devices (`dm-*`) are the exception: the kernel exposes them in
+/// `/proc/mounts` as `/dev/mapper/<name>` (the human-readable name), **not** as
+/// `/dev/dm-N`. We read the canonical name from
+/// `/sys/block/<dev>/dm/name` and add the mapper path as a second prefix so
+/// that LVM volumes, LUKS containers, and similar stacks are not missed.
+fn device_source_prefixes(device_name: &str) -> Vec<String> {
+    let mut prefixes = vec![format!("/dev/{}", device_name)];
+    if device_name.starts_with("dm-") {
+        if let Some(name) = sysfs_read(&format!("/sys/block/{}/dm/name", device_name)) {
+            prefixes.push(format!("/dev/mapper/{}", name));
+        }
+    }
+    prefixes
+}
+
 fn statvfs_space(path: &str) -> Option<(u64, u64, u64)> {
     let cpath = CString::new(path).ok()?;
     unsafe {
@@ -137,12 +157,12 @@ fn mounts_for_device(device_name: &str) -> Vec<DiskMountMetrics> {
         Ok(c) => c,
         Err(_) => return vec![],
     };
-    let prefix = format!("/dev/{}", device_name);
+    let prefixes = device_source_prefixes(device_name);
     let mut seen_sources: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut result = Vec::new();
 
     for line in content.lines() {
-        if !line.starts_with(&prefix) {
+        if !prefixes.iter().any(|p| line.starts_with(p.as_str())) {
             continue;
         }
         let mut parts = line.split_whitespace();
