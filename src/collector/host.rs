@@ -389,10 +389,12 @@ fn probe_alicloud() -> Option<CloudInfo> {
         return None;
     };
 
-    let cloud_instance_type =
-        alicloud_imds_get(&agent, "/latest/meta-data/instance/instance-type", read_token);
-    let cloud_region_id =
-        alicloud_imds_get(&agent, "/latest/meta-data/region-id", read_token);
+    let cloud_instance_type = alicloud_imds_get(
+        &agent,
+        "/latest/meta-data/instance/instance-type",
+        read_token,
+    );
+    let cloud_region_id = alicloud_imds_get(&agent, "/latest/meta-data/region-id", read_token);
 
     Some(CloudInfo {
         cloud_vendor_id: Some("alicloud".to_string()),
@@ -504,16 +506,20 @@ fn probe_ovh() -> Option<CloudInfo> {
     }
 
     // Region: availability_zone from OpenStack meta_data.json ("nova" is meaningless).
-    let cloud_region_id =
-        imds_get(&agent, "http://169.254.169.254/openstack/latest/meta_data.json")
-            .and_then(|body| serde_json::from_str::<OvhMetaData>(&body).ok())
-            .and_then(|m| m.availability_zone)
-            .filter(|az| !az.is_empty() && az != "unknown" && az != "nova");
+    let cloud_region_id = imds_get(
+        &agent,
+        "http://169.254.169.254/openstack/latest/meta_data.json",
+    )
+    .and_then(|body| serde_json::from_str::<OvhMetaData>(&body).ok())
+    .and_then(|m| m.availability_zone)
+    .filter(|az| !az.is_empty() && az != "unknown" && az != "nova");
 
     // Instance type from the EC2-compatible endpoint OVH also exposes.
-    let cloud_instance_type =
-        imds_get(&agent, "http://169.254.169.254/latest/meta-data/instance-type")
-            .filter(|s| !s.is_empty() && s != "unknown");
+    let cloud_instance_type = imds_get(
+        &agent,
+        "http://169.254.169.254/latest/meta-data/instance-type",
+    )
+    .filter(|s| !s.is_empty() && s != "unknown");
 
     Some(CloudInfo {
         cloud_vendor_id: Some("ovh".to_string()),
