@@ -177,7 +177,11 @@ fn dev_root_is_on_device(device_name: &str, primary: &str) -> bool {
         // Source is the second word after the " - " separator.
         let sep = line.find(" - ")?;
         let source = line[sep + 3..].split_whitespace().nth(1)?;
-        if source == "/dev/root" { Some(devnum) } else { None }
+        if source == "/dev/root" {
+            Some(devnum)
+        } else {
+            None
+        }
     }) else {
         return false;
     };
