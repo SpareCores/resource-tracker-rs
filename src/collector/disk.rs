@@ -122,6 +122,13 @@ fn statvfs_space(path: &str) -> Option<(u64, u64, u64)> {
 
 /// Read /proc/mounts and return filesystem space for all mount points whose
 /// source device path starts with `/dev/<device_name>` (covers partitions too).
+///
+/// Two filters mirror the Python implementation's guards:
+/// - Mount points under `/proc`, `/sys`, `/dev`, `/run` are skipped; these are
+///   virtual hierarchies and frequent bind-mount targets (Docker creates bind
+///   mounts from the root device into container paths, which would otherwise
+///   inflate totals by reporting the root filesystem size once per container).
+/// - Pseudo-filesystems with `f_blocks == 0` are skipped after `statvfs`.
 fn mounts_for_device(device_name: &str) -> Vec<DiskMountMetrics> {
     let content = match std::fs::read_to_string("/proc/mounts") {
         Ok(c) => c,
@@ -136,12 +143,24 @@ fn mounts_for_device(device_name: &str) -> Vec<DiskMountMetrics> {
             let _source = parts.next()?;
             let mount_point = parts.next()?.to_string();
             let filesystem = parts.next()?.to_string();
+
+            // Skip virtual filesystem mount-point hierarchies.
+            if mount_point.starts_with("/proc")
+                || mount_point.starts_with("/sys")
+                || mount_point.starts_with("/dev")
+                || mount_point.starts_with("/run")
+            {
+                return None;
+            }
+
             let (total, used, avail) = statvfs_space(&mount_point)?;
-            let used_pct = if total > 0 {
-                used as f64 / total as f64 * 100.0
-            } else {
-                0.0
-            };
+
+            // Skip pseudo-filesystems that report no blocks.
+            if total == 0 {
+                return None;
+            }
+
+            let used_pct = used as f64 / total as f64 * 100.0;
             Some(DiskMountMetrics {
                 mount_point,
                 filesystem,
