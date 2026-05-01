@@ -332,15 +332,21 @@ impl DiskCollector {
         let diskstats = procfs::diskstats()?;
         let now = Instant::now();
 
-        // Include every device that is a direct /sys/block entry - these are
-        // whole-disk devices (not partitions).  This matches Python's
-        // resource-tracker, which uses the same /sys/block membership check to
-        // distinguish whole disks from partitions.  Importantly, this keeps
-        // loop*, dm-*, and zram* devices which Python also includes.
+        // Include every device that is a direct /sys/block entry (whole disks,
+        // not partitions), excluding loop and ram devices.  Loop devices back
+        // squashfs snap mounts whose space is already counted as part of the
+        // underlying real disk, so including them double-counts that storage.
         let block_set: std::collections::HashSet<String> = std::fs::read_dir("/sys/block")
             .map(|dir| {
                 dir.flatten()
-                    .map(|e| e.file_name().to_string_lossy().to_string())
+                    .filter_map(|e| {
+                        let name = e.file_name().to_string_lossy().to_string();
+                        if name.starts_with("loop") || name.starts_with("ram") {
+                            None
+                        } else {
+                            Some(name)
+                        }
+                    })
                     .collect()
             })
             .unwrap_or_default();
