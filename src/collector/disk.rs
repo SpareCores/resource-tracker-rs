@@ -210,33 +210,81 @@ fn mounts_for_device(device_name: &str) -> Vec<DiskMountMetrics> {
 }
 
 // ---------------------------------------------------------------------------
-// ZFS pool space - statvfs on the root dataset, no subprocess needed
+// ZFS pool space
 // ---------------------------------------------------------------------------
 
-/// Collect space stats for every ZFS pool visible in `/proc/mounts`.
+/// Collect space stats for every imported ZFS pool via `zpool list -Hp`.
 ///
-/// ZFS dataset entries in `/proc/mounts` use the pool/dataset path as the
-/// source (e.g. `tank` or `tank/data`), not a `/dev/…` path, so they are
-/// invisible to the block-device loop.  This function handles them separately.
+/// ZFS `statvfs` is unsuitable for pool-level capacity: the kernel sets
+/// `f_blocks = (pool_avail + dataset.referenced_bytes) >> SPA_MINBLOCKSHIFT`,
+/// i.e. only the REFER column (space at this dataset level, not recursive),
+/// not the pool total.  For a pool with many child datasets this gives a
+/// heavily under-counted figure.  `zpool list` is the only authoritative
+/// source for pool capacity, used, and free.
 ///
-/// Strategy (mirrors `helpers.py::get_zfs_pools_space` but without `zpool`):
-///
-/// 1. Parse `/proc/mounts` for lines whose filesystem type is `zfs`.
-/// 2. Group entries by pool name (the part before the first `/`).
-/// 3. For each pool, prefer the root-dataset mount (source == pool name, no
-///    `/`); fall back to the shallowest source otherwise.  Calling `statvfs`
-///    on the root dataset — which carries no per-dataset quota by default —
-///    returns the same pool-level total, allocated, and free numbers that
-///    `zpool list` would report.
-/// 4. Return one `(pool_name, DiskMountMetrics)` pair per pool.
+/// Mount-point information is looked up from `/proc/mounts` as a best-effort
+/// annotation; the shallowest ZFS source per pool is preferred.
 fn collect_zfs_spaces() -> Vec<(String, DiskMountMetrics)> {
-    let content = match std::fs::read_to_string("/proc/mounts") {
-        Ok(c) => c,
+    // Fast guard: the ZFS kernel module creates /proc/spl/kstat/zfs/ when
+    // loaded.  A single stat(2) call avoids fork+exec on every collection
+    // cycle on the vast majority of systems that don't run ZFS.
+    if !std::path::Path::new("/proc/spl/kstat/zfs").exists() {
+        return vec![];
+    }
+
+    let out = match std::process::Command::new("zpool")
+        .args(["list", "-Hp", "-o", "name,size,allocated,free"])
+        .output()
+    {
+        Ok(o) if o.status.success() => o,
+        _ => return vec![],
+    };
+    let stdout = match std::str::from_utf8(&out.stdout) {
+        Ok(s) => s,
         Err(_) => return vec![],
     };
 
-    // pool_name -> Vec<(source, mount_point)>
-    let mut pools: HashMap<String, Vec<(String, String)>> = HashMap::new();
+    let mount_map = zfs_pool_mount_map();
+    let mut result = Vec::new();
+
+    for line in stdout.lines() {
+        let mut parts = line.split('\t');
+        let (Some(name), Some(size), Some(allocated), Some(free)) =
+            (parts.next(), parts.next(), parts.next(), parts.next())
+        else {
+            continue;
+        };
+        let total: u64 = match size.parse() {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if total == 0 {
+            continue;
+        }
+        let used: u64 = allocated.parse().unwrap_or(0);
+        let avail: u64 = free.parse().unwrap_or(0);
+        let mount_point = mount_map.get(name).cloned().unwrap_or_default();
+        result.push((
+            name.to_string(),
+            DiskMountMetrics {
+                mount_point,
+                filesystem: "zfs".to_string(),
+                total_bytes: total,
+                used_bytes: used,
+                available_bytes: avail,
+                used_pct: used as f64 / total as f64 * 100.0,
+            },
+        ));
+    }
+    result
+}
+
+/// Build a pool-name → shallowest-mount-point map from `/proc/mounts`.
+/// The root dataset (source with no `/`) is preferred; shallowest path
+/// otherwise.
+fn zfs_pool_mount_map() -> HashMap<String, String> {
+    let content = std::fs::read_to_string("/proc/mounts").unwrap_or_default();
+    let mut map: HashMap<String, (usize, String)> = HashMap::new();
     for line in content.lines() {
         let mut parts = line.split_whitespace();
         let (Some(source), Some(mount_point), Some(fs_type)) =
@@ -248,38 +296,12 @@ fn collect_zfs_spaces() -> Vec<(String, DiskMountMetrics)> {
             continue;
         }
         let pool_name = source.split('/').next().unwrap_or(source).to_string();
-        pools
-            .entry(pool_name)
-            .or_default()
-            .push((source.to_string(), mount_point.to_string()));
-    }
-
-    let mut result = Vec::new();
-    for (pool_name, mut mounts) in pools {
-        // Root dataset first (no '/'), then shallowest path as fallback.
-        mounts.sort_by_key(|(src, _)| (src.contains('/') as u8, src.len()));
-        let (_, mount_point) = mounts.remove(0);
-
-        let Some((total, used, avail)) = statvfs_space(&mount_point) else {
-            continue;
-        };
-        if total == 0 {
-            continue;
+        let entry = map.entry(pool_name).or_insert((usize::MAX, String::new()));
+        if source.len() < entry.0 {
+            *entry = (source.len(), mount_point.to_string());
         }
-        let used_pct = used as f64 / total as f64 * 100.0;
-        result.push((
-            pool_name,
-            DiskMountMetrics {
-                mount_point,
-                filesystem: "zfs".to_string(),
-                total_bytes: total,
-                used_bytes: used,
-                available_bytes: avail,
-                used_pct,
-            },
-        ));
     }
-    result
+    map.into_iter().map(|(k, (_, v))| (k, v)).collect()
 }
 
 // ---------------------------------------------------------------------------
