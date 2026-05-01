@@ -138,7 +138,8 @@ fn unix_secs_to_iso8601(secs: u64) -> String {
 
     let mut year = 1970u64;
     loop {
-        let is_leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+        let is_leap =
+            year.is_multiple_of(4) && !year.is_multiple_of(100) || year.is_multiple_of(400);
         let yd = if is_leap { 366u64 } else { 365u64 };
         if days < yd {
             break;
@@ -146,7 +147,7 @@ fn unix_secs_to_iso8601(secs: u64) -> String {
         days -= yd;
         year += 1;
     }
-    let is_leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+    let is_leap = year.is_multiple_of(4) && !year.is_multiple_of(100) || year.is_multiple_of(400);
     const MDAYS: [u64; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
     let mut month = 1u64;
     loop {
@@ -175,12 +176,12 @@ fn now_iso8601() -> String {
 
 /// Days from 1970-01-01 to the given date (Gregorian, valid 1970–2099).
 fn days_since_epoch(y: u64, mo: u64, d: u64) -> Option<u64> {
-    if mo < 1 || mo > 12 || d < 1 || d > 31 || y < 1970 {
+    if !(1..=12).contains(&mo) || !(1..=31).contains(&d) || y < 1970 {
         return None;
     }
     // Days per month (non-leap); February adjusted below.
     const DAYS: [u64; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    let is_leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+    let is_leap = y.is_multiple_of(4) && !y.is_multiple_of(100) || y.is_multiple_of(400);
     let year_days: u64 = (1970..y)
         .map(|yr| {
             if (yr % 4 == 0 && yr % 100 != 0) || yr % 400 == 0 {

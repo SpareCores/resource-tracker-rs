@@ -105,7 +105,7 @@ pub(crate) fn detect_region_at(host: &str, port: u16, timeout: Duration) -> Stri
                 .to_ascii_lowercase()
                 .starts_with("x-amz-bucket-region:")
             {
-                line.splitn(2, ':').nth(1).map(|v| v.trim().to_string())
+                line.split_once(':').map(|x| x.1.trim().to_string())
             } else {
                 None
             }
@@ -138,6 +138,7 @@ fn hmac_sha256(key: &[u8], data: &[u8]) -> Vec<u8> {
 ///
 /// `amz_date`   -- `"YYYYMMDDTHHmmSSZ"` format
 /// `date_stamp` -- `"YYYYMMDD"` format
+#[allow(clippy::too_many_arguments)]
 pub fn sign_put_request(
     access_key: &str,
     secret_key: &str,

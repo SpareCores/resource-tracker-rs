@@ -1,6 +1,6 @@
 [package]
 name = "resource-tracker"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
 description = "Lightweight Linux resource and GPU tracker for system and process monitoring."
 license = "MPL-2.0"
