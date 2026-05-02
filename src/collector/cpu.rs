@@ -91,13 +91,9 @@ fn process_tree_ticks(root_pid: i32) -> HashMap<i32, (u64, u64)> {
         .iter()
         .filter_map(|proc| {
             proc.stat().ok().map(|s| {
-                (
-                    proc.pid,
-                    (
-                        s.utime + s.cutime.max(0) as u64,
-                        s.stime + s.cstime.max(0) as u64,
-                    ),
-                )
+                let user = s.utime + u64::try_from(s.cutime).unwrap_or(0);
+                let system = s.stime + u64::try_from(s.cstime).unwrap_or(0);
+                (proc.pid, (user, system))
             })
         })
         .collect();
