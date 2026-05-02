@@ -359,8 +359,8 @@ fn collect_zfs_spaces() -> Vec<(String, DiskMountMetrics)> {
 }
 
 /// Build a pool-name → shallowest-mount-point map from `/proc/mounts`.
-/// The root dataset (source with no `/`) is preferred; shallowest path
-/// otherwise.
+/// The root dataset (source with no `/`) is preferred; the dataset with the
+/// fewest path components (shallowest) is used when multiple datasets match.
 fn zfs_pool_mount_map() -> HashMap<String, String> {
     let content = std::fs::read_to_string("/proc/mounts").unwrap_or_default();
     let mut map: HashMap<String, (usize, String)> = HashMap::new();
@@ -375,9 +375,10 @@ fn zfs_pool_mount_map() -> HashMap<String, String> {
             continue;
         }
         let pool_name = source.split('/').next().unwrap_or(source).to_string();
+        let depth = source.split('/').count();
         let entry = map.entry(pool_name).or_insert((usize::MAX, String::new()));
-        if source.len() < entry.0 {
-            *entry = (source.len(), mount_point.to_string());
+        if depth < entry.0 {
+            *entry = (depth, mount_point.to_string());
         }
     }
     map.into_iter().map(|(k, (_, v))| (k, v)).collect()
