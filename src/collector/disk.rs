@@ -514,6 +514,10 @@ impl DiskCollector {
                 device_type: None,
                 capacity_bytes: Some(total),
                 mounts: vec![mount],
+                // I/O is left at zero: the underlying physical devices that
+                // make up the pool appear in /proc/diskstats and are already
+                // tracked as separate DiskMetrics entries.  This synthetic
+                // entry exists solely for pool-level space accounting.
                 read_bytes_per_sec: 0.0,
                 write_bytes_per_sec: 0.0,
                 read_bytes_total: 0,
