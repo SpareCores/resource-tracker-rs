@@ -302,8 +302,8 @@ fn mounts_for_device(device_name: &str) -> Vec<DiskMountMetrics> {
 /// source for pool capacity, used, and free.
 ///
 /// Mount-point information is looked up from `/proc/mounts` as a best-effort
-/// annotation; the shallowest ZFS source per pool is preferred.
-fn collect_zfs_spaces() -> Vec<(String, DiskMountMetrics)> {
+/// annotation; the dataset with the fewest path components per pool is preferred.
+fn collect_zfs_spaces(timeout: std::time::Duration) -> Vec<(String, DiskMountMetrics)> {
     // Fast guard: the ZFS kernel module creates /proc/spl/kstat/zfs/ when
     // loaded.  A single stat(2) call avoids fork+exec on every collection
     // cycle on the vast majority of systems that don't run ZFS.
@@ -311,11 +311,18 @@ fn collect_zfs_spaces() -> Vec<(String, DiskMountMetrics)> {
         return vec![];
     }
 
-    let out = match std::process::Command::new("zpool")
-        .args(["list", "-Hp", "-o", "name,size,allocated,free"])
-        .output()
-    {
-        Ok(o) if o.status.success() => o,
+    // Run zpool in a background thread with a timeout: on a degraded or
+    // slow pool the command can block for tens of seconds.
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(
+            std::process::Command::new("zpool")
+                .args(["list", "-Hp", "-o", "name,size,allocated,free"])
+                .output(),
+        );
+    });
+    let out = match rx.recv_timeout(timeout) {
+        Ok(Ok(o)) if o.status.success() => o,
         _ => return vec![],
     };
     let stdout = match std::str::from_utf8(&out.stdout) {
@@ -398,13 +405,18 @@ pub struct DiskCollector {
     /// Static hardware identity, cached once in new().
     device_cache: HashMap<String, DeviceInfo>,
     prev: Option<Snapshot>,
+    /// Maximum time to wait for `zpool list` before skipping ZFS stats.
+    /// Set to half the sampling interval so a slow/hung pool never blocks
+    /// more than one collection cycle.
+    zfs_timeout: std::time::Duration,
 }
 
 impl DiskCollector {
-    pub fn new() -> Self {
+    pub fn new(interval: std::time::Duration) -> Self {
         Self {
             device_cache: discover_devices(),
             prev: None,
+            zfs_timeout: interval / 2,
         }
     }
 
@@ -492,7 +504,7 @@ impl DiskCollector {
         // Append one synthetic entry per ZFS pool.  ZFS datasets don't appear
         // in /sys/block or /proc/diskstats, so they need a separate path.
         // The device name follows Python's convention: "zfs:<pool_name>".
-        for (pool_name, mount) in collect_zfs_spaces() {
+        for (pool_name, mount) in collect_zfs_spaces(self.zfs_timeout) {
             let total = mount.total_bytes;
             metrics.push(DiskMetrics {
                 device: format!("zfs:{}", pool_name),
@@ -557,7 +569,7 @@ mod tests {
     // T-DSK-01: first collect() returns Ok; all I/O rates are 0.0 (no prior snapshot).
     #[test]
     fn test_disk_first_collect_rates_zero() {
-        let mut collector = DiskCollector::new();
+        let mut collector = DiskCollector::new(std::time::Duration::from_secs(1));
         let metrics = collector.collect().expect("first collect() should succeed");
         metrics.iter().for_each(|d| {
             assert_eq!(
@@ -576,7 +588,7 @@ mod tests {
     // T-DSK-02: second collect() returns Ok; all I/O rates are >= 0.0.
     #[test]
     fn test_disk_second_collect_rates_nonneg() {
-        let mut collector = DiskCollector::new();
+        let mut collector = DiskCollector::new(std::time::Duration::from_secs(1));
         let _ = collector.collect().expect("first collect() failed");
         let metrics = collector.collect().expect("second collect() failed");
         metrics.iter().for_each(|d| {
@@ -596,7 +608,7 @@ mod tests {
     // T-DSK-03: results are sorted alphabetically by device name.
     #[test]
     fn test_disk_results_sorted_by_device() {
-        let mut collector = DiskCollector::new();
+        let mut collector = DiskCollector::new(std::time::Duration::from_secs(1));
         let metrics = collector.collect().expect("collect() failed");
         let names: Vec<&str> = metrics.iter().map(|d| d.device.as_str()).collect();
         let mut sorted = names.clone();
@@ -607,7 +619,7 @@ mod tests {
     // T-DSK-04: cumulative totals are non-decreasing between two calls.
     #[test]
     fn test_disk_totals_nondecreasing() {
-        let mut collector = DiskCollector::new();
+        let mut collector = DiskCollector::new(std::time::Duration::from_secs(1));
         let first = collector.collect().expect("first collect() failed");
         let second = collector.collect().expect("second collect() failed");
         let first_map: std::collections::HashMap<&str, (u64, u64)> = first

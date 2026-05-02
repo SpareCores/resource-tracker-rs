@@ -161,7 +161,7 @@ fn main() {
     let mut cpu = CpuCollector::new(config.pid);
     let memory = MemoryCollector::new();
     let mut network = NetworkCollector::new();
-    let mut disk = DiskCollector::new();
+    let mut disk = DiskCollector::new(interval);
     let mut gpu = GpuCollector::new();
 
     // Collect static GPU info now so host discovery can derive GPU host fields.
