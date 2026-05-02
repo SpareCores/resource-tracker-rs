@@ -177,15 +177,15 @@ impl GpuCollector {
                     }
 
                     // Parse drm-memory-vram (value in KiB, unit label "KiB").
-                    content
+                    if let Some(kib) = content
                         .lines()
                         .find(|l| l.starts_with("drm-memory-vram:"))
                         .and_then(|l| l.split_whitespace().nth(1))
                         .and_then(|v| v.parse::<u64>().ok())
-                        .map(|kib| {
-                            total_vram_bytes += kib * 1024;
-                            utilized_pcis.insert(pdev.clone());
-                        });
+                    {
+                        total_vram_bytes += kib * 1024;
+                        utilized_pcis.insert(pdev.clone());
+                    }
                 });
             });
 
