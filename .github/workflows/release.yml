@@ -18,8 +18,10 @@ jobs:
         include:
           - runner: ubuntu-latest
             arch_label: amd64
+            rust_target: x86_64-unknown-linux-gnu.2.17
           - runner: ubuntu-24.04-arm
             arch_label: arm64
+            rust_target: aarch64-unknown-linux-gnu.2.17
 
     steps:
       - name: Checkout
@@ -31,8 +33,14 @@ jobs:
       - name: Cache cargo dependencies
         uses: Swatinem/rust-cache@v2.9.1
 
-      - name: Build release binary
-        run: cargo build --locked --release
+      - name: Install Zig
+        run: sudo apt-get update && sudo apt-get install -y zig
+
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild --locked
+
+      - name: Build release binary (glibc 2.17 compatible)
+        run: cargo zigbuild --locked --release --target ${{ matrix.rust_target }}
 
       - name: Package release artifact
         env:
@@ -41,7 +49,7 @@ jobs:
           set -euo pipefail
           mkdir -p dist
           archive="resource-tracker-${TAG}-linux-${{ matrix.arch_label }}.tar.gz"
-          tar -czf "dist/${archive}" -C target/release resource-tracker -C "$GITHUB_WORKSPACE" README.md LICENSE
+          tar -czf "dist/${archive}" -C "target/${{ matrix.rust_target }}/release" resource-tracker -C "$GITHUB_WORKSPACE" README.md LICENSE
           sha256sum "dist/${archive}" > "dist/${archive}.sha256"
 
       - name: Upload build artifacts
