@@ -10,3 +10,10 @@
 - [Design](./Design.md)
 - [Benchmarks](./Benchmarks.md)
 - [Usage](./Usage.md)
+
+---
+
+# External Links
+
+- [Cargo documentation](cargo/doc/resource_tracker/index.html)
+- [Further references](./References.md)

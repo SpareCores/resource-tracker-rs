@@ -1,8 +1,8 @@
 # resource-tracker -- Usage Guide
 
-`resource-tracker` is a lightweight Linux resource tracker. It polls CPU, memory,
-disk, network, and GPU metrics at a configurable interval and emits
-newline-delimited JSON (JSONL) to stdout.
+`resource-tracker` is a lightweight Linux resource tracker. It polls CPU,
+memory, disk, network, and GPU metrics at a configurable interval and emits
+metrics as newline-delimited JSON (JSONL) or CSV lines to stderr or target file.
 
 ---
 
@@ -12,17 +12,14 @@ newline-delimited JSON (JSONL) to stdout.
 # Build
 cargo build --release
 
-# Run with defaults (1-second interval)
-./target/release/resource-tracker
+# Run with defaults to track resources used by hashing for 5 seconds
+./target/release/resource-tracker timeout 5s sha512sum /dev/zero
 
-# Track a specific process tree (replace 1234 with the root PID)
-./target/release/resource-tracker --pid 1234 --job-name "my-benchmark"
-
-# Change the polling interval to 10 seconds
-./target/release/resource-tracker --interval 10
+# Track a specific process tree
+./target/release/resource-tracker --pid 1234 --job-name "my-job"
 ```
 
-Each line of output is a complete JSON object representing one sample:
+Each line of output is a complete JSON object representing one sample by default:
 
 ```json
 {
@@ -42,11 +39,12 @@ Each line of output is a complete JSON object representing one sample:
 
 | Flag              | Short | Default | Description |
 |-------------------|-------|---------|-------------|
-| `--job-name NAME` | `-n`  | _(none)_ | Label attached to every sample. Useful for identifying runs in aggregated output. |
 | `--pid PID`       | `-p`  | _(none)_ | Root PID of the process tree to attribute CPU usage to. Includes all child processes. |
 | `--interval SECS` | `-i`  | `1`     | How often to emit a sample, in seconds. |
-| `--format FORMAT` | `-f`  | `json`  | Output format: `json` or `csv`. |
 | `--config FILE`   | `-c`  | `resource-tracker.toml` | Path to a TOML config file. Silently ignored if the file does not exist. |
+| `--format FORMAT` | `-f`  | `json`  | Output format: `json` or `csv`. |
+| `--output FILE`   | `-o`  |         | Path to the output file. Defaults to stderr. |
+| `--quiet`         |       |         | Suppress metric output entirely, e.g. when streaming metrics to Sentinel and local output is not needed. |
 | `--help`          | `-h`  |         | Print help. |
 | `--version`       | `-V`  |         | Print version. |
 
@@ -114,7 +112,7 @@ No network connections are ever made when the token is absent.
 
 ### How it works
 
-1. At startup, `start_run` is called to register the run and obtain temporary
+1. At startup, `start_run` API endpoint is called to register the run and obtain temporary
    S3 upload credentials from the Sentinel API.
 2. A background upload thread wakes every `TRACKER_UPLOAD_INTERVAL` seconds
    (default 60), drains the in-memory sample buffer, serializes as CSV,

@@ -155,12 +155,11 @@ impl BatchUploader {
                 // Check credentials near expires_at; refresh if needed.
                 {
                     let mut ctx_guard = ctx.lock().unwrap_or_else(|e| e.into_inner());
-                    if ctx_guard.creds_expiring_soon() {
-                        if let Err(e) =
+                    if ctx_guard.creds_expiring_soon()
+                        && let Err(e) =
                             refresh_credentials(&agent, &api_base, &token, &mut ctx_guard)
-                        {
-                            eprintln!("warn: credential refresh failed: {e}");
-                        }
+                    {
+                        eprintln!("warn: credential refresh failed: {e}");
                     }
                 }
 

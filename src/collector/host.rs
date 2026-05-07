@@ -1,6 +1,4 @@
-use crate::metrics::{CloudInfo, GpuMetrics, HostInfo};
-use std::time::Duration;
-use ureq::config::Config as UreqConfig;
+use crate::metrics::{GpuMetrics, HostInfo};
 
 // ---------------------------------------------------------------------------
 // Host discovery helpers
@@ -80,10 +78,11 @@ fn read_vcpus_and_model() -> (Option<u32>, Option<String>) {
     content.lines().for_each(|line| {
         if line.starts_with("processor") {
             count += 1;
-        } else if line.starts_with("model name") && model.is_none() {
-            if let Some(val) = line.splitn(2, ':').nth(1) {
-                model = Some(val.trim().to_string());
-            }
+        } else if line.starts_with("model name")
+            && model.is_none()
+            && let Some((_, val)) = line.split_once(':')
+        {
+            model = Some(val.trim().to_string());
         }
     });
     let vcpus = if count > 0 { Some(count) } else { None };
@@ -158,139 +157,6 @@ pub fn collect_host_info(gpus: &[GpuMetrics]) -> HostInfo {
         host_gpu_vram_mib,
         host_storage_gb: read_storage_gb(),
     }
-}
-
-// ---------------------------------------------------------------------------
-// Cloud discovery (background thread, non-blocking)
-// ---------------------------------------------------------------------------
-
-const IMDS_TIMEOUT: Duration = Duration::from_secs(2);
-
-/// Make a GET request and return the trimmed response body, or `None` on error.
-fn imds_get(agent: &ureq::Agent, url: &str) -> Option<String> {
-    agent
-        .get(url)
-        .call()
-        .ok()
-        .and_then(|mut r| r.body_mut().read_to_string().ok())
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-}
-
-/// Attempt AWS IMDS. Returns a populated `CloudInfo` if this is an AWS host,
-/// otherwise returns `CloudInfo::default()`.
-fn probe_aws() -> CloudInfo {
-    let config = UreqConfig::builder()
-        .timeout_global(Some(IMDS_TIMEOUT))
-        .build();
-    let agent = config.new_agent();
-    const BASE: &str = "http://169.254.169.254";
-
-    // Probe the metadata root; if it fails, this is not an AWS host.
-    if agent
-        .get(&format!("{}/latest/meta-data/", BASE))
-        .call()
-        .is_err()
-    {
-        return CloudInfo::default();
-    }
-
-    // AWS confirmed. Fetch the remaining fields individually.
-    let cloud_region_id = imds_get(
-        &agent,
-        &format!("{}/latest/meta-data/placement/region", BASE),
-    );
-    let cloud_zone_id = imds_get(
-        &agent,
-        &format!("{}/latest/meta-data/placement/availability-zone", BASE),
-    );
-    let cloud_instance_type = imds_get(&agent, &format!("{}/latest/meta-data/instance-type", BASE));
-    // Account ID lives inside a JSON document; extract the AccountId field.
-    let cloud_account_id = imds_get(
-        &agent,
-        &format!("{}/latest/meta-data/identity-credentials/ec2/info", BASE),
-    )
-    .and_then(|body| {
-        // Simple extraction without pulling in a JSON parser: find "AccountId":"..."
-        let marker = "\"AccountId\":\"";
-        let start = body.find(marker)? + marker.len();
-        let end = body[start..].find('"')? + start;
-        Some(body[start..end].to_string())
-    });
-
-    CloudInfo {
-        cloud_vendor_id: Some("aws".to_string()),
-        cloud_account_id,
-        cloud_region_id,
-        cloud_zone_id,
-        cloud_instance_type,
-    }
-}
-
-/// Probe GCP IMDS. Returns `true` if this is a GCP host.
-fn probe_gcp() -> bool {
-    let config = UreqConfig::builder()
-        .timeout_global(Some(IMDS_TIMEOUT))
-        .build();
-    let agent = config.new_agent();
-    agent
-        .get("http://metadata.google.internal/computeMetadata/v1/")
-        .header("Metadata-Flavor", "Google")
-        .call()
-        .is_ok()
-}
-
-/// Probe Azure IMDS. Returns `true` if this is an Azure host.
-fn probe_azure() -> bool {
-    let config = UreqConfig::builder()
-        .timeout_global(Some(IMDS_TIMEOUT))
-        .build();
-    let agent = config.new_agent();
-    agent
-        .get("http://169.254.169.254/metadata/instance?api-version=2021-02-01")
-        .header("Metadata", "true")
-        .call()
-        .is_ok()
-}
-
-/// Probe all three cloud providers in parallel and return the first match.
-/// Each probe has a ≤ 2-second timeout; total wall time is bounded by the
-/// slowest thread (at most 2 seconds when no provider responds).
-fn probe_cloud() -> CloudInfo {
-    let aws = std::thread::spawn(probe_aws);
-    let gcp = std::thread::spawn(probe_gcp);
-    let azure = std::thread::spawn(probe_azure);
-
-    let aws_result = aws.join().unwrap_or_default();
-    if aws_result.cloud_vendor_id.is_some() {
-        let _ = gcp.join();
-        let _ = azure.join();
-        return aws_result;
-    }
-
-    if gcp.join().unwrap_or(false) {
-        let _ = azure.join();
-        return CloudInfo {
-            cloud_vendor_id: Some("gcp".to_string()),
-            ..CloudInfo::default()
-        };
-    }
-
-    if azure.join().unwrap_or(false) {
-        return CloudInfo {
-            cloud_vendor_id: Some("azure".to_string()),
-            ..CloudInfo::default()
-        };
-    }
-
-    CloudInfo::default()
-}
-
-/// Spawn a background thread that probes cloud IMDS endpoints.
-/// The caller should join the handle after the warm-up sleep so that cloud
-/// discovery runs concurrently with the first sample interval.
-pub fn spawn_cloud_discovery() -> std::thread::JoinHandle<CloudInfo> {
-    std::thread::spawn(probe_cloud)
 }
 
 // ---------------------------------------------------------------------------
@@ -382,15 +248,5 @@ mod tests {
             "host_vcpus must be > 0, got {:?}",
             info.host_vcpus
         );
-    }
-
-    // T-HOST-06: spawn_cloud_discovery resolves without panic.
-    // Cloud probes time out after 2 s each; on a non-cloud machine this fast-paths.
-    #[test]
-    fn test_spawn_cloud_discovery_joins_without_panic() {
-        let handle = spawn_cloud_discovery();
-        let _cloud = handle.join().expect("cloud discovery thread panicked");
-        // Result may be default (no cloud) or populated (running on a cloud VM).
-        // Either outcome is valid; the test only checks for no panic.
     }
 }

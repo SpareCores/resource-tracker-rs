@@ -20,12 +20,10 @@ install: build_release
 run_only_show_key_names:
      target/release/resource-tracker --interval 3 | jq -r 'paths(scalars) as $p | "\($p | join(".")): \(getpath($p) | type)"'
 
-# Build cargo doc and mdbook in parallel, then open both in the browser
-# without either open blocking the other.
+# Build mdbook and then cargo doc bundled inside, then open the main page
 document:
-    (cd resource-tracker-rs-book && mdbook build) & cargo doc & wait
+    (cd resource-tracker-rs-book && mdbook build) & cargo doc --no-deps --offline --target-dir resource-tracker-rs-book/book/cargo/ & wait
     xdg-open resource-tracker-rs-book/book/index.html &
-    xdg-open target/doc/resource_tracker_rs/index.html &
 
 test:
     cargo test -- --test-threads=1

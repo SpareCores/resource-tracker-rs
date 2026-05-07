@@ -1,6 +1,74 @@
 # Changelog
 
-## [Unreleased]
+## [0.1.5] - 2026-05-01
+
+### Two new cloud providers and cloud discovery refactor
+
+#### `src/collector/clouds/` -- cloud discovery split into per-provider modules
+
+- Cloud discovery code extracted from `src/collector/host.rs` into a dedicated
+  `src/collector/clouds/` module hierarchy. `host.rs` now contains only host
+  hardware metrics (CPU, memory, storage, hostname, IP).
+- Each cloud provider is a standalone module exposing one public symbol:
+  `pub fn probe() -> Option<CloudInfo>`. Modules: `aws.rs`, `gcp.rs`,
+  `azure.rs`, `hetzner.rs`, `upcloud.rs`, `alicloud.rs`, `ovh.rs`.
+- Probe orchestration in `clouds/mod.rs` uses a `const PROBES: &[fn() ->
+  Option<CloudInfo>]` slice. Adding a new cloud provider requires one new
+  file and one line in `PROBES`; no other file changes.
+- Shared IMDS helpers (`new_imds_agent`, `imds_get`, `imds_get_headers`) live
+  in `clouds/mod.rs` and are accessible to all provider submodules.
+- `spawn_cloud_discovery` re-exported from `collector::clouds`; call sites in
+  `collector::mod` and `main.rs` are unchanged.
+- GCP zone-to-region helper renamed from `gcp_zone_basename_to_region` to
+  `zone_to_region` (scoped to `clouds/gcp.rs`) and its test moved accordingly
+  to `clouds::gcp::tests::test_zone_to_region`.
+
+#### `src/collector/clouds/alicloud.rs` -- Alibaba Cloud ECS (new)
+
+- IMDSv2 token PUT to `100.100.100.200` with `X-aliyun-ecs-metadata-token`
+  header; IMDSv1 plain GET fallback.
+- Collects `instance/instance-type` and `region-id`; filters `"unknown"` values.
+- Reference: Alibaba Cloud ECS instance metadata documentation.
+
+#### `src/collector/clouds/ovh.rs` -- OVH Public Cloud (new)
+
+- Identified by DNS fingerprint: checks for `213.186.33.99` (OVH resolver)
+  in `network_data.json` from the OpenStack metadata endpoint.
+- Region from `availability_zone` in `meta_data.json`; filters `"nova"` and
+  `"unknown"` as meaningless values.
+- Instance type from the EC2-compatible endpoint OVH also exposes.
+- Reference: OpenStack Nova metadata API.
+
+#### `src/collector/clouds/aws.rs` -- domain guard added
+
+- After IMDSv2/IMDSv1 reachability is confirmed, probes
+  `/latest/meta-data/services/domain` and returns `None` unless the value is
+  `"amazonaws.com"`. Prevents other clouds exposing an EC2-compatible
+  metadata service from being misidentified as AWS.
+
+#### Clippy fixes (pre-existing warnings cleared)
+
+- `src/collector/gpu.rs`: `option_map_unit_fn` -- replaced `.map(|kib| { ... })`
+  with `if let Some(kib) = ...`.
+- `src/sentinel/run.rs`: `manual_is_multiple_of` and `manual_range_contains` --
+  leap-year arithmetic and month/day bounds checks use `.is_multiple_of()` and
+  `(1..=N).contains()`.
+- `src/sentinel/s3.rs`: `manual_split_once` -- `splitn(2, ':').nth(1)` replaced
+  with `split_once(':').map(|x| x.1)`. `too_many_arguments` on `sign_put_request`
+  suppressed with `#[allow]` (all 9 parameters are required by AWS SigV4).
+- `src/sentinel/upload.rs`: `collapsible_if` -- nested credential-refresh guard
+  collapsed using a let chain.
+
+---
+
+## [0.1.4] - 2026-04-24
+
+- Small documentation fixes.
+- Deploy documentation to GitHub Pages.
+- Extend cloud discovery helpers based on the existing Python implementation.
+- Release statically linked binaries for Linux.
+
+## [0.1.3] - 2026-04-23
 
 ### Populate process_gpu_usage and handle SIGINT gracefully (2026-04-08)
 
