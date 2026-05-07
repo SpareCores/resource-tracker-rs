@@ -84,9 +84,18 @@ fn process_tree_ticks(root_pid: i32) -> HashMap<i32, (u64, u64)> {
     });
 
     // Build a pid to (utime, stime) lookup.
+    // Include cutime/cstime (CPU time of waited-for children) so that short-lived
+    // child processes that start and exit between two consecutive samples are still
+    // captured: once a child is reaped its ticks roll up into the parent's cutime/cstime.
     let ticks_for: HashMap<i32, (u64, u64)> = all
         .iter()
-        .filter_map(|proc| proc.stat().ok().map(|s| (proc.pid, (s.utime, s.stime))))
+        .filter_map(|proc| {
+            proc.stat().ok().map(|s| {
+                let user = s.utime + u64::try_from(s.cutime).unwrap_or(0);
+                let system = s.stime + u64::try_from(s.cstime).unwrap_or(0);
+                (proc.pid, (user, system))
+            })
+        })
         .collect();
 
     // BFS from root_pid, collecting (utime, stime) for every reachable node.
