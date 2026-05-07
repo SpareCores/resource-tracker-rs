@@ -19,9 +19,11 @@ jobs:
           - runner: ubuntu-latest
             arch_label: amd64
             rust_target: x86_64-unknown-linux-gnu.2.17
+            artifact_target_dir: x86_64-unknown-linux-gnu
           - runner: ubuntu-24.04-arm
             arch_label: arm64
             rust_target: aarch64-unknown-linux-gnu.2.17
+            artifact_target_dir: aarch64-unknown-linux-gnu
 
     steps:
       - name: Checkout
@@ -49,7 +51,7 @@ jobs:
           set -euo pipefail
           mkdir -p dist
           archive="resource-tracker-${TAG}-linux-${{ matrix.arch_label }}.tar.gz"
-          tar -czf "dist/${archive}" -C "target/${{ matrix.rust_target }}/release" resource-tracker -C "$GITHUB_WORKSPACE" README.md LICENSE
+          tar -czf "dist/${archive}" -C "target/${{ matrix.artifact_target_dir }}/release" resource-tracker -C "$GITHUB_WORKSPACE" README.md LICENSE
           sha256sum "dist/${archive}" > "dist/${archive}.sha256"
 
       - name: Upload build artifacts
