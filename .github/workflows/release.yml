@@ -18,10 +18,10 @@ jobs:
         include:
           - runner: ubuntu-latest
             arch_label: amd64
-            rust_target: x86_64-unknown-linux-musl
+            rust_target: x86_64-unknown-linux-gnu.2.17
           - runner: ubuntu-24.04-arm
             arch_label: arm64
-            rust_target: aarch64-unknown-linux-musl
+            rust_target: aarch64-unknown-linux-gnu.2.17
 
     steps:
       - name: Checkout
@@ -42,8 +42,14 @@ jobs:
         with:
           shared-key: musl-${{ matrix.rust_target }}
 
-      - name: Build static release binary (musl)
-        run: cargo build --locked --release --target ${{ matrix.rust_target }}
+      - name: Install Zig
+        run: sudo apt-get update && sudo apt-get install -y zig
+
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild --locked
+
+      - name: Build release binary (glibc 2.17 compatible)
+        run: cargo zigbuild --locked --release --target ${{ matrix.rust_target }}
 
       - name: Package release artifact
         env:
@@ -51,7 +57,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          archive="resource-tracker-${TAG}-linux-${{ matrix.arch_label }}-musl.tar.gz"
+          archive="resource-tracker-${TAG}-linux-${{ matrix.arch_label }}.tar.gz"
           tar -czf "dist/${archive}" -C "target/${{ matrix.rust_target }}/release" resource-tracker -C "$GITHUB_WORKSPACE" README.md LICENSE
           sha256sum "dist/${archive}" > "dist/${archive}.sha256"
 
