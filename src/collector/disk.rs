@@ -100,6 +100,105 @@ fn discover_devices() -> HashMap<String, DeviceInfo> {
 // Filesystem space - statvfs, polled each interval
 // ---------------------------------------------------------------------------
 
+/// Build the list of source-path prefixes to look for in `/proc/mounts` for
+/// a given block device.
+///
+/// Most devices map 1-to-1: `/dev/sda` → `["/dev/sda"]` (matches `sda1`, `sda2` …).
+///
+/// Two special cases add extra prefixes:
+///
+/// - **Device-mapper** (`dm-*`): `/proc/mounts` uses `/dev/mapper/<name>`, not
+///   `/dev/dm-N`. The canonical name is read from `/sys/block/<dev>/dm/name`.
+///
+/// - **`/dev/root`**: some distros (Ubuntu/AWS, cloud-init images) expose the
+///   root partition under this alias in `/proc/mounts` instead of the real
+///   device path. Resolution is attempted first via `read_link` (covers
+///   distros that make it a symlink) and then via a `major:minor` comparison
+///   between `/proc/self/mountinfo` and `/sys/block/<dev>/<part>/dev` (covers
+///   distros where it is a plain device node). See `dev_root_is_on_device`.
+fn device_source_prefixes(device_name: &str) -> Vec<String> {
+    let primary = format!("/dev/{}", device_name);
+    let mut prefixes = vec![primary.clone()];
+
+    if device_name.starts_with("dm-") {
+        if let Some(name) = sysfs_read(&format!("/sys/block/{}/dm/name", device_name)) {
+            prefixes.push(format!("/dev/mapper/{}", name));
+        }
+    }
+
+    if dev_root_is_on_device(device_name, &primary) {
+        prefixes.push("/dev/root".to_string());
+    }
+
+    prefixes
+}
+
+/// Return `true` if `/dev/root` (a root-partition alias used by Ubuntu/AWS and
+/// similar cloud images) belongs to `device_name`.
+///
+/// Two strategies, tried in order:
+///
+/// 1. **Symlink** (`read_link`): common on Debian and some Ubuntu builds.
+///    The symlink target (e.g. `nvme0n1p1`) is resolved and matched against
+///    the device prefix.
+///
+/// 2. **`/proc/self/mountinfo` + sysfs**: when `/dev/root` is a device node
+///    (not a symlink), we read the `major:minor` string from mountinfo field 3
+///    for the `/` mount whose source is `/dev/root`, then scan
+///    `/sys/block/<device>/<partition>/dev` for a matching string.
+///    Both sources use the same `"major:minor"` text format, so no encoding or
+///    `makedev(3)` arithmetic is needed.
+fn dev_root_is_on_device(device_name: &str, primary: &str) -> bool {
+    // Strategy 1: symlink
+    if let Ok(target) = std::fs::read_link("/dev/root") {
+        let t = target.to_string_lossy();
+        let resolved = if t.starts_with('/') {
+            t.to_string()
+        } else {
+            format!("/dev/{}", t)
+        };
+        return resolved.starts_with(primary);
+    }
+
+    // Strategy 2: mountinfo major:minor comparison
+    let mountinfo = std::fs::read_to_string("/proc/self/mountinfo").unwrap_or_default();
+    let Some(root_devnum) = mountinfo.lines().find_map(|line| {
+        // mountinfo fields (space-separated):
+        //   mount_id parent_id major:minor root mount_point options [optionals] - fstype source super_opts
+        let mut f = line.splitn(6, ' ');
+        f.next()?; // mount_id
+        f.next()?; // parent_id
+        let devnum = f.next()?.to_string(); // major:minor  ← what we need
+        f.next()?; // root within fs
+        let mpt = f.next()?; // mount_point
+        if mpt != "/" {
+            return None;
+        }
+        // Source is the second word after the " - " separator.
+        let sep = line.find(" - ")?;
+        let source = line[sep + 3..].split_whitespace().nth(1)?;
+        if source == "/dev/root" {
+            Some(devnum)
+        } else {
+            None
+        }
+    }) else {
+        return false;
+    };
+
+    // Does any partition of device_name carry this major:minor?
+    let sys_base = format!("/sys/block/{}", device_name);
+    let Ok(entries) = std::fs::read_dir(&sys_base) else {
+        return false;
+    };
+    entries.flatten().any(|e| {
+        let pname = e.file_name().to_string_lossy().to_string();
+        pname.starts_with(device_name)
+            && sysfs_read(&format!("{}/{}/dev", sys_base, pname))
+                .map_or(false, |dev| dev == root_devnum)
+    })
+}
+
 fn statvfs_space(path: &str) -> Option<(u64, u64, u64)> {
     let cpath = CString::new(path).ok()?;
     unsafe {
@@ -122,36 +221,174 @@ fn statvfs_space(path: &str) -> Option<(u64, u64, u64)> {
 
 /// Read /proc/mounts and return filesystem space for all mount points whose
 /// source device path starts with `/dev/<device_name>` (covers partitions too).
+///
+/// Three filters/guards mirror the Python implementation and prevent inflation:
+///
+/// 1. Mount points under `/proc`, `/sys`, `/dev`, `/run` are skipped — these
+///    are virtual hierarchies and frequent bind-mount targets.
+/// 2. Each unique source path (e.g. `/dev/sda1`) is counted only once. The
+///    same source can appear at multiple mount points via bind mounts or btrfs
+///    subvolumes; without deduplication, `statvfs` returns the same pool size
+///    for each entry, multiplying the reported total by the subvolume count.
+/// 3. Pseudo-filesystems with `f_blocks == 0` are skipped after `statvfs`.
 fn mounts_for_device(device_name: &str) -> Vec<DiskMountMetrics> {
     let content = match std::fs::read_to_string("/proc/mounts") {
         Ok(c) => c,
         Err(_) => return vec![],
     };
-    let prefix = format!("/dev/{}", device_name);
-    content
-        .lines()
-        .filter(|line| line.starts_with(&prefix))
-        .filter_map(|line| {
-            let mut parts = line.split_whitespace();
-            let _source = parts.next()?;
-            let mount_point = parts.next()?.to_string();
-            let filesystem = parts.next()?.to_string();
-            let (total, used, avail) = statvfs_space(&mount_point)?;
-            let used_pct = if total > 0 {
-                used as f64 / total as f64 * 100.0
-            } else {
-                0.0
-            };
-            Some(DiskMountMetrics {
+    let prefixes = device_source_prefixes(device_name);
+    let mut seen_sources: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut result = Vec::new();
+
+    for line in content.lines() {
+        if !prefixes.iter().any(|p| line.starts_with(p.as_str())) {
+            continue;
+        }
+        let mut parts = line.split_whitespace();
+        let (Some(source), Some(mount_point), Some(filesystem)) =
+            (parts.next(), parts.next(), parts.next())
+        else {
+            continue;
+        };
+
+        // Skip virtual filesystem mount-point hierarchies.
+        if mount_point.starts_with("/proc")
+            || mount_point.starts_with("/sys")
+            || mount_point.starts_with("/dev")
+            || mount_point.starts_with("/run")
+        {
+            continue;
+        }
+
+        // Deduplicate by source: btrfs subvolumes and bind mounts share the
+        // same source device and report the same pool total each — count once.
+        if !seen_sources.insert(source.to_string()) {
+            continue;
+        }
+
+        let Some((total, used, avail)) = statvfs_space(mount_point) else {
+            continue;
+        };
+
+        // Skip pseudo-filesystems that report no blocks.
+        if total == 0 {
+            continue;
+        }
+
+        let used_pct = used as f64 / total as f64 * 100.0;
+        result.push(DiskMountMetrics {
+            mount_point: mount_point.to_string(),
+            filesystem: filesystem.to_string(),
+            total_bytes: total,
+            used_bytes: used,
+            available_bytes: avail,
+            used_pct,
+        });
+    }
+    result
+}
+
+// ---------------------------------------------------------------------------
+// ZFS pool space
+// ---------------------------------------------------------------------------
+
+/// Collect space stats for every imported ZFS pool via `zpool list -Hp`.
+///
+/// ZFS `statvfs` is unsuitable for pool-level capacity: the kernel sets
+/// `f_blocks = (pool_avail + dataset.referenced_bytes) >> SPA_MINBLOCKSHIFT`,
+/// i.e. only the REFER column (space at this dataset level, not recursive),
+/// not the pool total.  For a pool with many child datasets this gives a
+/// heavily under-counted figure.  `zpool list` is the only authoritative
+/// source for pool capacity, used, and free.
+///
+/// Mount-point information is looked up from `/proc/mounts` as a best-effort
+/// annotation; the dataset with the fewest path components per pool is preferred.
+fn collect_zfs_spaces(timeout: std::time::Duration) -> Vec<(String, DiskMountMetrics)> {
+    // Fast guard: the ZFS kernel module creates /proc/spl/kstat/zfs/ when
+    // loaded.  A single stat(2) call avoids fork+exec on every collection
+    // cycle on the vast majority of systems that don't run ZFS.
+    if !std::path::Path::new("/proc/spl/kstat/zfs").exists() {
+        return vec![];
+    }
+
+    // Run zpool in a background thread with a timeout: on a degraded or
+    // slow pool the command can block for tens of seconds.
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(
+            std::process::Command::new("zpool")
+                .args(["list", "-Hp", "-o", "name,size,allocated,free"])
+                .output(),
+        );
+    });
+    let out = match rx.recv_timeout(timeout) {
+        Ok(Ok(o)) if o.status.success() => o,
+        _ => return vec![],
+    };
+    let stdout = match std::str::from_utf8(&out.stdout) {
+        Ok(s) => s,
+        Err(_) => return vec![],
+    };
+
+    let mount_map = zfs_pool_mount_map();
+    let mut result = Vec::new();
+
+    for line in stdout.lines() {
+        let mut parts = line.split('\t');
+        let (Some(name), Some(size), Some(allocated), Some(free)) =
+            (parts.next(), parts.next(), parts.next(), parts.next())
+        else {
+            continue;
+        };
+        let total: u64 = match size.parse() {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if total == 0 {
+            continue;
+        }
+        let used: u64 = allocated.parse().unwrap_or(0);
+        let avail: u64 = free.parse().unwrap_or(0);
+        let mount_point = mount_map.get(name).cloned().unwrap_or_default();
+        result.push((
+            name.to_string(),
+            DiskMountMetrics {
                 mount_point,
-                filesystem,
+                filesystem: "zfs".to_string(),
                 total_bytes: total,
                 used_bytes: used,
                 available_bytes: avail,
-                used_pct,
-            })
-        })
-        .collect()
+                used_pct: used as f64 / total as f64 * 100.0,
+            },
+        ));
+    }
+    result
+}
+
+/// Build a pool-name → shallowest-mount-point map from `/proc/mounts`.
+/// The root dataset (source with no `/`) is preferred; the dataset with the
+/// fewest path components (shallowest) is used when multiple datasets match.
+fn zfs_pool_mount_map() -> HashMap<String, String> {
+    let content = std::fs::read_to_string("/proc/mounts").unwrap_or_default();
+    let mut map: HashMap<String, (usize, String)> = HashMap::new();
+    for line in content.lines() {
+        let mut parts = line.split_whitespace();
+        let (Some(source), Some(mount_point), Some(fs_type)) =
+            (parts.next(), parts.next(), parts.next())
+        else {
+            continue;
+        };
+        if fs_type != "zfs" {
+            continue;
+        }
+        let pool_name = source.split('/').next().unwrap_or(source).to_string();
+        let depth = source.split('/').count();
+        let entry = map.entry(pool_name).or_insert((usize::MAX, String::new()));
+        if depth < entry.0 {
+            *entry = (depth, mount_point.to_string());
+        }
+    }
+    map.into_iter().map(|(k, (_, v))| (k, v)).collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -168,13 +405,18 @@ pub struct DiskCollector {
     /// Static hardware identity, cached once in new().
     device_cache: HashMap<String, DeviceInfo>,
     prev: Option<Snapshot>,
+    /// Maximum time to wait for `zpool list` before skipping ZFS stats.
+    /// Set to half the sampling interval so a slow/hung pool never blocks
+    /// more than one collection cycle.
+    zfs_timeout: std::time::Duration,
 }
 
 impl DiskCollector {
-    pub fn new() -> Self {
+    pub fn new(interval: std::time::Duration) -> Self {
         Self {
             device_cache: discover_devices(),
             prev: None,
+            zfs_timeout: interval / 2,
         }
     }
 
@@ -182,15 +424,21 @@ impl DiskCollector {
         let diskstats = procfs::diskstats()?;
         let now = Instant::now();
 
-        // Include every device that is a direct /sys/block entry - these are
-        // whole-disk devices (not partitions).  This matches Python's
-        // resource-tracker, which uses the same /sys/block membership check to
-        // distinguish whole disks from partitions.  Importantly, this keeps
-        // loop*, dm-*, and zram* devices which Python also includes.
+        // Include every device that is a direct /sys/block entry (whole disks,
+        // not partitions), excluding loop and ram devices.  Loop devices back
+        // squashfs snap mounts whose space is already counted as part of the
+        // underlying real disk, so including them double-counts that storage.
         let block_set: std::collections::HashSet<String> = std::fs::read_dir("/sys/block")
             .map(|dir| {
                 dir.flatten()
-                    .map(|e| e.file_name().to_string_lossy().to_string())
+                    .filter_map(|e| {
+                        let name = e.file_name().to_string_lossy().to_string();
+                        if name.starts_with("loop") || name.starts_with("ram") {
+                            None
+                        } else {
+                            Some(name)
+                        }
+                    })
                     .collect()
             })
             .unwrap_or_default();
@@ -253,6 +501,30 @@ impl DiskCollector {
             })
             .collect();
 
+        // Append one synthetic entry per ZFS pool.  ZFS datasets don't appear
+        // in /sys/block or /proc/diskstats, so they need a separate path.
+        // The device name follows Python's convention: "zfs:<pool_name>".
+        for (pool_name, mount) in collect_zfs_spaces(self.zfs_timeout) {
+            let total = mount.total_bytes;
+            metrics.push(DiskMetrics {
+                device: format!("zfs:{}", pool_name),
+                model: None,
+                vendor: None,
+                serial: None,
+                device_type: None,
+                capacity_bytes: Some(total),
+                mounts: vec![mount],
+                // I/O is left at zero: the underlying physical devices that
+                // make up the pool appear in /proc/diskstats and are already
+                // tracked as separate DiskMetrics entries.  This synthetic
+                // entry exists solely for pool-level space accounting.
+                read_bytes_per_sec: 0.0,
+                write_bytes_per_sec: 0.0,
+                read_bytes_total: 0,
+                write_bytes_total: 0,
+            });
+        }
+
         metrics.sort_by(|a, b| a.device.cmp(&b.device));
         self.prev = Some(Snapshot {
             instant: now,
@@ -301,7 +573,7 @@ mod tests {
     // T-DSK-01: first collect() returns Ok; all I/O rates are 0.0 (no prior snapshot).
     #[test]
     fn test_disk_first_collect_rates_zero() {
-        let mut collector = DiskCollector::new();
+        let mut collector = DiskCollector::new(std::time::Duration::from_secs(1));
         let metrics = collector.collect().expect("first collect() should succeed");
         metrics.iter().for_each(|d| {
             assert_eq!(
@@ -320,7 +592,7 @@ mod tests {
     // T-DSK-02: second collect() returns Ok; all I/O rates are >= 0.0.
     #[test]
     fn test_disk_second_collect_rates_nonneg() {
-        let mut collector = DiskCollector::new();
+        let mut collector = DiskCollector::new(std::time::Duration::from_secs(1));
         let _ = collector.collect().expect("first collect() failed");
         let metrics = collector.collect().expect("second collect() failed");
         metrics.iter().for_each(|d| {
@@ -340,7 +612,7 @@ mod tests {
     // T-DSK-03: results are sorted alphabetically by device name.
     #[test]
     fn test_disk_results_sorted_by_device() {
-        let mut collector = DiskCollector::new();
+        let mut collector = DiskCollector::new(std::time::Duration::from_secs(1));
         let metrics = collector.collect().expect("collect() failed");
         let names: Vec<&str> = metrics.iter().map(|d| d.device.as_str()).collect();
         let mut sorted = names.clone();
@@ -351,7 +623,7 @@ mod tests {
     // T-DSK-04: cumulative totals are non-decreasing between two calls.
     #[test]
     fn test_disk_totals_nondecreasing() {
-        let mut collector = DiskCollector::new();
+        let mut collector = DiskCollector::new(std::time::Duration::from_secs(1));
         let first = collector.collect().expect("first collect() failed");
         let second = collector.collect().expect("second collect() failed");
         let first_map: std::collections::HashMap<&str, (u64, u64)> = first
