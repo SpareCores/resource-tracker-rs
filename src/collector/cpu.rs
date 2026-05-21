@@ -637,10 +637,8 @@ mod tests {
         // Between samples: child accumulates 2000 more ticks then exits.
         // Parent's cutime = child's full lifetime = 500 + 2000 = 2500.
         // Parent runs 250 own ticks.
-        let curr: HashMap<i32, (u64, u64)> = [(200, (50 + 250 + 2500, 0))]
-            .iter()
-            .cloned()
-            .collect();
+        let curr: HashMap<i32, (u64, u64)> =
+            [(200, (50 + 250 + 2500, 0))].iter().cloned().collect();
 
         let raw: u64 = curr
             .iter()
