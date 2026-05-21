@@ -75,22 +75,25 @@ fn process_tree_ticks(root_pid: i32) -> HashMap<i32, (u64, u64)> {
         Err(_) => return HashMap::new(),
     };
 
-    // Build a parent to children lookup.
+    // Single .stat() read per process: build both the parent->children map and
+    // the pid->(utime+cutime, stime+cstime) map in one pass to halve /proc I/O.
+    //
+    // cutime/cstime (CPU time of waited-for children) is included so that
+    // short-lived child processes that both start AND exit within a single
+    // measurement interval are still captured: once a child is reaped its
+    // ticks roll up into the parent's cutime/cstime.
+    //
+    // Double-counting guard: if a process was alive at the previous snapshot
+    // and exits before the current one, its pre-snapshot ticks are already in
+    // prev_proc_ticks AND will re-appear via the parent's cutime delta.
+    // CpuCollector::collect() subtracts the prev ticks of all such exited
+    // processes to cancel that overcounting.
     let mut children: HashMap<i32, Vec<i32>> = HashMap::new();
-    all.iter().for_each(|proc| {
-        if let Ok(stat) = proc.stat() {
-            children.entry(stat.ppid).or_default().push(proc.pid);
-        }
-    });
-
-    // Build a pid to (utime, stime) lookup.
-    // Include cutime/cstime (CPU time of waited-for children) so that short-lived
-    // child processes that start and exit between two consecutive samples are still
-    // captured: once a child is reaped its ticks roll up into the parent's cutime/cstime.
     let ticks_for: HashMap<i32, (u64, u64)> = all
         .iter()
         .filter_map(|proc| {
             proc.stat().ok().map(|s| {
+                children.entry(s.ppid).or_default().push(proc.pid);
                 let user = s.utime + u64::try_from(s.cutime).unwrap_or(0);
                 let system = s.stime + u64::try_from(s.cstime).unwrap_or(0);
                 (proc.pid, (user, system))
@@ -172,7 +175,6 @@ impl CpuCollector {
 
     pub fn collect(&mut self) -> Result<CpuMetrics> {
         let stats = KernelStats::current()?;
-        let now = Instant::now();
 
         let tps = procfs::ticks_per_second() as f64;
 
@@ -214,6 +216,14 @@ impl CpuCollector {
         } else {
             None
         };
+
+        // Capture wall-clock time AFTER all /proc reads.  process_tree_ticks()
+        // scans every entry in /proc and can take variable time on a loaded
+        // server.  Capturing Instant::now() before those reads (the previous
+        // arrangement) caused `elapsed` to undercount the actual measurement
+        // window, making process_cores_used and process_utime_secs appear larger
+        // than system_cpu_usage (issue #20).
+        let now = Instant::now();
 
         let curr = Snapshot {
             total: stats.total,
@@ -265,10 +275,37 @@ impl CpuCollector {
                     .map(|(p, c)| core_util_pct(p, c))
                     .collect();
 
+                // Cutime double-counting correction (issue #20, bug 1).
+                //
+                // proc_ticks stores (utime + cutime, stime + cstime) so that
+                // short-lived children that start AND exit within one interval are
+                // captured via the parent's cutime delta.
+                //
+                // Side-effect: if a child was alive at the prev snapshot, its
+                // pre-snapshot ticks appear both in prev_proc_ticks[child] AND
+                // in the parent's cutime delta once the child is reaped.  That
+                // double-counts the child's pre-snapshot ticks.
+                //
+                // Fix: sum the prev ticks of every PID in prev that is absent
+                // from curr (it exited), then subtract that sum from the raw
+                // delta.  This cancels exactly the overcounting without
+                // affecting short-lived processes (which were never in prev, so
+                // their prev ticks are zero).
+                let (exited_utime, exited_stime): (u64, u64) = if self.pid.is_some() {
+                    prev.proc_ticks
+                        .iter()
+                        .filter(|(pid, _)| !curr.proc_ticks.contains_key(pid))
+                        .fold((0u64, 0u64), |(au, as_), (_, &(pu, ps))| {
+                            (au + pu, as_ + ps)
+                        })
+                } else {
+                    (0, 0)
+                };
+
                 // Fractional cores = total (utime+stime) tick delta / (elapsed × tps)
                 let process_cores_used = self.pid.map(|_| {
                     let elapsed = (curr.instant - prev.instant).as_secs_f64().max(0.001);
-                    let delta: u64 = curr
+                    let raw: u64 = curr
                         .proc_ticks
                         .iter()
                         .map(|(pid, &(cu, cs))| {
@@ -276,6 +313,7 @@ impl CpuCollector {
                             cu.saturating_sub(pu) + cs.saturating_sub(ps)
                         })
                         .sum();
+                    let delta = raw.saturating_sub(exited_utime + exited_stime);
                     (delta as f64 / (elapsed * tps)).max(0.0)
                 });
 
@@ -285,7 +323,7 @@ impl CpuCollector {
 
                 // Per-tree utime and stime deltas (seconds this interval).
                 let process_utime_secs = self.pid.map(|_| {
-                    let delta: u64 = curr
+                    let raw: u64 = curr
                         .proc_ticks
                         .iter()
                         .map(|(pid, &(cu, _))| {
@@ -293,11 +331,11 @@ impl CpuCollector {
                             cu.saturating_sub(pu)
                         })
                         .sum();
-                    delta as f64 / tps
+                    raw.saturating_sub(exited_utime) as f64 / tps
                 });
 
                 let process_stime_secs = self.pid.map(|_| {
-                    let delta: u64 = curr
+                    let raw: u64 = curr
                         .proc_ticks
                         .iter()
                         .map(|(pid, &(_, cs))| {
@@ -305,7 +343,7 @@ impl CpuCollector {
                             cs.saturating_sub(ps)
                         })
                         .sum();
-                    delta as f64 / tps
+                    raw.saturating_sub(exited_stime) as f64 / tps
                 });
 
                 // Per-interval disk I/O deltas across the process tree.
@@ -572,6 +610,195 @@ mod tests {
             m.process_count > 0,
             "process_count must be > 0, got {}",
             m.process_count
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Issue #20 regression tests: process CPU must never exceed system CPU
+    // -----------------------------------------------------------------------
+
+    // T-CPU-13: cutime correction formula -- direct arithmetic verification.
+    //
+    // A child with 500 pre-snapshot user ticks exits between samples and is
+    // reaped by its parent.  The parent's cutime delta therefore covers the
+    // child's full 2500-tick lifetime.  The raw delta overcounts by 500 (the
+    // pre-snapshot portion already counted via the child's prev entry).
+    // The correction must subtract exactly those 500 ticks.
+    #[test]
+    fn test_cutime_correction_cancels_exited_child_ticks() {
+        let prev: HashMap<i32, (u64, u64)> = [
+            (200, (50, 0)),  // parent: 50 own ticks at warm-up
+            (100, (500, 0)), // child:  500 ticks at warm-up
+        ]
+        .iter()
+        .cloned()
+        .collect();
+
+        // Between samples: child accumulates 2000 more ticks then exits.
+        // Parent's cutime = child's full lifetime = 500 + 2000 = 2500.
+        // Parent runs 250 own ticks.
+        let curr: HashMap<i32, (u64, u64)> = [(200, (50 + 250 + 2500, 0))]
+            .iter()
+            .cloned()
+            .collect();
+
+        let raw: u64 = curr
+            .iter()
+            .map(|(pid, &(cu, cs))| {
+                let (pu, ps) = prev.get(pid).copied().unwrap_or((cu, cs));
+                cu.saturating_sub(pu) + cs.saturating_sub(ps)
+            })
+            .sum();
+        assert_eq!(
+            raw, 2750,
+            "raw delta must include the double-counted pre-snapshot child ticks"
+        );
+
+        let exited: u64 = prev
+            .iter()
+            .filter(|(pid, _)| !curr.contains_key(pid))
+            .map(|(_, &(pu, ps))| pu + ps)
+            .sum();
+        assert_eq!(
+            exited, 500,
+            "exited ticks must equal the child's pre-snapshot tick count"
+        );
+
+        let corrected = raw.saturating_sub(exited);
+        // Correct answer: parent own delta (250) + child post-snapshot delta (2000) = 2250.
+        assert_eq!(
+            corrected, 2250,
+            "corrected delta must exclude the child's pre-snapshot ticks"
+        );
+    }
+
+    // T-CPU-14: cutime correction handles cascaded exits.
+    //
+    // Both a child and grandchild exit between samples.  Root's cutime ends up
+    // containing the full lifetimes of both.  Subtracting all exited PIDs'
+    // pre-snapshot ticks must leave only the ticks actually earned in the
+    // interval regardless of exit depth.
+    #[test]
+    fn test_cutime_correction_handles_cascaded_exits() {
+        let prev: HashMap<i32, (u64, u64)> = [
+            (7, (0, 0)),   // root:        no prior ticks
+            (8, (100, 0)), // child:       100 pre-snapshot ticks
+            (9, (200, 0)), // grandchild:  200 pre-snapshot ticks
+        ]
+        .iter()
+        .cloned()
+        .collect();
+
+        // Grandchild earns 50 ticks and exits; reaped by child.
+        //   child cutime → 200 + 50 = 250.
+        // Child earns 50 own ticks then exits; reaped by root.
+        //   child lifetime = 100 + 50 + 250 = 400.
+        //   root cutime → 400.
+        // Root earns 30 own ticks.
+        let curr: HashMap<i32, (u64, u64)> = [(7, (30 + 400, 0))].iter().cloned().collect();
+
+        let raw: u64 = curr
+            .iter()
+            .map(|(pid, &(cu, cs))| {
+                let (pu, ps) = prev.get(pid).copied().unwrap_or((cu, cs));
+                cu.saturating_sub(pu) + cs.saturating_sub(ps)
+            })
+            .sum();
+        // raw = 430; overcounts by child_prev (100) + grandchild_prev (200) = 300.
+        assert_eq!(raw, 430);
+
+        let exited: u64 = prev
+            .iter()
+            .filter(|(pid, _)| !curr.contains_key(pid))
+            .map(|(_, &(pu, ps))| pu + ps)
+            .sum();
+        assert_eq!(
+            exited, 300,
+            "exited = child pre-snap (100) + grandchild pre-snap (200)"
+        );
+
+        let corrected = raw.saturating_sub(exited);
+        // Correct: root own (30) + child own delta (50) + grandchild own delta (50) = 130.
+        assert_eq!(corrected, 130);
+    }
+
+    // T-CPU-15: process_cores_used must not exceed system utilization_pct.
+    //
+    // The process tree is a subset of the system, so process_cores_used (in
+    // fractional cores) must never be larger than system utilization_pct
+    // (also in fractional cores).  This is the invariant violated by issue #20.
+    // A small tolerance covers minor /proc timing jitter between the two reads.
+    #[test]
+    fn test_process_cores_used_does_not_exceed_system_utilization() {
+        let pid = i32::try_from(std::process::id()).expect("PID too large");
+        let mut collector = CpuCollector::new(Some(pid));
+
+        let _ = collector.collect().expect("warm-up collect failed");
+
+        // Burn a small amount of CPU so the sample contains non-trivial ticks.
+        let _: u64 = (0u64..500_000).map(|x| x.wrapping_mul(x)).sum();
+
+        let m = collector.collect().expect("second collect failed");
+
+        let proc_cores = m
+            .process_cores_used
+            .expect("process_cores_used must be Some when a PID is tracked");
+        let sys_cores = m.utilization_pct; // both in fractional cores (0..N)
+
+        // 10% tolerance for the TOCTOU gap between /proc/stat and /proc/PID/stat.
+        let tolerance = sys_cores * 0.10 + 0.05;
+        assert!(
+            proc_cores <= sys_cores + tolerance,
+            "process_cores_used ({proc_cores:.4}) must not exceed system utilization_pct \
+             ({sys_cores:.4}) -- regression for issue #20"
+        );
+    }
+
+    // T-CPU-16: process_utime_secs must not exceed system utime_secs after a
+    // child process exits between the warm-up and the real sample.
+    //
+    // This directly exercises the cutime double-counting bug from issue #20:
+    // without the correction, the child's pre-snapshot ticks are counted twice
+    // (once via the child's prev entry, once via the parent's cutime delta),
+    // pushing process_utime_secs above utime_secs on an otherwise idle system.
+    #[test]
+    fn test_process_utime_no_double_count_after_child_exits() {
+        let pid = i32::try_from(std::process::id()).expect("PID too large");
+        let mut collector = CpuCollector::new(Some(pid));
+
+        // Spawn a child that burns a little CPU then exits naturally.
+        // `sh` must be available on any Linux host used for testing.
+        let mut child = std::process::Command::new("sh")
+            .args(["-c", "for i in $(seq 1 20000); do :; done"])
+            .spawn()
+            .expect("failed to spawn sh -- required for T-CPU-16");
+
+        // Let the child accumulate real ticks before the warm-up snapshot so
+        // there is a meaningful pre-snapshot tick count to double-count.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+
+        // Warm-up: child is alive; its ticks are stored in prev_proc_ticks.
+        let _ = collector.collect().expect("warm-up collect failed");
+
+        // Reap the child.  Its full-lifetime ticks roll into parent's cutime.
+        let _ = child.wait().expect("failed to wait for child");
+
+        // Real collect: child is absent from curr_proc_ticks but parent's
+        // cutime has grown by the child's entire lifetime.  Without the
+        // correction the overcounting would inflate process_utime_secs.
+        let m = collector.collect().expect("second collect failed");
+
+        let proc_utime = m
+            .process_utime_secs
+            .expect("process_utime_secs must be Some when a PID is tracked");
+        let sys_utime = m.utime_secs;
+
+        // Allow 5% relative + 50 ms absolute tolerance for /proc timing jitter.
+        let tolerance = sys_utime * 0.05 + 0.05;
+        assert!(
+            proc_utime <= sys_utime + tolerance,
+            "process_utime_secs ({proc_utime:.3}s) exceeds system utime_secs ({sys_utime:.3}s) -- \
+             cutime double-counting regression (issue #20)"
         );
     }
 }

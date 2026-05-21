@@ -1,5 +1,70 @@
 # Changelog
 
+## [0.1.7] - 2026-05-21
+
+### Fix process CPU usage exceeding system CPU usage (issue #20)
+
+Two bugs in `src/collector/cpu.rs` could cause `process_cpu_usage` and
+`process_utime` to exceed the corresponding system-wide values, which is
+physically impossible since the tracked process tree is a strict subset of the
+system.
+
+#### Bug 1 -- cutime double-counting (primary cause, introduced in 0.1.6)
+
+PR #18 added `utime + cutime` to the per-process tick snapshot so that
+short-lived child processes (those that start AND exit within a single
+measurement interval) are captured via the parent's `cutime` delta once they
+are reaped.
+
+Side-effect: if a child was alive at the **previous** snapshot, its ticks
+already appear in `prev_proc_ticks[child]`. When it exits and is reaped before
+the **next** snapshot, the parent's `cutime` delta includes the child's
+**full lifetime** ticks -- not just the portion earned during the interval.
+That pre-snapshot portion is counted twice.
+
+Fix: after computing the raw tick delta, subtract the prev-snapshot ticks of
+every PID that was in `prev_proc_ticks` but is absent from `curr_proc_ticks`
+(it exited). This cancels the overcounting while preserving the correct
+accounting for truly short-lived processes that were never seen in a prior
+snapshot.
+
+The correction is applied identically to `process_cores_used`,
+`process_utime_secs`, and `process_stime_secs`.
+
+#### Bug 2 -- timing skew (secondary cause, pre-existing)
+
+`Instant::now()` was captured **before** `process_tree_ticks()`, which reads
+every `/proc/PID/stat` entry to build the parent-child map. On a server with
+many processes under I/O load this scan can take several seconds, and its
+duration varies between the warm-up call and later calls. Because `elapsed`
+(the denominator for `process_cores_used`) was derived from the
+`Instant::now()` captures, it did not account for that variable scan time.
+When the scan took longer in a real call than in the warm-up, the process tick
+delta covered a longer window than `elapsed`, inflating the reported rate.
+
+Fix: move `Instant::now()` to **after** all `/proc` reads (`process_tree_ticks`,
+`process_tree_io`, `process_tree_rss_mib`) so that `elapsed` correctly spans
+the measurement window.
+
+#### Optimization -- single `.stat()` call per process
+
+`process_tree_ticks` previously called `.stat()` twice per process: once to
+get `ppid` (for the parent-child map) and once to get `utime`/`stime`. The two
+loops are now merged into a single `.filter_map()` pass, halving `/proc` I/O
+and reducing the scan time that Bug 2 depended on.
+
+#### New tests (T-CPU-13 through T-CPU-16)
+
+- **T-CPU-13**: Pure-math verification that the correction formula exactly
+  cancels a child's pre-snapshot ticks when it exits between samples.
+- **T-CPU-14**: Same for cascaded exits (grandchild reaped by child, child
+  reaped by root).
+- **T-CPU-15**: Integration check that `process_cores_used` does not exceed
+  `system utilization_pct` (fractional-core invariant) under a real workload.
+- **T-CPU-16**: Integration check that `process_utime_secs` does not exceed
+  `system utime_secs` when a child process exits between the warm-up and the
+  real sample -- the exact scenario that triggered the original bug report.
+
 ## [0.1.5] - 2026-05-01
 
 ### Two new cloud providers and cloud discovery refactor
