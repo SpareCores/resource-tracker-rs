@@ -4,7 +4,7 @@
 
 ### Fix process CPU usage exceeding system CPU usage (issue #20)
 
-Two bugs in `src/collector/cpu.rs` could cause `process_cpu_usage` and
+Bugs in `src/collector/cpu.rs` could cause `process_cpu_usage` and
 `process_utime` to exceed the corresponding system-wide values, which is
 physically impossible since the tracked process tree is a strict subset of the
 system.
@@ -28,8 +28,7 @@ every PID that was in `prev_proc_ticks` but is absent from `curr_proc_ticks`
 accounting for truly short-lived processes that were never seen in a prior
 snapshot.
 
-The correction is applied identically to `process_cores_used`,
-`process_utime_secs`, and `process_stime_secs`.
+The correction is applied to `process_utime_secs` and `process_stime_secs`.
 
 #### Bug 2 -- timing skew (secondary cause, pre-existing)
 
@@ -45,6 +44,39 @@ delta covered a longer window than `elapsed`, inflating the reported rate.
 Fix: move `Instant::now()` to **after** all `/proc` reads (`process_tree_ticks`,
 `process_tree_io`, `process_tree_rss_mib`) so that `elapsed` correctly spans
 the measurement window.
+
+#### Follow-up -- `/proc/stat` ordering and `process_cores_used` formula
+
+Two further problems remained after the Bug 2 timestamp fix and still caused
+`process_cores_used` to exceed `utilization_pct` on loaded CI runners
+(T-CPU-15).
+
+**`/proc/stat` read before the process-tree scan.** `KernelStats::current()`
+still ran at the top of `collect()`, before `process_tree_ticks()`. The
+variable-length walk over `/proc/PID/stat` therefore fell into the process tick
+delta for an interval but not into the `/proc/stat` delta for the same
+interval, inflating the process rate when the scan was slow or differed between
+the warm-up call and the next one.
+
+Fix: move `KernelStats::current()` to **after** the process-tree, I/O, and RSS
+reads, immediately before `Instant::now()`, so system stat, process ticks, and
+the elapsed denominator all end at the same point in each poll cycle.
+
+**Independent tick sum for `process_cores_used`.** The rate was computed as
+`Σ Δ(utime+stime) / (elapsed × tps)` in a separate pass from
+`process_utime_secs` / `process_stime_secs`, duplicating logic and bypassing
+the shared cutime exit correction on the utime/stime fields.
+
+Fix: derive `process_cores_used` as `(process_utime_secs + process_stime_secs)
+/ elapsed`, matching Python `ProcessTracker.cpu_usage`
+(`(Δutime + Δstime) / Δtimestamp` in
+[`tracker.py`](https://github.com/SpareCores/resource-tracker/blob/main/src/resource_tracker/tracker.py))
+and guaranteeing the rate uses exactly the same corrected deltas as the
+per-interval utime/stime columns.
+
+The cutime exit correction (Bug 1) now flows into `process_cores_used` via
+`process_utime_secs` and `process_stime_secs` rather than being applied a
+second time in a parallel tick-sum path.
 
 #### Optimization -- single `.stat()` call per process
 

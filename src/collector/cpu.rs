@@ -152,7 +152,8 @@ struct Snapshot {
     total: CpuTime,
     /// Per-logical-CPU entries (cpu0, cpu1, …).
     per_core: Vec<CpuTime>,
-    /// Wall-clock time of this snapshot, used to normalize process tick deltas.
+    /// Wall-clock time after all /proc reads; used as the Python-style
+    /// snapshot timestamp for process CPU rate (Δcpu_secs / Δtimestamp).
     instant: Instant,
     /// { pid -> (utime, stime) } for root process + all descendants.
     /// Empty when no PID is being tracked.
@@ -174,8 +175,6 @@ impl CpuCollector {
     }
 
     pub fn collect(&mut self) -> Result<CpuMetrics> {
-        let stats = KernelStats::current()?;
-
         let tps = procfs::ticks_per_second() as f64;
 
         // Total number of existing processes - matches Python resource-tracker's
@@ -217,12 +216,10 @@ impl CpuCollector {
             None
         };
 
-        // Capture wall-clock time AFTER all /proc reads.  process_tree_ticks()
-        // scans every entry in /proc and can take variable time on a loaded
-        // server.  Capturing Instant::now() before those reads (the previous
-        // arrangement) caused `elapsed` to undercount the actual measurement
-        // window, making process_cores_used and process_utime_secs appear larger
-        // than system_cpu_usage (issue #20).
+        // Capture /proc/stat after process-tree reads, then record wall time so
+        // system and process snapshots and the elapsed denominator share the
+        // same end point in the poll cycle (issue #20).
+        let stats = KernelStats::current()?;
         let now = Instant::now();
 
         let curr = Snapshot {
@@ -302,20 +299,7 @@ impl CpuCollector {
                     (0, 0)
                 };
 
-                // Fractional cores = total (utime+stime) tick delta / (elapsed × tps)
-                let process_cores_used = self.pid.map(|_| {
-                    let elapsed = (curr.instant - prev.instant).as_secs_f64().max(0.001);
-                    let raw: u64 = curr
-                        .proc_ticks
-                        .iter()
-                        .map(|(pid, &(cu, cs))| {
-                            let (pu, ps) = prev.proc_ticks.get(pid).copied().unwrap_or((cu, cs));
-                            cu.saturating_sub(pu) + cs.saturating_sub(ps)
-                        })
-                        .sum();
-                    let delta = raw.saturating_sub(exited_utime + exited_stime);
-                    (delta as f64 / (elapsed * tps)).max(0.0)
-                });
+                let utilization_pct = aggregate_util_cores(&prev.total, &curr.total, n_cores);
 
                 let process_child_count = self
                     .pid
@@ -346,6 +330,17 @@ impl CpuCollector {
                     raw.saturating_sub(exited_stime) as f64 / tps
                 });
 
+                // Fractional cores = (Δutime + Δstime) / Δtimestamp, matching
+                // Python ProcessTracker.cpu_usage (process_utime_secs +
+                // process_stime_secs share the same corrected tick deltas).
+                let process_cores_used = match (self.pid, process_utime_secs, process_stime_secs) {
+                    (Some(_), Some(u), Some(s)) => {
+                        let elapsed = (curr.instant - prev.instant).as_secs_f64().max(0.001);
+                        Some(((u + s) / elapsed).max(0.0))
+                    }
+                    _ => None,
+                };
+
                 // Per-interval disk I/O deltas across the process tree.
                 let process_disk_read_bytes = self.pid.map(|_| {
                     curr.proc_io
@@ -368,7 +363,7 @@ impl CpuCollector {
                 });
 
                 CpuMetrics {
-                    utilization_pct: aggregate_util_cores(&prev.total, &curr.total, n_cores),
+                    utilization_pct,
                     per_core_pct,
                     utime_secs,
                     stime_secs,
