@@ -97,6 +97,41 @@ and reducing the scan time that Bug 2 depended on.
   `system utime_secs` when a child process exits between the warm-up and the
   real sample -- the exact scenario that triggered the original bug report.
 
+### Fix system memory used under-reporting (`memory.used_mib`)
+
+`src/collector/memory.rs` still computed `used_mib` with the legacy formula
+`MemTotal − MemFree − Buffers − (Cached + SReclaimable)`. Python resource-tracker
+switched to psutil-compatible accounting quite some time ago:
+`(MemTotal − MemAvailable) / 1024` in
+[`tracker_procfs.py`](https://github.com/SpareCores/resource-tracker/blob/main/src/resource_tracker/tracker_procfs.py).
+
+The old formula treats reclaimable page cache as "not used", which
+under-reports system RAM pressure on hosts with large caches. That mismatch
+showed up when comparing tracked-process `process_rss_mib` (VmRSS sum) against
+system `used_mib` -- file-backed mmap pages can inflate RSS while barely moving
+the legacy used counter.
+
+Fix:
+
+- `used_mib` = `(MemTotal − MemAvailable)` converted to MiB (same order of
+  operations as Python: subtract in bytes, then divide).
+- `MemAvailable` fallback when the field is absent (pre-Linux 3.14): `MemFree +
+  Buffers + Cached + SReclaimable`, matching Python rather than falling back to
+  `MemFree` alone.
+- `used_pct` unchanged in definition (`used_mib / total_mib × 100`) but now
+  derived from the corrected `used_mib`.
+
+`free_mib`, `buffers_mib`, `cached_mib`, and `available_mib` are still reported
+as separate fields; only the derived used counter changes.
+
+#### Updated tests
+
+- **T-MEM-01** (smoke): invariant changed from
+  `free + used + buffers + cached ≤ total` to
+  `used + available ≤ total` (MemAvailable accounting).
+- **T-MEM-04** (unit): `used_mib + available_mib ≤ total_mib` and `used_pct`
+  agrees with `used_mib / total_mib`.
+
 ## [0.1.5] - 2026-05-01
 
 ### Two new cloud providers and cloud discovery refactor

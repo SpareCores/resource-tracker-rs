@@ -2,12 +2,13 @@
 ///
 /// Two distinct effects are demonstrated simultaneously:
 ///
-/// ## Effect 1 — file-backed pages live in Cached, not used_mib
+/// ## Effect 1 — file-backed pages vs system used_mib (partially mitigated)
 ///
 /// `process_rss_mib` sums `VmRSS`, which includes `RssFile` (file-backed
-/// resident pages).  The system `used_mib` formula subtracts `Cached`, so
-/// those pages are invisible to it.  A single process mmap-ing a large file
-/// can therefore report `process_rss_mib` >> `system used_mib`.
+/// resident pages).  System `used_mib` is `MemTotal − MemAvailable` (same as
+/// Python/psutil), which treats reclaimable cache as available — so a large
+/// mmap still inflates process RSS more than system used, but less severely
+/// than the old `total − free − buffers − cached` formula.
 ///
 /// ## Effect 2 — shared pages counted once per process (double-counting)
 ///

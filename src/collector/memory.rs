@@ -24,14 +24,16 @@ impl MemoryCollector {
 
         let total_mib = to_mib(info.mem_total);
         let free_mib = to_mib(info.mem_free);
-        let available_mib = to_mib(info.mem_available.unwrap_or(info.mem_free));
         let buffers_mib = to_mib(info.buffers);
         let cached_mib = to_mib(info.cached) + to_mib(info.s_reclaimable.unwrap_or(0));
-        // Python formula: MemTotal - MemFree - Buffers - (Cached + SReclaimable)
-        let used_mib = total_mib
-            .saturating_sub(free_mib)
-            .saturating_sub(buffers_mib)
-            .saturating_sub(cached_mib);
+        // Python: MemAvailable, falling back to MemFree + Buffers + Cached + SReclaimable
+        // on kernels that predate MemAvailable (Linux 3.14).
+        let available_bytes = info.mem_available.unwrap_or(
+            info.mem_free + info.buffers + info.cached + info.s_reclaimable.unwrap_or(0),
+        );
+        let available_mib = to_mib(available_bytes);
+        // Python: (MemTotal - MemAvailable) / 1024 — psutil-compatible used RAM.
+        let used_mib = to_mib(info.mem_total.saturating_sub(available_bytes));
         let used_pct = if total_mib > 0 {
             used_mib as f64 / total_mib as f64 * 100.0
         } else {
@@ -113,7 +115,35 @@ mod tests {
         );
     }
 
-    // T-MEM-04: swap fields are internally consistent.
+    // T-MEM-04: used_mib matches (MemTotal - MemAvailable) in MiB (Python formula).
+    #[test]
+    fn test_memory_used_is_total_minus_available() {
+        let m = MemoryCollector::new().collect().expect("collect() failed");
+        assert!(
+            m.used_mib <= m.total_mib,
+            "used_mib {} > total_mib {}",
+            m.used_mib,
+            m.total_mib
+        );
+        assert!(
+            m.used_mib + m.available_mib <= m.total_mib,
+            "used_mib ({}) + available_mib ({}) exceeds total_mib ({})",
+            m.used_mib,
+            m.available_mib,
+            m.total_mib
+        );
+        // used_pct must agree with used_mib / total_mib.
+        if m.total_mib > 0 {
+            let expected_pct = m.used_mib as f64 / m.total_mib as f64 * 100.0;
+            assert!(
+                (m.used_pct - expected_pct).abs() < 0.01,
+                "used_pct {} != used_mib/total_mib*100 ({expected_pct})",
+                m.used_pct
+            );
+        }
+    }
+
+    // T-MEM-05: swap fields are internally consistent.
     #[test]
     fn test_memory_swap_fields_consistent() {
         let m = MemoryCollector::new().collect().expect("collect() failed");
@@ -135,7 +165,7 @@ mod tests {
         }
     }
 
-    // T-MEM-05: collect() is deterministic (two calls both succeed).
+    // T-MEM-06: collect() is deterministic (two calls both succeed).
     #[test]
     fn test_memory_collect_is_repeatable() {
         let c = MemoryCollector::new();
