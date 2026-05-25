@@ -115,19 +115,32 @@ fn process_tree_ticks(root_pid: i32) -> HashMap<i32, (u64, u64)> {
     result
 }
 
-/// Sum of VmRSS (kB) across all given PIDs, converted to MiB.
-/// Processes that have exited or whose /proc/pid/status is unreadable are skipped.
-fn process_tree_rss_mib(pids: &[i32]) -> u64 {
-    let total_kib: u64 = pids
-        .iter()
-        .filter_map(|&pid| {
-            procfs::process::Process::new(pid)
-                .ok()
-                .and_then(|p| p.status().ok())
-                .and_then(|s| s.vmrss)
-        })
-        .sum();
-    total_kib / 1024
+/// Sum of PSS and VmRSS across all given PIDs, each converted to MiB.
+/// One `Process::open` per PID reads both sources. PSS matches Python
+/// `memory_mib`; RSS is retained for consumers that need resident set size.
+fn process_tree_memory_mib(pids: &[i32]) -> (u64, u64) {
+    let mut pss_kib = 0u64;
+    let mut rss_kib = 0u64;
+    for &pid in pids {
+        let Some(proc_) = procfs::process::Process::new(pid).ok() else {
+            continue;
+        };
+        if let Ok(rollup) = proc_.smaps_rollup() {
+            if let Some(bytes) = rollup
+                .memory_map_rollup
+                .iter()
+                .find_map(|m| m.extension.map.get("Pss").copied())
+            {
+                pss_kib += bytes / 1024;
+            }
+        }
+        if let Ok(status) = proc_.status() {
+            if let Some(vmrss) = status.vmrss {
+                rss_kib += vmrss;
+            }
+        }
+    }
+    (pss_kib / 1024, rss_kib / 1024)
 }
 
 /// Per-process cumulative disk I/O bytes from /proc/pid/io.
@@ -200,7 +213,7 @@ impl CpuCollector {
             None => HashMap::new(),
         };
 
-        // Read process I/O and RSS only when tracking a PID.
+        // Read process I/O and memory only when tracking a PID.
         let proc_io = if self.pid.is_some() {
             let pids: Vec<i32> = proc_ticks.keys().copied().collect();
             process_tree_io(&pids)
@@ -208,12 +221,13 @@ impl CpuCollector {
             HashMap::new()
         };
 
-        // RSS is instantaneous (not a delta), so compute it before storing prev.
-        let process_rss_mib = if self.pid.is_some() {
+        // Process memory is instantaneous (not a delta), compute before storing prev.
+        let (process_pss_mib, process_rss_mib) = if self.pid.is_some() {
             let pids: Vec<i32> = proc_ticks.keys().copied().collect();
-            Some(process_tree_rss_mib(&pids))
+            let (pss, rss) = process_tree_memory_mib(&pids);
+            (Some(pss), Some(rss))
         } else {
-            None
+            (None, None)
         };
 
         // Capture /proc/stat after process-tree reads, then record wall time so
@@ -245,6 +259,7 @@ impl CpuCollector {
                     .map(|_| u32::try_from(curr.proc_ticks.len().saturating_sub(1)).unwrap_or(0)),
                 process_utime_secs: self.pid.map(|_| 0.0),
                 process_stime_secs: self.pid.map(|_| 0.0),
+                process_pss_mib,
                 process_rss_mib,
                 process_disk_read_bytes: self.pid.map(|_| 0),
                 process_disk_write_bytes: self.pid.map(|_| 0),
@@ -372,6 +387,7 @@ impl CpuCollector {
                     process_child_count,
                     process_utime_secs,
                     process_stime_secs,
+                    process_pss_mib,
                     process_rss_mib,
                     process_disk_read_bytes,
                     process_disk_write_bytes,
@@ -498,6 +514,10 @@ mod tests {
             "process_child_count must be Some when PID is tracked"
         );
         assert!(
+            m.process_pss_mib.is_some(),
+            "process_pss_mib must be Some when PID is tracked"
+        );
+        assert!(
             m.process_rss_mib.is_some(),
             "process_rss_mib must be Some when PID is tracked"
         );
@@ -519,14 +539,22 @@ mod tests {
         );
     }
 
-    // T-CPU-08: process_tree_rss_mib returns a positive value for the running test process.
+    // T-CPU-08: process tree memory (PSS and RSS) is positive for the running test process.
     #[test]
-    fn test_process_tree_rss_mib_nonzero_for_self() {
+    fn test_process_tree_memory_nonzero_for_self() {
         let pid = i32::try_from(std::process::id()).expect("PID too large");
-        let rss = process_tree_rss_mib(&[pid]);
+        let (pss, rss) = process_tree_memory_mib(&[pid]);
+        assert!(
+            pss > 0,
+            "PSS for the current process should be > 0, got {pss}"
+        );
         assert!(
             rss > 0,
             "RSS for the current process should be > 0, got {rss}"
+        );
+        assert!(
+            pss <= rss,
+            "PSS ({pss}) should not exceed RSS ({rss}) for a single process"
         );
     }
 
@@ -573,6 +601,10 @@ mod tests {
         assert!(
             m.process_child_count.is_none(),
             "process_child_count must be None when not tracking"
+        );
+        assert!(
+            m.process_pss_mib.is_none(),
+            "process_pss_mib must be None when not tracking"
         );
         assert!(
             m.process_rss_mib.is_none(),

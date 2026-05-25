@@ -39,9 +39,16 @@ pub struct CpuMetrics {
     /// Sum of stime tick deltas / ticks_per_second across all tree members.
     /// None when no PID is tracked.
     pub process_stime_secs: Option<f64>,
-    /// Resident set size of the process tree (sum of VmRSS from /proc/pid/status)
-    /// in MiB, sampled at each interval (not a delta).
+    /// Proportional set size of the process tree (sum of PSS from
+    /// `/proc/pid/smaps_rollup`) in MiB, sampled each interval (not a delta).
+    /// Preferred process memory metric; matches Python `memory_mib`. Serialized
+    /// as `process_pss_mib` in JSON; CSV column remains `process_memory_mib`.
     /// None when no PID is tracked.
+    pub process_pss_mib: Option<u64>,
+    /// Resident set size of the process tree (sum of VmRSS from
+    /// `/proc/pid/status`) in MiB, sampled each interval (not a delta).
+    /// Retained for consumers that need RSS; may exceed physical RAM when shared
+    /// mappings are summed across the tree. None when no PID is tracked.
     pub process_rss_mib: Option<u64>,
     /// Disk bytes actually read from storage by the process tree this interval.
     /// Delta of /proc/pid/io read_bytes across all tree members.

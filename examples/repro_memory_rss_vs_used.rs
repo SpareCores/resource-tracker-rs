@@ -1,21 +1,19 @@
-/// Minimal reproduction of the `process_rss_mib` > `system used_mib` bug.
+/// Demonstrates how tracked-process memory relates to system `used_mib`.
 ///
-/// Two distinct effects are demonstrated simultaneously:
+/// Two effects are shown when comparing process tree memory to system used RAM:
 ///
-/// ## Effect 1 — file-backed pages vs system used_mib (partially mitigated)
+/// ## Effect 1 — file-backed pages vs system used_mib
 ///
-/// `process_rss_mib` sums `VmRSS`, which includes `RssFile` (file-backed
-/// resident pages).  System `used_mib` is `MemTotal − MemAvailable` (same as
-/// Python/psutil), which treats reclaimable cache as available — so a large
-/// mmap still inflates process RSS more than system used, but less severely
-/// than the old `total − free − buffers − cached` formula.
+/// PSS attributes file-backed mappings proportionally, and system `used_mib` is
+/// `MemTotal − MemAvailable` (Python/psutil). A large mmap can still move the
+/// two counters differently, but less than the old VmRSS sum did.
 ///
-/// ## Effect 2 — shared pages counted once per process (double-counting)
+/// ## Effect 2 — shared mappings across the tree
 ///
-/// When multiple processes in the tracked tree all map the same file with
-/// `MAP_PRIVATE` (copy-on-write, read-only), the kernel stores one physical
-/// copy in the page cache.  But each process's `VmRSS` includes the full
-/// size, so the sum over the tree multiplies the actual RAM by N_WORKERS.
+/// With PSS via `/proc/pid/smaps_rollup`, identical read-only `MAP_PRIVATE`
+/// mappings share physical pages and each process counts only its proportional
+/// share. Summing VmRSS across workers used to multiply RAM by N; PSS largely
+/// avoids that.
 ///
 /// Disk: requires ~MAPPING_GIB GiB of free space in /tmp.  If /tmp is a
 /// tmpfs the file itself consumes RAM — use MAPPING_GIB=1 in that case.
@@ -26,14 +24,10 @@
 /// cargo build --examples
 /// ./target/debug/resource-tracker --interval 1 -- \
 ///     ./target/debug/examples/repro_memory_rss_vs_used 2>&1 | \
-///     jq '{process_mib: .cpu.process_rss_mib,
+///     jq '{process_pss_mib: .cpu.process_pss_mib,
+///           process_rss_mib: .cpu.process_rss_mib,
 ///           system_used_mib: .memory.used_mib}'
 /// ```
-///
-/// # Expected output
-///
-/// `process_mib` rises to ≈ (N_WORKERS + 1) × MAPPING_GIB × 1024 MiB
-/// while `system_used_mib` barely changes.
 use std::fs;
 use std::io::Write as _;
 use std::os::unix::io::AsRawFd;
@@ -47,7 +41,7 @@ const TEMP_PATH: &str = "/tmp/repro_rss_mmap_data";
 
 /// mmap the file at TEMP_PATH, touch every page, then sleep.
 /// Called when re-invoked with --worker so each worker is a separate process
-/// in the tracked tree (maximising the summed-VmRSS effect).
+/// in the tracked tree.
 fn worker_main() {
     let file = fs::File::open(TEMP_PATH).expect("worker: cannot open temp file");
     let ptr = unsafe {
@@ -69,7 +63,7 @@ fn worker_main() {
     }
     let _ = checksum;
 
-    // Hold the mapping so the tracker records the inflated RSS.
+    // Hold the mapping so the tracker records tree PSS.
     std::thread::sleep(Duration::from_secs(20));
     unsafe { libc::munmap(ptr, MAPPING_SIZE) };
 }
@@ -92,7 +86,7 @@ fn main() {
         }
     }
 
-    // Parent also maps the file (contributes one extra MAPPING_GIB to the sum).
+    // Parent also maps the file.
     let file = fs::File::open(TEMP_PATH).expect("cannot open temp file");
     let parent_ptr = unsafe {
         libc::mmap(
@@ -113,8 +107,6 @@ fn main() {
     let _ = checksum;
 
     // Spawn N_WORKERS children, each mapping the same file independently.
-    // Summed VmRSS = (N_WORKERS + 1) * MAPPING_GIB GiB.
-    // Actual RAM    =               1 * MAPPING_GIB GiB  (shared page cache).
     let exe = std::env::current_exe().expect("cannot resolve executable");
     let mut children: Vec<_> = (0..N_WORKERS)
         .map(|_| {
@@ -125,7 +117,6 @@ fn main() {
         })
         .collect();
 
-    // Hold everything so the tracker observes the inflated RSS.
     std::thread::sleep(Duration::from_secs(15));
 
     for c in &mut children {

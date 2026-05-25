@@ -270,6 +270,7 @@ mod tests {
                 utilization_pct: 1.0,
                 process_utime_secs: None,
                 process_stime_secs: None,
+                process_pss_mib: None,
                 process_rss_mib: None,
                 process_disk_read_bytes: None,
                 process_disk_write_bytes: None,

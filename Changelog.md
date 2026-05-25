@@ -132,6 +132,27 @@ as separate fields; only the derived used counter changes.
 - **T-MEM-04** (unit): `used_mib + available_mib ≤ total_mib` and `used_pct`
   agrees with `used_mib / total_mib`.
 
+### Add PSS process memory (`process_pss_mib`); keep VmRSS (`process_rss_mib`)
+
+Tracked-process memory was the sum of `VmRSS` from `/proc/pid/status`
+(`process_rss_mib`). That double-counts shared mappings when multiple
+processes in the tree map the same pages (e.g. worker pools, shared read-only
+file mappings) and diverged from Python, which uses PSS from
+`/proc/pid/smaps_rollup` (`get_process_pss_rollup` in
+[`tracker_procfs.py`](https://github.com/SpareCores/resource-tracker/blob/main/src/resource_tracker/tracker_procfs.py)).
+
+Fix:
+
+- Add `process_pss_mib` (JSON): sum of `Pss:` from `smaps_rollup` across the
+  tracked process tree (root + each descendant), in MiB — same aggregation as
+  Python `memory_mib`.
+- Keep `process_rss_mib` (JSON): VmRSS sum for backward compatibility and
+  RSS-specific use cases; one `/proc` open per tree PID reads both sources.
+- CSV column **`process_memory_mib`** maps from `process_pss_mib` (Python
+  parity); JSON uses the explicit `process_pss_mib` / `process_rss_mib` names.
+- Unreadable or exited PIDs contribute 0 to either sum, matching Python's
+  silent fallback.
+
 ## [0.1.5] - 2026-05-01
 
 ### Two new cloud providers and cloud discovery refactor
