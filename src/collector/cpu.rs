@@ -747,35 +747,71 @@ mod tests {
         assert_eq!(corrected, 130);
     }
 
-    // T-CPU-15: process_cores_used must not exceed system utilization_pct.
+    // T-CPU-15: process CPU must not exceed system CPU when a long-running
+    // child exits between two measurement snapshots.
     //
-    // The process tree is a subset of the system, so process_cores_used (in
-    // fractional cores) must never be larger than system utilization_pct
-    // (also in fractional cores).  This is the invariant violated by issue #20.
-    // A small tolerance covers minor /proc timing jitter between the two reads.
+    // On busy servers the tracked process often has long-standing children
+    // that accumulate significant CPU ticks over many intervals.  When such a
+    // child exits between the warm-up and the real sample, its entire lifetime
+    // rolls into the parent's cutime delta.  Without the double-counting
+    // correction those pre-snapshot ticks are counted a second time, pushing
+    // the process metric above the system metric.
+    //
+    // We compare absolute CPU seconds (process_utime_secs + process_stime_secs
+    // vs utime_secs + stime_secs) rather than fractional cores because both
+    // quantities share the same tps divisor and kernel tick accounting.
+    // fractional-cores comparison divides by wall-clock elapsed, which makes
+    // the ratio unstable when the measurement window is very short (a fixed
+    // iteration burn finishes in microseconds on fast CPUs, leaving
+    // elapsed << TOCTOU gap and inflating process_cores_used).
     #[test]
     fn test_process_cores_used_does_not_exceed_system_utilization() {
         let pid = i32::try_from(std::process::id()).expect("PID too large");
         let mut collector = CpuCollector::new(Some(pid));
 
+        // Spawn a CPU-busy child to simulate a long-running process on a
+        // busy server.  A shell busy-loop accumulates real utime ticks.
+        let mut child = std::process::Command::new("sh")
+            .args(["-c", "while true; do :; done"])
+            .spawn()
+            .expect("failed to spawn sh busy-loop -- required for T-CPU-15");
+
+        // Let the child accumulate pre-snapshot CPU ticks for 200 ms.
+        // At 100 HZ that yields ~20 ticks = ~0.2 s that would be double-counted
+        // without the cutime correction.
+        std::thread::sleep(std::time::Duration::from_millis(200));
+
+        // Warm-up: child is alive with ~200 ms of accumulated CPU ticks.
         let _ = collector.collect().expect("warm-up collect failed");
 
-        // Burn a small amount of CPU so the sample contains non-trivial ticks.
-        let _: u64 = (0u64..500_000).map(|x| x.wrapping_mul(x)).sum();
+        // Kill the child immediately after warm-up.  Its full lifetime ticks
+        // (including the ~0.2 s pre-snapshot portion) roll into parent's cutime
+        // delta in the next collect().  Without the correction those pre-snapshot
+        // ticks are double-counted, inflating proc_cpu well above sys_cpu.
+        child.kill().ok();
+        child.wait().ok();
 
         let m = collector.collect().expect("second collect failed");
 
-        let proc_cores = m
-            .process_cores_used
-            .expect("process_cores_used must be Some when a PID is tracked");
-        let sys_cores = m.utilization_pct; // both in fractional cores (0..N)
+        let proc_utime = m
+            .process_utime_secs
+            .expect("process_utime_secs must be Some");
+        let proc_stime = m
+            .process_stime_secs
+            .expect("process_stime_secs must be Some");
+        let proc_cpu = proc_utime + proc_stime;
+        let sys_cpu = m.utime_secs + m.stime_secs;
 
-        // 10% tolerance for the TOCTOU gap between /proc/stat and /proc/PID/stat.
-        let tolerance = sys_cores * 0.10 + 0.05;
+        // 15 % relative + 50 ms absolute tolerance for the TOCTOU gap between
+        // /proc/PID/stat and /proc/stat reads.  Without the cutime correction,
+        // proc_cpu would be inflated by ~0.2 s (pre-snapshot child ticks),
+        // which far exceeds this tolerance and makes the assertion fail.
+        let tolerance = sys_cpu * 0.15 + 0.05;
         assert!(
-            proc_cores <= sys_cores + tolerance,
-            "process_cores_used ({proc_cores:.4}) must not exceed system utilization_pct \
-             ({sys_cores:.4}) -- regression for issue #20"
+            proc_cpu <= sys_cpu + tolerance,
+            "process CPU ({proc_cpu:.3}s = {proc_utime:.3}s utime + {proc_stime:.3}s stime) \
+             must not exceed system CPU ({sys_cpu:.3}s) -- cutime double-counting regression \
+             for issue #20"
         );
     }
 
@@ -824,6 +860,169 @@ mod tests {
             proc_utime <= sys_utime + tolerance,
             "process_utime_secs ({proc_utime:.3}s) exceeds system utime_secs ({sys_utime:.3}s) -- \
              cutime double-counting regression (issue #20)"
+        );
+    }
+
+    // T-CPU-17: multi-interval accumulation -- child tracked across two snapshots
+    // before exiting.
+    //
+    // This is the scenario shown in examples/repro_cpu_cutime_spike.rs: a child
+    // burns CPU across several measurement intervals, then exits in the final one.
+    // The cutime delta for that final interval equals the child's ENTIRE lifetime,
+    // not just the ticks accumulated since the previous snapshot.
+    //
+    // The correction must use the MOST RECENT prev_proc_ticks (updated after the
+    // intermediate collect), not the original warm-up ticks.  If self.prev were
+    // not updated between intervals, exited_utime would be too small and the
+    // overcounting would not be fully cancelled.
+    //
+    // Without the correction: proc_cpu ≈ child's lifetime at intermediate snapshot
+    //   >> sys_cpu for that short final window.
+    // With the correction:    proc_cpu ≈ only post-intermediate child ticks ≈ 0.
+    #[test]
+    fn test_cutime_correction_multi_interval_child_exit() {
+        let pid = i32::try_from(std::process::id()).expect("PID too large");
+        let mut collector = CpuCollector::new(Some(pid));
+
+        // Spawn a CPU-busy child that accumulates real utime ticks.
+        let mut child = std::process::Command::new("sh")
+            .args(["-c", "while true; do :; done"])
+            .spawn()
+            .expect("failed to spawn sh busy-loop -- required for T-CPU-17");
+
+        // Interval 1 warm-up: child is alive with some initial ticks.
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let _ = collector.collect().expect("warm-up collect failed");
+
+        // Interval 2: child continues burning CPU. self.prev is updated so the
+        // next correction baseline is the child's tick count at this point.
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let _ = collector.collect().expect("intermediate collect failed");
+
+        // Interval 3 (final): kill child immediately so its full lifetime since
+        // interval 2 rolls into parent's cutime.  The correction must subtract
+        // the interval-2 tick count (not the warm-up tick count).
+        child.kill().ok();
+        child.wait().ok();
+
+        let m = collector.collect().expect("final collect failed");
+
+        let proc_utime = m
+            .process_utime_secs
+            .expect("process_utime_secs must be Some");
+        let proc_stime = m
+            .process_stime_secs
+            .expect("process_stime_secs must be Some");
+        let proc_cpu = proc_utime + proc_stime;
+        let sys_cpu = m.utime_secs + m.stime_secs;
+
+        // 15 % relative + 50 ms absolute tolerance for TOCTOU jitter.
+        // Without the correction, proc_cpu would include ~200 ms of pre-snapshot
+        // child ticks, far exceeding sys_cpu for this short measurement window.
+        let tolerance = sys_cpu * 0.15 + 0.05;
+        assert!(
+            proc_cpu <= sys_cpu + tolerance,
+            "process CPU ({proc_cpu:.3}s = {proc_utime:.3}s utime + {proc_stime:.3}s stime) \
+             must not exceed system CPU ({sys_cpu:.3}s) across multiple intervals -- \
+             cutime multi-interval regression for issue #20"
+        );
+    }
+
+    // T-CPU-18: PSS (via smaps_rollup) correctly tracks a file-backed mapping.
+    //
+    // This is the regression test for the fix shown in
+    // examples/repro_memory_rss_vs_used.rs.  The old VmRSS approach overcounted
+    // shared pages: when N processes map the same file each contributes its full
+    // mapping size to the VmRSS sum, but PSS via /proc/pid/smaps_rollup
+    // attributes only each process's proportional share.
+    //
+    // For a sole mapper with MAP_PRIVATE and all pages touched:
+    //   - RSS increases by >= mapping_mib (all pages in physical RAM)
+    //   - PSS increases by >= mapping_mib (sole mapper gets full proportional share)
+    //   - PSS <= RSS (PSS never over-reports)
+    //   - |PSS_delta - RSS_delta| <= 1 MiB (sole-mapper PSS == RSS for the region)
+    //
+    // The last invariant is the regression guard: if PSS were broken (zero or
+    // reading the wrong field) the delta would diverge from the RSS delta even
+    // though PSS <= RSS holds trivially for zero.
+    //
+    // The multi-process case (N workers sharing the same file, causing
+    // tree_pss << tree_rss) is demonstrated in examples/repro_memory_rss_vs_used.rs.
+    #[test]
+    fn test_pss_tracks_file_backed_mapping() {
+        use std::fs;
+        use std::io::Write as _;
+        use std::os::unix::io::AsRawFd;
+
+        const MAPPING_MIB: usize = 4;
+        const MAPPING_SIZE: usize = MAPPING_MIB * 1024 * 1024;
+
+        let pid = i32::try_from(std::process::id()).expect("PID too large");
+        let path = format!("/tmp/rt_test_pss_{}", std::process::id());
+
+        let (pss_before, rss_before) = process_tree_memory_mib(&[pid]);
+
+        // Write a temp file that this process will map read-only.
+        {
+            let mut f = fs::File::create(&path).expect("cannot create temp file for T-CPU-18");
+            let chunk = vec![0xABu8; 64 * 1024];
+            for _ in 0..(MAPPING_SIZE / chunk.len()) {
+                f.write_all(&chunk).expect("write failed");
+            }
+        }
+
+        let file = fs::File::open(&path).expect("cannot open temp file for T-CPU-18");
+        let ptr = unsafe {
+            libc::mmap(
+                std::ptr::null_mut(),
+                MAPPING_SIZE,
+                libc::PROT_READ,
+                libc::MAP_PRIVATE,
+                file.as_raw_fd(),
+                0,
+            )
+        };
+        assert_ne!(ptr, libc::MAP_FAILED, "mmap failed in T-CPU-18");
+
+        // Touch every page to bring all pages into physical RAM (RSS and PSS).
+        let slice = unsafe { std::slice::from_raw_parts(ptr as *const u8, MAPPING_SIZE) };
+        let mut checksum = 0u64;
+        for offset in (0..MAPPING_SIZE).step_by(4096) {
+            checksum = checksum.wrapping_add(u64::from(slice[offset]));
+        }
+        let _ = checksum;
+
+        let (pss_after, rss_after) = process_tree_memory_mib(&[pid]);
+
+        // Clean up before asserting so a failure does not leak resources.
+        unsafe { libc::munmap(ptr, MAPPING_SIZE) };
+        fs::remove_file(&path).ok();
+
+        let pss_delta = pss_after.saturating_sub(pss_before);
+        let rss_delta = rss_after.saturating_sub(rss_before);
+
+        assert!(
+            rss_delta >= MAPPING_MIB as u64,
+            "RSS must increase by >= {MAPPING_MIB} MiB after touching the mapping: \
+             before={rss_before} MiB, after={rss_after} MiB (delta={rss_delta} MiB)"
+        );
+        assert!(
+            pss_delta >= MAPPING_MIB as u64,
+            "PSS must increase by >= {MAPPING_MIB} MiB as sole mapper of the file: \
+             before={pss_before} MiB, after={pss_after} MiB (delta={pss_delta} MiB)"
+        );
+        assert!(
+            pss_after <= rss_after,
+            "PSS ({pss_after} MiB) must not exceed RSS ({rss_after} MiB)"
+        );
+        // For the sole mapper the PSS delta and RSS delta must agree within 1 MiB.
+        // A regression that breaks smaps_rollup reading (e.g. returning 0 for PSS)
+        // would leave pss_delta == 0 while rss_delta >= MAPPING_MIB.
+        let skew = pss_delta.abs_diff(rss_delta);
+        assert!(
+            skew <= 1,
+            "PSS delta ({pss_delta} MiB) and RSS delta ({rss_delta} MiB) must agree within \
+             1 MiB for a sole mapper -- larger skew indicates smaps_rollup is not being read"
         );
     }
 }

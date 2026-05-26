@@ -432,7 +432,9 @@ fn col_specs() -> Vec<ColSpec> {
             use_median: true,
             py_scale: 1.0,
             description: "net recv bytes / interval (median)",
-            note: None,
+            note: Some(
+                "per-interval rate: at low traffic absolute diff is tens of bytes; pct comparison is not meaningful at that scale",
+            ),
         },
         ColSpec {
             name: "net_sent_bytes",
