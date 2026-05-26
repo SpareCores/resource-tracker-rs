@@ -26,7 +26,7 @@ document:
     xdg-open resource-tracker-rs-book/book/index.html &
 
 test:
-    cargo test -- --test-threads=1
+    env -u SENTINEL_API_TOKEN cargo test -- --test-threads=1
 
 real_test1: build_release
 	./target/release/resource-tracker  --format csv
@@ -40,7 +40,7 @@ real_test3: build_release
 
 
 report_coverage:
-    cargo llvm-cov --bins --html --open -- --test-threads=1
+    env -u SENTINEL_API_TOKEN cargo llvm-cov --bins --html --open -- --test-threads=1
 
 
 ## Audit dependencies for known vulnerabilities
@@ -51,8 +51,11 @@ audit:
 outdated:
 	@command -v cargo-outdated >/dev/null 2>&1 || cargo install cargo-outdated --locked
 	cargo outdated
-	
 
+
+issue_20_test:
+    cargo build --examples
+    ./target/debug/resource-tracker --interval 1 -- ./target/debug/examples/repro_cpu_cutime_spike 2>&1 | grep --line-buffered '^{' | jq '{cores_process: .cpu.process_cores_used, cores_system: .cpu.utilization_pct}'
 
 ## Stub for possisble future use:
 ## # Install Python resource-tracker via uv

@@ -805,20 +805,20 @@ fn test_json_process_cores_used_nonneg_with_pid() {
 // T-MEM-01 through T-MEM-04: memory invariants
 // ---------------------------------------------------------------------------
 
-/// T-MEM-01: free_mib + used_mib + buffers_mib + cached_mib <= total_mib.
+/// T-MEM-01: used_mib + available_mib <= total_mib (MemTotal - MemAvailable accounting).
 #[test]
 fn test_json_memory_components_dont_exceed_total() {
     let lines = collect_lines(&["--interval", "1"], 1);
     let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
     let total = v["memory"]["total_mib"].as_u64().expect("total_mib");
-    let free = v["memory"]["free_mib"].as_u64().expect("free_mib");
     let used = v["memory"]["used_mib"].as_u64().expect("used_mib");
-    let buffers = v["memory"]["buffers_mib"].as_u64().expect("buffers_mib");
-    let cached = v["memory"]["cached_mib"].as_u64().expect("cached_mib");
-    let sum = free + used + buffers + cached;
+    let available = v["memory"]["available_mib"]
+        .as_u64()
+        .expect("available_mib");
+    let sum = used + available;
     assert!(
         sum <= total,
-        "free({free}) + used({used}) + buffers({buffers}) + cached({cached}) = {sum} > total({total})"
+        "used({used}) + available({available}) = {sum} > total({total})"
     );
 }
 

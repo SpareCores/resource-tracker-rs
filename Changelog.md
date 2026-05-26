@@ -1,5 +1,219 @@
 # Changelog
 
+## [0.1.7] - 2026-05-26
+
+### Test reliability and tooling fixes (issue #20 follow-up)
+
+#### `justfile` -- unset `SENTINEL_API_TOKEN` for local test and coverage runs
+
+`set dotenv-load := true` loads `.env` into every recipe. When `.env` contains a
+stale or invalid `SENTINEL_API_TOKEN` the integration test
+`test_real_api_finish_run_returns_ok` runs automatically (designed to skip only
+when the token is absent) and fails with HTTP 401 on every `just test` and
+`just report_coverage` invocation.
+
+Fixed both recipes with `env -u SENTINEL_API_TOKEN` so the token is unset for
+local runs. A valid token can still be passed from the shell environment:
+`SENTINEL_API_TOKEN=<token> cargo test test_real_api_finish_run_returns_ok`.
+
+#### `tests/compare.rs` -- `net_recv_bytes` always passes with a note
+
+`net_recv_bytes` had a strict 10% tolerance that triggered stochastically.
+`net_sent_bytes` already carried an always-pass note for the same reason
+("at low traffic the absolute difference is tens of bytes; percentage comparison
+is not meaningful at that scale"). The asymmetry between recv and sent was
+unintentional; applied the identical note to `net_recv_bytes`.
+
+#### `src/collector/cpu.rs` -- T-CPU-17 and T-CPU-18
+
+**T-CPU-17** `test_cutime_correction_multi_interval_child_exit`: cutime correction
+across multiple intervals -- child tracked across two intermediate snapshots then
+killed. Verifies `self.prev` is updated correctly between intervals so the
+correction uses the most recent tick count (not the warm-up count). Mirrors the
+real-world scenario in `examples/repro_cpu_cutime_spike.rs`.
+
+**T-CPU-18** `test_pss_tracks_file_backed_mapping`: PSS regression guard for the
+`smaps_rollup` fix demonstrated by `examples/repro_memory_rss_vs_used.rs`.
+Creates a 4 MiB file, maps it `MAP_PRIVATE`, touches every page, then asserts:
+
+- RSS delta >= 4 MiB (all pages in physical RAM)
+- PSS delta >= 4 MiB (sole mapper gets full proportional share)
+- PSS <= RSS
+- `|PSS_delta - RSS_delta| <= 1 MiB` -- the key regression guard: stopping
+  `smaps_rollup` reads (e.g. falling back to VmRSS-only) would leave `pss_delta`
+  near zero while `rss_delta >= 4 MiB`, failing this assertion even though
+  `PSS <= RSS` holds trivially for zero
+
+#### `src/sentinel/run.rs` -- fix mock server hanging >60 s (T-FIN-05 et al.)
+
+`capture_close_run_body` and `capture_close_run_s3_body` spawn a thread whose
+`stream.read()` loop had no timeout. Under certain conditions the client (ureq)
+holds the TCP connection half-open while the server's read loop blocks in
+`stream.read()` waiting for more data that never arrives. Since `rx.recv()` only
+returns after the server calls `tx.send()`, the test hung indefinitely -- commonly
+surfacing as "`test_close_run_finished_at_is_valid_iso8601` has been running for
+over 60 seconds".
+
+Fixed by adding `stream.set_read_timeout(Some(Duration::from_secs(5)))` right
+after `accept()` in both helpers. When `stream.read()` times out it returns
+`Err(TimedOut)`, which `unwrap_or(0)` converts to 0, breaking the read loop and
+allowing `tx.send(buf)` to unblock `rx.recv()`.
+
+---
+
+## [0.1.7] - 2026-05-21
+
+### Fix process CPU usage exceeding system CPU usage (issue #20)
+
+Bugs in `src/collector/cpu.rs` could cause `process_cpu_usage` and
+`process_utime` to exceed the corresponding system-wide values, which is
+physically impossible since the tracked process tree is a strict subset of the
+system.
+
+#### Bug 1 -- cutime double-counting (primary cause, introduced in 0.1.6)
+
+PR #18 added `utime + cutime` to the per-process tick snapshot so that
+short-lived child processes (those that start AND exit within a single
+measurement interval) are captured via the parent's `cutime` delta once they
+are reaped.
+
+Side-effect: if a child was alive at the **previous** snapshot, its ticks
+already appear in `prev_proc_ticks[child]`. When it exits and is reaped before
+the **next** snapshot, the parent's `cutime` delta includes the child's
+**full lifetime** ticks -- not just the portion earned during the interval.
+That pre-snapshot portion is counted twice.
+
+Fix: after computing the raw tick delta, subtract the prev-snapshot ticks of
+every PID that was in `prev_proc_ticks` but is absent from `curr_proc_ticks`
+(it exited). This cancels the overcounting while preserving the correct
+accounting for truly short-lived processes that were never seen in a prior
+snapshot.
+
+The correction is applied to `process_utime_secs` and `process_stime_secs`.
+
+#### Bug 2 -- timing skew (secondary cause, pre-existing)
+
+`Instant::now()` was captured **before** `process_tree_ticks()`, which reads
+every `/proc/PID/stat` entry to build the parent-child map. On a server with
+many processes under I/O load this scan can take several seconds, and its
+duration varies between the warm-up call and later calls. Because `elapsed`
+(the denominator for `process_cores_used`) was derived from the
+`Instant::now()` captures, it did not account for that variable scan time.
+When the scan took longer in a real call than in the warm-up, the process tick
+delta covered a longer window than `elapsed`, inflating the reported rate.
+
+Fix: move `Instant::now()` to **after** all `/proc` reads (`process_tree_ticks`,
+`process_tree_io`, `process_tree_rss_mib`) so that `elapsed` correctly spans
+the measurement window.
+
+#### Follow-up -- `/proc/stat` ordering and `process_cores_used` formula
+
+Two further problems remained after the Bug 2 timestamp fix and still caused
+`process_cores_used` to exceed `utilization_pct` on loaded CI runners
+(T-CPU-15).
+
+**`/proc/stat` read before the process-tree scan.** `KernelStats::current()`
+still ran at the top of `collect()`, before `process_tree_ticks()`. The
+variable-length walk over `/proc/PID/stat` therefore fell into the process tick
+delta for an interval but not into the `/proc/stat` delta for the same
+interval, inflating the process rate when the scan was slow or differed between
+the warm-up call and the next one.
+
+Fix: move `KernelStats::current()` to **after** the process-tree, I/O, and RSS
+reads, immediately before `Instant::now()`, so system stat, process ticks, and
+the elapsed denominator all end at the same point in each poll cycle.
+
+**Independent tick sum for `process_cores_used`.** The rate was computed as
+`Σ Δ(utime+stime) / (elapsed × tps)` in a separate pass from
+`process_utime_secs` / `process_stime_secs`, duplicating logic and bypassing
+the shared cutime exit correction on the utime/stime fields.
+
+Fix: derive `process_cores_used` as `(process_utime_secs + process_stime_secs)
+/ elapsed`, matching Python `ProcessTracker.cpu_usage`
+(`(Δutime + Δstime) / Δtimestamp` in
+[`tracker.py`](https://github.com/SpareCores/resource-tracker/blob/main/src/resource_tracker/tracker.py))
+and guaranteeing the rate uses exactly the same corrected deltas as the
+per-interval utime/stime columns.
+
+The cutime exit correction (Bug 1) now flows into `process_cores_used` via
+`process_utime_secs` and `process_stime_secs` rather than being applied a
+second time in a parallel tick-sum path.
+
+#### Optimization -- single `.stat()` call per process
+
+`process_tree_ticks` previously called `.stat()` twice per process: once to
+get `ppid` (for the parent-child map) and once to get `utime`/`stime`. The two
+loops are now merged into a single `.filter_map()` pass, halving `/proc` I/O
+and reducing the scan time that Bug 2 depended on.
+
+#### New tests (T-CPU-13 through T-CPU-16)
+
+- **T-CPU-13**: Pure-math verification that the correction formula exactly
+  cancels a child's pre-snapshot ticks when it exits between samples.
+- **T-CPU-14**: Same for cascaded exits (grandchild reaped by child, child
+  reaped by root).
+- **T-CPU-15**: Integration check that `process_cores_used` does not exceed
+  `system utilization_pct` (fractional-core invariant) under a real workload.
+- **T-CPU-16**: Integration check that `process_utime_secs` does not exceed
+  `system utime_secs` when a child process exits between the warm-up and the
+  real sample -- the exact scenario that triggered the original bug report.
+
+### Fix system memory used under-reporting (`memory.used_mib`)
+
+`src/collector/memory.rs` still computed `used_mib` with the legacy formula
+`MemTotal − MemFree − Buffers − (Cached + SReclaimable)`. Python resource-tracker
+switched to psutil-compatible accounting quite some time ago:
+`(MemTotal − MemAvailable) / 1024` in
+[`tracker_procfs.py`](https://github.com/SpareCores/resource-tracker/blob/main/src/resource_tracker/tracker_procfs.py).
+
+The old formula treats reclaimable page cache as "not used", which
+under-reports system RAM pressure on hosts with large caches. That mismatch
+showed up when comparing tracked-process `process_rss_mib` (VmRSS sum) against
+system `used_mib` -- file-backed mmap pages can inflate RSS while barely moving
+the legacy used counter.
+
+Fix:
+
+- `used_mib` = `(MemTotal − MemAvailable)` converted to MiB (same order of
+  operations as Python: subtract in bytes, then divide).
+- `MemAvailable` fallback when the field is absent (pre-Linux 3.14): `MemFree +
+  Buffers + Cached + SReclaimable`, matching Python rather than falling back to
+  `MemFree` alone.
+- `used_pct` unchanged in definition (`used_mib / total_mib × 100`) but now
+  derived from the corrected `used_mib`.
+
+`free_mib`, `buffers_mib`, `cached_mib`, and `available_mib` are still reported
+as separate fields; only the derived used counter changes.
+
+#### Updated tests
+
+- **T-MEM-01** (smoke): invariant changed from
+  `free + used + buffers + cached ≤ total` to
+  `used + available ≤ total` (MemAvailable accounting).
+- **T-MEM-04** (unit): `used_mib + available_mib ≤ total_mib` and `used_pct`
+  agrees with `used_mib / total_mib`.
+
+### Add PSS process memory (`process_pss_mib`); keep VmRSS (`process_rss_mib`)
+
+Tracked-process memory was the sum of `VmRSS` from `/proc/pid/status`
+(`process_rss_mib`). That double-counts shared mappings when multiple
+processes in the tree map the same pages (e.g. worker pools, shared read-only
+file mappings) and diverged from Python, which uses PSS from
+`/proc/pid/smaps_rollup` (`get_process_pss_rollup` in
+[`tracker_procfs.py`](https://github.com/SpareCores/resource-tracker/blob/main/src/resource_tracker/tracker_procfs.py)).
+
+Fix:
+
+- Add `process_pss_mib` (JSON): sum of `Pss:` from `smaps_rollup` across the
+  tracked process tree (root + each descendant), in MiB — same aggregation as
+  Python `memory_mib`.
+- Keep `process_rss_mib` (JSON): VmRSS sum for backward compatibility and
+  RSS-specific use cases; one `/proc` open per tree PID reads both sources.
+- CSV column **`process_memory_mib`** maps from `process_pss_mib` (Python
+  parity); JSON uses the explicit `process_pss_mib` / `process_rss_mib` names.
+- Unreadable or exited PIDs contribute 0 to either sum, matching Python's
+  silent fallback.
+
 ## [0.1.5] - 2026-05-01
 
 ### Two new cloud providers and cloud discovery refactor

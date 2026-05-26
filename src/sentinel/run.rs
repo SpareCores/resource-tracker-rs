@@ -892,6 +892,12 @@ mod tests {
 
         std::thread::spawn(move || {
             if let Ok((mut stream, _)) = listener.accept() {
+                // Prevent the read loop from blocking indefinitely: if the client
+                // keeps the connection half-open (send done, waiting for response)
+                // stream.read() would stall until ureq's 30-second timeout fires,
+                // causing rx.recv() to block for the same duration.  A 5-second
+                // read timeout unblocks the loop promptly under any failure mode.
+                stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
                 let mut buf = Vec::<u8>::new();
                 let mut tmp = [0u8; 4096];
                 loop {
@@ -1196,6 +1202,7 @@ mod tests {
 
         std::thread::spawn(move || {
             if let Ok((mut stream, _)) = listener.accept() {
+                stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
                 let mut buf = Vec::<u8>::new();
                 let mut tmp = [0u8; 4096];
                 loop {

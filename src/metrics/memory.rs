@@ -10,8 +10,8 @@ pub struct MemoryMetrics {
     pub free_mib: u64,
     /// Free + reclaimable RAM (`MemAvailable` from /proc/meminfo). Superset field.
     pub available_mib: u64,
-    /// Used RAM excluding buffers/cache (`MemTotal - MemFree - Buffers - Cached`).
-    /// Matches Python `memory_used`.
+    /// Used RAM (`MemTotal − MemAvailable`, converted to MiB). Matches Python
+    /// `memory_used_mib` / psutil-style accounting.
     pub used_mib: u64,
     /// Fraction of total RAM in use (0.0–100.0).
     pub used_pct: f64,
