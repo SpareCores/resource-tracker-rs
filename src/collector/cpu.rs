@@ -22,6 +22,12 @@ enum CpuSource {
     ProcStat,
 }
 
+impl CpuSource {
+    fn is_cgroup(self) -> bool {
+        !matches!(self, CpuSource::ProcStat)
+    }
+}
+
 /// Effective CPU limit from CFS quota (None = unlimited).
 #[derive(Debug, Clone, Copy)]
 struct CfsQuota {
@@ -302,7 +308,6 @@ struct Snapshot {
     /// snapshot timestamp for process CPU rate (Δcpu_secs / Δtimestamp).
     instant: Instant,
     /// Cgroup cumulative CPU usage in fractional seconds (if available).
-    /// Used for cgroup-aware utilization_pct in containers.
     cgroup_usage_secs: Option<f64>,
     /// { pid -> (utime, stime) } for root process + all descendants.
     /// Empty when no PID is being tracked.
@@ -422,6 +427,14 @@ impl CpuCollector {
             // sleep for one interval then call collect() again for real data.
             None => CpuMetrics {
                 utilization_pct: 0.0,
+                cgroup_utilization_pct: curr
+                    .cgroup_usage_secs
+                    .filter(|_| self.cpu_source.is_cgroup())
+                    .map(|_| 0.0),
+                cgroup_usage_secs: curr
+                    .cgroup_usage_secs
+                    .filter(|_| self.cpu_source.is_cgroup())
+                    .map(|_| 0.0),
                 per_core_pct: vec![0.0; curr.per_core.len()],
                 utime_secs: 0.0,
                 stime_secs: 0.0,
@@ -461,25 +474,24 @@ impl CpuCollector {
                     .map(|(p, c)| core_util_pct(p, c))
                     .collect();
 
-                // --- ADAPTIVE utilization_pct ---
-                // In containers, /proc/stat reflects the HOST, not the cgroup.
-                // Use cgroup CPU accounting when available for accurate container
-                // utilization; fall back to /proc/stat tick ratio on bare metal.
-                let utilization_pct = match (
+                // Keep utilization_pct host-scoped:
+                // /proc/stat aggregate busy ratio scaled by host core count.
+                let utilization_pct = aggregate_util_cores(&prev.total, &curr.total, n_cores);
+
+                // Expose container/cgroup CPU usage separately when available.
+                let (cgroup_usage_secs, cgroup_utilization_pct) = match (
                     curr.cgroup_usage_secs,
                     prev.cgroup_usage_secs,
                 ) {
                     (Some(curr_cg), Some(prev_cg)) => {
-                        // Cgroup-based: Δusage_secs / wall_elapsed = fractional cores
                         let delta = (curr_cg - prev_cg).max(0.0);
                         let cores_used = delta / elapsed;
-                        // Clamp to effective cores (cgroup can't exceed its quota)
-                        cores_used.min(self.effective_cores)
+                        (
+                            Some(delta),
+                            Some(cores_used.min(self.effective_cores)),
+                        )
                     }
-                    _ => {
-                        // /proc/stat fallback: tick-ratio * n_cores
-                        aggregate_util_cores(&prev.total, &curr.total, n_cores)
-                    }
+                    _ => (None, None),
                 };
 
                 // Cutime double-counting correction (issue #20).
@@ -603,6 +615,8 @@ impl CpuCollector {
 
                 CpuMetrics {
                     utilization_pct,
+                    cgroup_utilization_pct,
+                    cgroup_usage_secs,
                     per_core_pct,
                     utime_secs,
                     stime_secs,

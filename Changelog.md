@@ -41,24 +41,27 @@ inflating the exited correction.
 
 ### Container-aware utilization and impossible-value guards
 
-#### Adaptive cgroup-aware `utilization_pct` (`src/collector/cpu.rs`)
+#### Keep `utilization_pct` host-scoped; add explicit cgroup CPU metrics (`src/collector/cpu.rs`)
 
-Inside containers, `/proc/stat` reflects the **host's** CPU statistics, not the
-container's.  A container with `--cpus=1` on an 8-core host would report
-`utilization_pct ≈ 3.5` (host load) instead of the expected `≈ 1.0`.
+`utilization_pct` now keeps its original pre-0.1.8 meaning: host CPU usage from
+`/proc/stat` (fractional host cores in use). This preserves stable semantics for
+existing consumers.
 
-Fix: at startup, the collector now detects the best available CPU accounting
-source in priority order:
+In addition, the collector detects cgroup CPU accounting in priority order:
 
 1. **cgroupv2** -- reads `usage_usec` from `/sys/fs/cgroup/cpu.stat`
 2. **cgroupv1** -- reads `cpuacct.usage` (nanoseconds) from
    `/sys/fs/cgroup/cpuacct/cpuacct.usage` (tries multiple mount paths)
 3. **`/proc/stat` fallback** -- original tick-ratio formula (bare metal)
 
-When a cgroup source is available, `utilization_pct` is computed as
-`Δusage_secs / wall_elapsed`, clamped to `effective_cores`.  Both cgroup and
-`/proc/stat` paths produce the same semantic output: fractional cores in use by
-the current execution environment.
+When a cgroup source is available, it now populates separate fields:
+
+- `cgroup_usage_secs`: interval CPU seconds consumed by the current cgroup
+- `cgroup_utilization_pct`: `Δusage_secs / wall_elapsed`, clamped to
+  `effective_cores`
+
+This makes host and container scopes explicit without overloading
+`utilization_pct`.
 
 #### CFS quota detection for effective core count
 

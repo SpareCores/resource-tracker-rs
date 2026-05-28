@@ -36,7 +36,7 @@ pub fn csv_header() -> &'static str {
 /// Process fields not yet collected are emitted as empty strings.
 /// All process fields are empty when no PID is being tracked.
 pub fn sample_to_csv_row(s: &Sample, interval_secs: u64) -> String {
-    // system_cpu_usage: utilization_pct is already in fractional cores (0..N_cores)
+    // system_cpu_usage: host-level utilization in fractional cores (0..N_cores)
     let cpu_usage = s.cpu.utilization_pct;
 
     // Disk I/O: per-interval byte counts (rate × interval ≈ bytes in this window)
@@ -156,6 +156,8 @@ mod tests {
             tracked_pid: None,
             cpu: CpuMetrics {
                 utilization_pct: 2.5,
+                cgroup_utilization_pct: None,
+                cgroup_usage_secs: None,
                 utime_secs: 1.234,
                 stime_secs: 0.567,
                 process_count: 42,
@@ -219,7 +221,7 @@ mod tests {
         );
     }
 
-    // T-CSV-03: system_cpu_usage column equals utilization_pct (already fractional cores) to 4 dp.
+    // T-CSV-03: system_cpu_usage column equals host utilization_pct to 4 dp.
     //
     // NOTE: The Specification.md table formula reads "utilization_pct / 100 × total_cores"
     // which is stale.  PR #1 Changelog explicitly corrected this:
