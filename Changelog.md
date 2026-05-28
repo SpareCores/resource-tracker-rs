@@ -2,7 +2,44 @@
 
 ## [0.1.8] - 2026-05-28
 
-### Fix CPU metrics in containers and eliminate impossible values
+### CPU metric accuracy and robustness improvements
+
+#### Skip cutime correction on transient `/proc` scan failures (`src/collector/cpu.rs`)
+
+When a child process's `/proc/PID/stat` read transiently fails (TOCTOU race
+under system load), the child appeared "exited" and its full cumulative ticks
+were subtracted from the current interval's delta via `saturating_sub`.  Because
+cumulative ticks are orders of magnitude larger than any single interval's delta,
+this floored `process_utime_secs`, `process_stime_secs`, and
+`process_cores_used` to zero for the affected interval.
+
+Fix: the cutime correction is now skipped when the exited ticks exceed the raw
+delta.  In genuine exits, the parent's cutime increase ensures raw >= exited, so
+the correction still applies normally.  When exited > raw, the "exits" are
+almost certainly transient scan failures (the parent's cutime didn't actually
+change), and the raw delta is reported as-is rather than being floored to zero.
+
+#### Carry forward prev entries for missing PIDs
+
+When a PID's `/proc` read fails, its previous tick values are now preserved in
+the stored snapshot.  If the PID reappears in the next scan, its delta is
+computed spanning the gap (using the carried-forward baseline) instead of being
+treated as a "new" PID with delta = 0.  This eliminates the second-interval
+under-report that previously followed a transient scan failure.
+
+Carry-forward is limited to one hop: a PID carried forward in interval N is not
+carried again in N+1, preventing dead PIDs from accumulating indefinitely and
+inflating the exited correction.
+
+#### Regression tests for process CPU gap fixes
+
+- **T-CPU-19**: verifies the cutime correction is skipped when exited ticks
+  exceed the raw delta (the core bug fix).
+- **T-CPU-20**: verifies carry-forward preserves prev entries so that a
+  reappearing PID computes a correct delta spanning the gap.
+- **T-CPU-21**: verifies carry-forward is limited to one hop.
+
+### Container-aware utilization and impossible-value guards
 
 #### Adaptive cgroup-aware `utilization_pct` (`src/collector/cpu.rs`)
 
