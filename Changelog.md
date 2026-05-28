@@ -1,5 +1,77 @@
 # Changelog
 
+## [0.1.8] - 2026-05-28
+
+### Fix CPU metrics in containers and eliminate impossible values
+
+#### Adaptive cgroup-aware `utilization_pct` (`src/collector/cpu.rs`)
+
+Inside containers, `/proc/stat` reflects the **host's** CPU statistics, not the
+container's.  A container with `--cpus=1` on an 8-core host would report
+`utilization_pct ≈ 3.5` (host load) instead of the expected `≈ 1.0`.
+
+Fix: at startup, the collector now detects the best available CPU accounting
+source in priority order:
+
+1. **cgroupv2** -- reads `usage_usec` from `/sys/fs/cgroup/cpu.stat`
+2. **cgroupv1** -- reads `cpuacct.usage` (nanoseconds) from
+   `/sys/fs/cgroup/cpuacct/cpuacct.usage` (tries multiple mount paths)
+3. **`/proc/stat` fallback** -- original tick-ratio formula (bare metal)
+
+When a cgroup source is available, `utilization_pct` is computed as
+`Δusage_secs / wall_elapsed`, clamped to `effective_cores`.  Both cgroup and
+`/proc/stat` paths produce the same semantic output: fractional cores in use by
+the current execution environment.
+
+#### CFS quota detection for effective core count
+
+The collector now reads the CFS bandwidth limit at startup:
+
+- cgroupv2: `cpu.max` (e.g. `"100000 100000"` → 1.0 core)
+- cgroupv1: `cpu.cfs_quota_us` / `cpu.cfs_period_us`
+
+`effective_cores = min(physical_cores, quota_cores)`.  When no quota is set
+(bare metal or unlimited container), `effective_cores = physical_cores`.
+
+#### `process_cores_used` capped to prevent impossible values
+
+Previously, cutime spikes from exiting children could push `process_cores_used`
+above the physical core count (e.g. 1.6 on a 1-CPU container, or 8+ on a 2-CPU
+machine).  Two caps are now applied after the raw tick calculation:
+
+1. **Tick-ratio cap**: process busy seconds cannot exceed system busy seconds
+   for the same interval (`Δsys_busy_ticks / tps / elapsed`).  Both use the
+   same kernel tick accounting, making this a mathematical guarantee.
+2. **CFS quota cap**: hard limit from the container runtime.  Defaults to
+   `n_cores` when no quota is set.
+
+The tightest constraint wins.  This eliminates the >N_cores spikes while
+preserving accuracy for normal operation.
+
+#### Fixed `/proc` read order (process ⊆ system guarantee)
+
+The collection order within `collect()` was:
+
+- **Before**: process tree → `/proc/stat` → `Instant::now()`
+- **After**: `/proc/stat` → cgroup → process tree → `Instant::now()`
+
+Reading system stats **first** ensures that any ticks accumulated by the tracked
+process between the system read and the process read appear in **both** deltas.
+This eliminates the TOCTOU window that allowed `process_cores_used` to slightly
+exceed `utilization_pct` due to read ordering.
+
+#### Environment detection stored on `CpuCollector`
+
+`CpuCollector::new()` now probes the environment once at startup and stores:
+
+- `cpu_source: CpuSource` -- which accounting backend to use
+- `cfs_quota: CfsQuota` -- the hard CPU limit (if any)
+- `effective_cores: f64` -- the true ceiling for this environment
+
+These are used on every `collect()` call without re-probing the filesystem.
+
+---
+
 ## [0.1.7] - 2026-05-26
 
 ### Test reliability and tooling fixes (issue #20 follow-up)
