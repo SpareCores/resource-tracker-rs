@@ -65,9 +65,7 @@ fn detect_cfs_quota() -> CfsQuota {
     if let Ok(contents) = std::fs::read_to_string("/sys/fs/cgroup/cpu.max") {
         let parts: Vec<&str> = contents.split_whitespace().collect();
         if parts.len() == 2 && parts[0] != "max" {
-            if let (Ok(quota), Ok(period)) =
-                (parts[0].parse::<f64>(), parts[1].parse::<f64>())
-            {
+            if let (Ok(quota), Ok(period)) = (parts[0].parse::<f64>(), parts[1].parse::<f64>()) {
                 if period > 0.0 {
                     return CfsQuota {
                         max_cores: Some(quota / period),
@@ -88,10 +86,9 @@ fn detect_cfs_quota() -> CfsQuota {
             std::fs::read_to_string(&quota_path),
             std::fs::read_to_string(&period_path),
         ) {
-            if let (Ok(quota), Ok(period)) = (
-                q_str.trim().parse::<i64>(),
-                p_str.trim().parse::<i64>(),
-            ) {
+            if let (Ok(quota), Ok(period)) =
+                (q_str.trim().parse::<i64>(), p_str.trim().parse::<i64>())
+            {
                 // quota == -1 means unlimited
                 if quota > 0 && period > 0 {
                     return CfsQuota {
@@ -136,12 +133,8 @@ fn read_cgroupv1_usage_ns() -> Option<u64> {
 /// Returns None if the detected source is ProcStat or reads fail.
 fn read_cgroup_usage_secs(source: CpuSource) -> Option<f64> {
     match source {
-        CpuSource::CgroupV2 => {
-            read_cgroupv2_usage_usec().map(|usec| usec as f64 / 1_000_000.0)
-        }
-        CpuSource::CgroupV1 => {
-            read_cgroupv1_usage_ns().map(|ns| ns as f64 / 1_000_000_000.0)
-        }
+        CpuSource::CgroupV2 => read_cgroupv2_usage_usec().map(|usec| usec as f64 / 1_000_000.0),
+        CpuSource::CgroupV1 => read_cgroupv1_usage_ns().map(|ns| ns as f64 / 1_000_000_000.0),
         CpuSource::ProcStat => None,
     }
 }
@@ -479,20 +472,15 @@ impl CpuCollector {
                 let utilization_pct = aggregate_util_cores(&prev.total, &curr.total, n_cores);
 
                 // Expose container/cgroup CPU usage separately when available.
-                let (cgroup_usage_secs, cgroup_utilization_pct) = match (
-                    curr.cgroup_usage_secs,
-                    prev.cgroup_usage_secs,
-                ) {
-                    (Some(curr_cg), Some(prev_cg)) => {
-                        let delta = (curr_cg - prev_cg).max(0.0);
-                        let cores_used = delta / elapsed;
-                        (
-                            Some(delta),
-                            Some(cores_used.min(self.effective_cores)),
-                        )
-                    }
-                    _ => (None, None),
-                };
+                let (cgroup_usage_secs, cgroup_utilization_pct) =
+                    match (curr.cgroup_usage_secs, prev.cgroup_usage_secs) {
+                        (Some(curr_cg), Some(prev_cg)) => {
+                            let delta = (curr_cg - prev_cg).max(0.0);
+                            let cores_used = delta / elapsed;
+                            (Some(delta), Some(cores_used.min(self.effective_cores)))
+                        }
+                        _ => (None, None),
+                    };
 
                 // Cutime double-counting correction (issue #20).
                 //
@@ -565,10 +553,10 @@ impl CpuCollector {
                         // Cap 1: tick-ratio bound — process ticks can't exceed
                         // total system ticks (both from same kernel accounting).
                         // Uses /proc/stat total ticks as the authoritative ceiling.
-                        let sys_total_delta = cpu_total(&curr.total)
-                            .saturating_sub(cpu_total(&prev.total));
-                        let sys_idle_delta = cpu_idle(&curr.total)
-                            .saturating_sub(cpu_idle(&prev.total));
+                        let sys_total_delta =
+                            cpu_total(&curr.total).saturating_sub(cpu_total(&prev.total));
+                        let sys_idle_delta =
+                            cpu_idle(&curr.total).saturating_sub(cpu_idle(&prev.total));
                         let sys_busy_secs = if sys_total_delta > 0 {
                             (sys_total_delta - sys_idle_delta.min(sys_total_delta)) as f64 / tps
                         } else {
@@ -577,15 +565,10 @@ impl CpuCollector {
                         let tick_ratio_cap = sys_busy_secs / elapsed;
 
                         // Cap 2: CFS quota — hard limit on what the cgroup allows.
-                        let quota_cap = self
-                            .cfs_quota
-                            .max_cores
-                            .unwrap_or(n_cores as f64);
+                        let quota_cap = self.cfs_quota.max_cores.unwrap_or(n_cores as f64);
 
                         // Apply both caps (take the tightest constraint).
-                        let capped = raw_cores
-                            .min(tick_ratio_cap)
-                            .min(quota_cap);
+                        let capped = raw_cores.min(tick_ratio_cap).min(quota_cap);
 
                         Some(capped)
                     }
@@ -649,17 +632,13 @@ impl CpuCollector {
         let mut new_carried = HashSet::new();
         if let Some(ref prev_snap) = self.prev {
             for (&pid, &ticks) in &prev_snap.proc_ticks {
-                if !curr.proc_ticks.contains_key(&pid)
-                    && !self.carried_forward.contains(&pid)
-                {
+                if !curr.proc_ticks.contains_key(&pid) && !self.carried_forward.contains(&pid) {
                     curr.proc_ticks.insert(pid, ticks);
                     new_carried.insert(pid);
                 }
             }
             for (&pid, &io) in &prev_snap.proc_io {
-                if !curr.proc_io.contains_key(&pid)
-                    && !self.carried_forward.contains(&pid)
-                {
+                if !curr.proc_io.contains_key(&pid) && !self.carried_forward.contains(&pid) {
                     curr.proc_io.insert(pid, io);
                 }
             }
@@ -1305,13 +1284,8 @@ mod tests {
     // cutime did not actually increase.
     #[test]
     fn test_cutime_correction_skipped_when_exited_exceeds_raw() {
-        let prev: HashMap<i32, (u64, u64)> = [
-            (1, (500, 0)),
-            (2, (50000, 0)),
-        ]
-        .iter()
-        .cloned()
-        .collect();
+        let prev: HashMap<i32, (u64, u64)> =
+            [(1, (500, 0)), (2, (50000, 0))].iter().cloned().collect();
 
         let curr: HashMap<i32, (u64, u64)> = [(1, (600, 0))].iter().cloned().collect();
 
@@ -1335,11 +1309,7 @@ mod tests {
         assert_eq!(raw.saturating_sub(exited), 0);
 
         // New behavior: skip correction when exited > raw.
-        let corrected = if exited <= raw {
-            raw - exited
-        } else {
-            raw
-        };
+        let corrected = if exited <= raw { raw - exited } else { raw };
         assert_eq!(
             corrected, 100,
             "must preserve raw delta when correction is implausible"
@@ -1351,17 +1321,11 @@ mod tests {
     // rather than being treated as "new" (delta = 0).
     #[test]
     fn test_carry_forward_spans_gap_for_reappearing_pid() {
-        let prev: HashMap<i32, (u64, u64)> = [
-            (1, (500, 0)),
-            (2, (10000, 0)),
-        ]
-        .iter()
-        .cloned()
-        .collect();
+        let prev: HashMap<i32, (u64, u64)> =
+            [(1, (500, 0)), (2, (10000, 0))].iter().cloned().collect();
 
         // Simulate carry-forward: child was in prev but missing from live scan.
-        let mut stored_prev: HashMap<i32, (u64, u64)> =
-            [(1, (600, 0))].iter().cloned().collect();
+        let mut stored_prev: HashMap<i32, (u64, u64)> = [(1, (600, 0))].iter().cloned().collect();
         for (&pid, &ticks) in &prev {
             stored_prev.entry(pid).or_insert(ticks);
         }
@@ -1372,13 +1336,8 @@ mod tests {
         );
 
         // Child reappears with 11000 ticks (earned 1000 during the gap).
-        let curr: HashMap<i32, (u64, u64)> = [
-            (1, (700, 0)),
-            (2, (11000, 0)),
-        ]
-        .iter()
-        .cloned()
-        .collect();
+        let curr: HashMap<i32, (u64, u64)> =
+            [(1, (700, 0)), (2, (11000, 0))].iter().cloned().collect();
 
         let delta_with_cf: u64 = curr
             .iter()
@@ -1393,8 +1352,7 @@ mod tests {
         );
 
         // Without carry-forward: child treated as new (pu = cu), delta = 0.
-        let no_cf_prev: HashMap<i32, (u64, u64)> =
-            [(1, (600, 0))].iter().cloned().collect();
+        let no_cf_prev: HashMap<i32, (u64, u64)> = [(1, (600, 0))].iter().cloned().collect();
         let delta_without_cf: u64 = curr
             .iter()
             .map(|(pid, &(cu, cs))| {
@@ -1416,15 +1374,9 @@ mod tests {
         let mut carried_forward: HashSet<i32> = HashSet::new();
 
         // Interval N: child 2 missing from live scan. Not in carried_forward.
-        let prev_ticks: HashMap<i32, (u64, u64)> = [
-            (1, (500, 0)),
-            (2, (10000, 0)),
-        ]
-        .iter()
-        .cloned()
-        .collect();
-        let mut curr_ticks: HashMap<i32, (u64, u64)> =
-            [(1, (600, 0))].iter().cloned().collect();
+        let prev_ticks: HashMap<i32, (u64, u64)> =
+            [(1, (500, 0)), (2, (10000, 0))].iter().cloned().collect();
+        let mut curr_ticks: HashMap<i32, (u64, u64)> = [(1, (600, 0))].iter().cloned().collect();
 
         let mut new_carried = HashSet::new();
         for (&pid, &ticks) in &prev_ticks {
@@ -1446,8 +1398,7 @@ mod tests {
 
         // Interval N+1: child 2 still missing. Already in carried_forward.
         let prev_ticks_n1 = curr_ticks.clone();
-        let mut curr_ticks_n1: HashMap<i32, (u64, u64)> =
-            [(1, (700, 0))].iter().cloned().collect();
+        let mut curr_ticks_n1: HashMap<i32, (u64, u64)> = [(1, (700, 0))].iter().cloned().collect();
 
         let mut new_carried_n1 = HashSet::new();
         for (&pid, &ticks) in &prev_ticks_n1 {
