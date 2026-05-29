@@ -245,9 +245,8 @@ fn main() {
 
         // Actual elapsed since the previous iteration started.  None on the
         // first real sample (no prior loop start to compare against).
-        let actual_interval_ms: Option<u64> = prev_loop_start.map(|p| {
-            u64::try_from((loop_start - p).as_millis()).unwrap_or(u64::MAX)
-        });
+        let actual_interval_ms: Option<u64> = prev_loop_start
+            .map(|p| u64::try_from((loop_start - p).as_millis()).unwrap_or(u64::MAX));
 
         let timestamp_secs = SystemTime::now()
             .duration_since(UNIX_EPOCH)

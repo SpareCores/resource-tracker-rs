@@ -77,7 +77,10 @@ mod tests {
         let ms = v["actual_interval_ms"]
             .as_u64()
             .expect("actual_interval_ms must be a number in JSON when Some");
-        assert_eq!(ms, 1042, "actual_interval_ms value must round-trip through JSON");
+        assert_eq!(
+            ms, 1042,
+            "actual_interval_ms value must round-trip through JSON"
+        );
     }
 
     // T-SAMPLE-02: actual_interval_ms is absent from JSON when None.
