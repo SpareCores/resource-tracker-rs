@@ -39,8 +39,14 @@ pub fn sample_to_csv_row(s: &Sample, interval_secs: u64) -> String {
     // system_cpu_usage: host-level utilization in fractional cores (0..N_cores)
     let cpu_usage = s.cpu.utilization_pct;
 
-    // Disk I/O: per-interval byte counts (rate × interval ≈ bytes in this window)
-    let secs = f64::from(u32::try_from(interval_secs).unwrap_or(u32::MAX));
+    // Disk I/O: per-interval byte counts (rate × actual_interval ≈ bytes in this window).
+    // Prefer actual_interval_ms from the sample when available; fall back to the
+    // configured nominal interval so the first sample (which has no prior baseline)
+    // still produces a reasonable estimate.
+    let secs = s
+        .actual_interval_ms
+        .map(|ms| ms as f64 / 1000.0)
+        .unwrap_or_else(|| f64::from(u32::try_from(interval_secs).unwrap_or(u32::MAX)));
     let disk_read: u64 = s
         .disk
         .iter()
@@ -152,6 +158,7 @@ mod tests {
     fn minimal_sample() -> Sample {
         Sample {
             timestamp_secs: 1_000_000,
+            actual_interval_ms: None,
             job_name: None,
             tracked_pid: None,
             cpu: CpuMetrics {
@@ -336,5 +343,106 @@ mod tests {
         let h = csv_header();
         assert!(!h.ends_with(','), "trailing comma in header");
         assert!(!h.contains('"'), "double-quoted field in header");
+    }
+
+    // T-CSV-09: sample_to_csv_row uses actual_interval_ms for disk/network byte
+    // conversion when Some, ignoring the nominal interval_secs argument.
+    //
+    // Setup: disk reports 1000 B/s; nominal interval = 1 s; actual interval = 2 s.
+    // Expected: system_disk_read_bytes = 2000 (rate × actual), not 1000 (rate × nominal).
+    #[test]
+    fn test_csv_rate_conversion_uses_actual_interval_when_present() {
+        use crate::metrics::DiskMetrics;
+        let mut sample = minimal_sample();
+        sample.actual_interval_ms = Some(2000); // 2 s actual
+        sample.disk = vec![DiskMetrics {
+            device: "sda".to_string(),
+            model: None,
+            vendor: None,
+            serial: None,
+            device_type: None,
+            capacity_bytes: None,
+            mounts: vec![],
+            read_bytes_per_sec: 1000.0,
+            write_bytes_per_sec: 500.0,
+            read_bytes_total: 0,
+            write_bytes_total: 0,
+        }];
+
+        // Column 11 = system_disk_read_bytes, column 12 = system_disk_write_bytes.
+        let row = sample_to_csv_row(&sample, 1); // nominal = 1 s
+        let cols: Vec<&str> = row.split(',').collect();
+        let read: u64 = cols[11]
+            .parse()
+            .unwrap_or_else(|_| panic!("system_disk_read_bytes not u64: {:?}", cols[11]));
+        let write: u64 = cols[12]
+            .parse()
+            .unwrap_or_else(|_| panic!("system_disk_write_bytes not u64: {:?}", cols[12]));
+        assert_eq!(
+            read, 2000,
+            "system_disk_read_bytes must use actual interval (2 s → 2000 B), not nominal (1 s → 1000 B)"
+        );
+        assert_eq!(
+            write, 1000,
+            "system_disk_write_bytes must use actual interval (2 s → 1000 B), not nominal (1 s → 500 B)"
+        );
+    }
+
+    // T-CSV-10: sample_to_csv_row falls back to the nominal interval_secs when
+    // actual_interval_ms is None (first sample -- no prior baseline exists).
+    //
+    // Setup: disk reports 1000 B/s; actual_interval_ms = None; nominal = 3 s.
+    // Expected: system_disk_read_bytes = 3000 (rate × nominal).
+    #[test]
+    fn test_csv_rate_conversion_falls_back_to_nominal_when_actual_absent() {
+        use crate::metrics::DiskMetrics;
+        let mut sample = minimal_sample();
+        sample.actual_interval_ms = None;
+        sample.disk = vec![DiskMetrics {
+            device: "sda".to_string(),
+            model: None,
+            vendor: None,
+            serial: None,
+            device_type: None,
+            capacity_bytes: None,
+            mounts: vec![],
+            read_bytes_per_sec: 1000.0,
+            write_bytes_per_sec: 0.0,
+            read_bytes_total: 0,
+            write_bytes_total: 0,
+        }];
+
+        let row = sample_to_csv_row(&sample, 3); // nominal = 3 s, no actual
+        let cols: Vec<&str> = row.split(',').collect();
+        let read: u64 = cols[11]
+            .parse()
+            .unwrap_or_else(|_| panic!("system_disk_read_bytes not u64: {:?}", cols[11]));
+        assert_eq!(
+            read, 3000,
+            "system_disk_read_bytes must use nominal interval (3 s → 3000 B) when actual_interval_ms is None"
+        );
+    }
+
+    // T-CSV-11: actual_interval_ms does NOT add a new column to the CSV row.
+    // The field is JSON-only; the CSV column count must remain unchanged.
+    #[test]
+    fn test_csv_actual_interval_ms_does_not_add_column() {
+        let mut with_interval = minimal_sample();
+        with_interval.actual_interval_ms = Some(1234);
+        let without_interval = minimal_sample(); // actual_interval_ms = None
+
+        let row_with = sample_to_csv_row(&with_interval, 1);
+        let row_without = sample_to_csv_row(&without_interval, 1);
+
+        assert_eq!(
+            row_with.split(',').count(),
+            row_without.split(',').count(),
+            "actual_interval_ms must not add a column to the CSV row"
+        );
+        assert_eq!(
+            row_with.split(',').count(),
+            csv_header().split(',').count(),
+            "CSV row column count must equal header column count"
+        );
     }
 }

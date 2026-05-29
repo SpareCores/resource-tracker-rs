@@ -1,6 +1,95 @@
 # Changelog
 
-## [0.1.8] - 2026-05-28
+## [0.1.9] - 2026-05-28
+
+### Timing correctness: deadline-based sleep and `actual_interval_ms`
+
+#### Root cause
+
+The main sampling loop called `std::thread::sleep(interval)` unconditionally at
+the end of each iteration, regardless of how long collection itself took.  On a
+1 s nominal interval with 50-200 ms collection overhead, each sample took
+1050-1200 ms and drift accumulated silently over long runs.
+
+A second problem: the CSV serializer multiplied disk and network byte-rates
+(`read_bytes_per_sec`, `rx_bytes_per_sec`) by `config.interval_secs` (the
+nominal configured value) to recover per-interval byte counts.  Because the
+actual elapsed time differed from the nominal interval, the reported
+`system_disk_read_bytes` and `system_net_recv_bytes` columns were wrong by the
+ratio of actual-to-nominal elapsed time.
+
+#### Fix (`src/main.rs`, `src/metrics/mod.rs`, `src/output/csv.rs`)
+
+**Deadline-based sleep** -- `Instant::now()` is captured at the top of each
+loop iteration.  At the bottom the remaining time in the nominal interval is
+computed as `interval.checked_sub(loop_start.elapsed())`.  If collection took
+less than the interval, the tracker sleeps only for the remainder.  If
+collection took longer, the sleep is skipped entirely and the next sample
+starts immediately.  This matches the Python resource-tracker's timer approach
+(`next_report = time() + interval - elapsed`).
+
+**`actual_interval_ms` field on `Sample`** -- the actual elapsed milliseconds
+since the previous iteration started are recorded as
+`actual_interval_ms: Option<u64>`.  `None` on the first real sample (no prior
+loop start to compare against).  Serialized in JSON when `Some`; omitted via
+`skip_serializing_if` when `None`.  Not a CSV column.
+
+**CSV rate-to-bytes conversion** -- `sample_to_csv_row` uses
+`actual_interval_ms` when present, falling back to `interval_secs` only for
+the first sample.  This makes `system_disk_read_bytes`,
+`system_disk_write_bytes`, `system_net_recv_bytes`, and `system_net_sent_bytes`
+accurate regardless of scheduler jitter or collection latency.
+
+#### What was already correct
+
+CPU metrics (`utilization_pct`, `utime_secs`, `stime_secs`,
+`process_utime_secs`, `process_stime_secs`, `process_cores_used`) are all
+derived from kernel tick deltas and are inherently interval-agnostic -- no
+changes needed.  Network and disk rate fields (`rx_bytes_per_sec`,
+`read_bytes_per_sec`) already used `Instant`-based actual elapsed inside their
+own collectors -- no changes needed there either.  `process_disk_read_bytes`
+and `process_disk_write_bytes` are raw `/proc/pid/io` deltas, not rates -- no
+interval division involved.
+
+#### New tests
+
+Unit tests (`src/output/csv.rs`):
+- **T-CSV-09** `test_csv_rate_conversion_uses_actual_interval_when_present`:
+  disk at 1000 B/s with `actual_interval_ms = Some(2000)` and nominal 1 s
+  must yield 2000 B, not 1000 B.
+- **T-CSV-10** `test_csv_rate_conversion_falls_back_to_nominal_when_actual_absent`:
+  same rate with `actual_interval_ms = None` and nominal 3 s must yield 3000 B.
+- **T-CSV-11** `test_csv_actual_interval_ms_does_not_add_column`:
+  CSV column count is unchanged whether `actual_interval_ms` is Some or None.
+
+Unit tests (`src/metrics/mod.rs`):
+- **T-SAMPLE-01** `test_actual_interval_ms_present_in_json_when_some`:
+  value round-trips through `serde_json`.
+- **T-SAMPLE-02** `test_actual_interval_ms_absent_from_json_when_none`:
+  field must not appear in JSON (not emitted as `null`).
+- **T-SAMPLE-03** `test_timestamp_secs_round_trips_through_json`:
+  documents that `timestamp_secs` is a wall-clock Unix epoch value.
+
+Integration tests (`tests/smoke.rs`):
+- **T-TIMING-01** `test_json_second_sample_has_actual_interval_ms`:
+  first JSON sample has no `actual_interval_ms`; second does.
+- **T-TIMING-02** `test_json_actual_interval_ms_within_expected_range`:
+  `actual_interval_ms` on the second sample is in [400, 5000] ms for a 1 s
+  nominal interval -- catches regressions where the binary double-sleeps.
+- **T-TIMING-03** `test_json_timestamp_secs_is_wall_clock_time`:
+  `timestamp_secs` is >= 2024-01-01, not more than 60 s in the future, and
+  not more than 30 s in the past.
+- **T-WRAP-01** `test_wrapper_mode_output_file_timestamps_and_interval`:
+  models `TRACKER_QUIET=false resource-tracker -o rt.log <command>`; wraps
+  `sleep 4`, verifies the output file contains valid JSON with correct
+  wall-clock timestamps, `actual_interval_ms` in range on the second sample,
+  and process CPU/memory fields populated (wrapper mode auto-tracks the child PID).
+
+All 59 tests pass.
+
+---
+
+## [0.1.8] - 2026-05-27
 
 ### CPU metric accuracy and robustness improvements
 

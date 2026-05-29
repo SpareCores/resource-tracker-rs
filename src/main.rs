@@ -18,7 +18,7 @@ use sentinel::{BatchUploader, RunContext, SentinelClient, close_run, samples_to_
 use std::io::Write;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 // ---------------------------------------------------------------------------
 // SIGTERM handler
@@ -232,10 +232,23 @@ fn main() {
     // Samples collected since the last S3 batch upload (for local fallback).
     let mut unflushed: Vec<Sample> = Vec::new();
 
+    // Tracks the Instant at the start of each loop iteration so we can
+    // compute the actual elapsed interval between samples and sleep only
+    // for the remainder of the nominal interval (deadline-based scheduling).
+    let mut prev_loop_start: Option<Instant> = None;
+
     // -----------------------------------------------------------------------
     // Main sampling loop
     // -----------------------------------------------------------------------
     loop {
+        let loop_start = Instant::now();
+
+        // Actual elapsed since the previous iteration started.  None on the
+        // first real sample (no prior loop start to compare against).
+        let actual_interval_ms: Option<u64> = prev_loop_start.map(|p| {
+            u64::try_from((loop_start - p).as_millis()).unwrap_or(u64::MAX)
+        });
+
         let timestamp_secs = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
@@ -243,6 +256,7 @@ fn main() {
 
         let mut sample = Sample {
             timestamp_secs,
+            actual_interval_ms,
             job_name: config.metadata.job_name.clone(),
             tracked_pid: config.pid,
             cpu: cpu.collect().unwrap_or_default(),
@@ -332,7 +346,17 @@ fn main() {
             );
         }
 
-        std::thread::sleep(interval);
+        prev_loop_start = Some(loop_start);
+
+        // Deadline-based sleep: sleep only for the time remaining in the
+        // nominal interval.  If collection itself took longer than the
+        // interval, skip sleeping entirely and start the next sample right
+        // away.  This prevents drift accumulation and matches the Python
+        // resource-tracker's timer approach.
+        let elapsed = loop_start.elapsed();
+        if let Some(remaining) = interval.checked_sub(elapsed) {
+            std::thread::sleep(remaining);
+        }
     }
 }
 

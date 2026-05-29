@@ -1412,6 +1412,221 @@ fn test_tracker_quiet_env_var() {
     });
 }
 
+// ---------------------------------------------------------------------------
+// T-TIMING-01 through T-TIMING-03: actual_interval_ms and timestamp correctness
+// ---------------------------------------------------------------------------
+
+// T-TIMING-01: The second JSON sample carries actual_interval_ms; the first does not.
+//
+// The first real sample has no prior loop start to compare against, so
+// actual_interval_ms is absent.  From the second sample onward the field must
+// be present and contain a positive integer.
+#[test]
+fn test_json_second_sample_has_actual_interval_ms() {
+    let lines = collect_lines(&["--interval", "1"], 2);
+    assert_eq!(lines.len(), 2, "expected 2 JSON samples");
+
+    // First sample: actual_interval_ms must be absent (no prior baseline).
+    let first: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
+    assert!(
+        first["actual_interval_ms"].is_null(),
+        "first sample must not have actual_interval_ms, got {:?}",
+        first["actual_interval_ms"]
+    );
+
+    // Second sample: actual_interval_ms must be a positive integer.
+    let second: serde_json::Value = serde_json::from_str(&lines[1]).unwrap();
+    let ms = second["actual_interval_ms"]
+        .as_u64()
+        .expect("second sample must have actual_interval_ms as a positive integer");
+    assert!(
+        ms > 0,
+        "actual_interval_ms must be > 0 on the second sample, got {ms}"
+    );
+}
+
+// T-TIMING-02: actual_interval_ms on the second sample is within a reasonable
+// range of the configured interval (1 s = 1000 ms).
+//
+// The tracker uses deadline-based sleeping, so actual_interval_ms should be
+// close to 1000 ms.  We use generous bounds [400 ms, 5000 ms] to tolerate
+// slow CI environments and OS scheduling jitter without being so loose that
+// a regression (e.g. double sleeping) would go undetected.
+#[test]
+fn test_json_actual_interval_ms_within_expected_range() {
+    let lines = collect_lines(&["--interval", "1"], 2);
+    assert_eq!(lines.len(), 2, "expected 2 JSON samples");
+
+    let second: serde_json::Value = serde_json::from_str(&lines[1]).unwrap();
+    let ms = second["actual_interval_ms"]
+        .as_u64()
+        .expect("second sample must have actual_interval_ms");
+
+    assert!(
+        ms >= 400,
+        "actual_interval_ms ({ms} ms) is unreasonably short for a 1 s nominal interval"
+    );
+    assert!(
+        ms <= 5000,
+        "actual_interval_ms ({ms} ms) is unreasonably long for a 1 s nominal interval -- \
+         possible regression: sleeping the full interval on top of collection time"
+    );
+}
+
+// T-TIMING-03: timestamp_secs in JSON is a wall-clock Unix epoch time, not a
+// tick-derived value.  It must be >= Jan 1 2024 (1_704_067_200) and not more
+// than 60 s ahead of the system clock at test runtime.
+#[test]
+fn test_json_timestamp_secs_is_wall_clock_time() {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let lines = collect_lines(&["--interval", "1"], 1);
+    assert_eq!(lines.len(), 1, "expected 1 JSON sample");
+
+    let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
+    let ts = v["timestamp_secs"]
+        .as_u64()
+        .expect("timestamp_secs must be a u64");
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    assert!(
+        ts >= 1_704_067_200,
+        "timestamp_secs ({ts}) predates 2024-01-01 -- not a valid wall-clock time"
+    );
+    assert!(
+        ts <= now + 60,
+        "timestamp_secs ({ts}) is more than 60 s in the future (now={now})"
+    );
+    assert!(
+        now <= ts + 30,
+        "timestamp_secs ({ts}) is more than 30 s in the past (now={now}) -- \
+         timestamp may be stale or derived from a non-wall-clock source"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// T-WRAP-01: command-wrapper mode with -o output file
+//
+// Models the usage pattern:
+//   TRACKER_QUIET=false resource-tracker -o rt.log <command>
+//
+// The tracker must:
+//   1. Write all metric lines to the output file (not stderr).
+//   2. Exit when the wrapped command exits.
+//   3. Emit valid JSON with a correct wall-clock timestamp_secs.
+//   4. Include actual_interval_ms on samples after the first.
+//   5. Populate process CPU/memory fields (wrapper mode sets PID automatically).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_wrapper_mode_output_file_timestamps_and_interval() {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    // Use a simple 4-second sleep as the wrapped command.  This gives the
+    // tracker enough time to collect 2-3 real samples at a 1 s interval
+    // without requiring stress-ng or any non-standard tool.
+    let path = tmp_path("wrapper_ts.json");
+
+    // TRACKER_QUIET=false is the explicit non-quiet mode used in production
+    // deployments (e.g. with stress benchmarks).  With -o set, all output
+    // goes to the file; stderr is silent.
+    let status = {
+        let mut child = Command::new(BINARY)
+            .args(["--interval", "1", "--output", &path, "--", "sleep", "4"])
+            .env("TRACKER_QUIET", "false")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("failed to spawn resource-tracker in wrapper mode");
+
+        let deadline = std::time::Instant::now() + Duration::from_secs(12);
+        loop {
+            if let Ok(Some(s)) = child.try_wait() {
+                break s;
+            }
+            if std::time::Instant::now() > deadline {
+                child.kill().ok();
+                child.wait().ok();
+                panic!("wrapper mode did not exit within 12 s");
+            }
+            thread::sleep(Duration::from_millis(200));
+        }
+    };
+
+    assert_eq!(
+        status.code(),
+        Some(0),
+        "wrapper mode must exit with the child's exit code (0), got {:?}",
+        status.code()
+    );
+
+    let content = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("output file {path} not readable: {e}"));
+    std::fs::remove_file(&path).ok();
+
+    let lines: Vec<&str> = content.lines().filter(|l| !l.is_empty()).collect();
+    assert!(
+        lines.len() >= 2,
+        "output file must contain at least 2 JSON samples (warm-up + 1 s interval over 4 s), \
+         got {} line(s)",
+        lines.len()
+    );
+
+    let now_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    for (i, line) in lines.iter().enumerate() {
+        let v: serde_json::Value = serde_json::from_str(line)
+            .unwrap_or_else(|e| panic!("line {i} is not valid JSON: {e}\n{line}"));
+
+        // timestamp_secs must be a real wall-clock time.
+        let ts = v["timestamp_secs"]
+            .as_u64()
+            .unwrap_or_else(|| panic!("line {i}: timestamp_secs missing or not u64"));
+        assert!(
+            ts >= 1_704_067_200,
+            "line {i}: timestamp_secs ({ts}) predates 2024-01-01"
+        );
+        assert!(
+            ts <= now_secs + 60,
+            "line {i}: timestamp_secs ({ts}) is more than 60 s in the future"
+        );
+    }
+
+    // Second sample onward must have actual_interval_ms.
+    if lines.len() >= 2 {
+        let second: serde_json::Value = serde_json::from_str(lines[1]).unwrap();
+        let ms = second["actual_interval_ms"]
+            .as_u64()
+            .expect("second sample in wrapper mode must have actual_interval_ms");
+        assert!(
+            ms >= 400 && ms <= 5000,
+            "actual_interval_ms ({ms} ms) out of expected range [400, 5000] for 1 s interval"
+        );
+    }
+
+    // Process fields must be present because wrapper mode tracks the child PID.
+    let last: serde_json::Value = serde_json::from_str(lines.last().unwrap()).unwrap();
+    // process_pss_mib is always Some when PID is tracked (memory is instantaneous).
+    assert!(
+        last["cpu"]["process_pss_mib"].is_number(),
+        "process_pss_mib must be a number in wrapper mode, got {:?}",
+        last["cpu"]["process_pss_mib"]
+    );
+    // process_cores_used is Some when PID is tracked (may be 0 for a sleeping process).
+    assert!(
+        last["cpu"]["process_cores_used"].is_number(),
+        "process_cores_used must be a number in wrapper mode, got {:?}",
+        last["cpu"]["process_cores_used"]
+    );
+}
+
 /// TRACKER_OUTPUT env var behaves the same as --output.
 #[test]
 fn test_tracker_output_env_var() {

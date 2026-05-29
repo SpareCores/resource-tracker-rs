@@ -1728,6 +1728,7 @@ mod tests {
             .as_secs();
         let sample = Sample {
             timestamp_secs,
+            actual_interval_ms: None,
             job_name: Some("integration-test-close-run".to_string()),
             tracked_pid: None,
             cpu: CpuMetrics::default(),
