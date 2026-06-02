@@ -1298,7 +1298,10 @@ mod tests {
 
         assert_eq!(before_mib, 8);
         assert_eq!(after_mib, 11);
-        assert_eq!(delta_mib, 3, "truncation makes ~4 MiB delta appear as 3 MiB");
+        assert_eq!(
+            delta_mib, 3,
+            "truncation makes ~4 MiB delta appear as 3 MiB"
+        );
 
         // Without slack the T-CPU-18 assertion `delta >= 4` would fail on ARM.
         assert!(delta_mib < 4);
@@ -1312,7 +1315,8 @@ mod tests {
     // bypassing the second /1024 truncation that process_tree_memory_mib applies.
     fn read_pss_kib(pid: i32) -> u64 {
         let proc_ = procfs::process::Process::new(pid).expect("process not found");
-        proc_.smaps_rollup()
+        proc_
+            .smaps_rollup()
             .expect("smaps_rollup unavailable")
             .memory_map_rollup
             .iter()
