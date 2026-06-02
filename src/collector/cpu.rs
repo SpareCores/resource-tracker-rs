@@ -147,8 +147,7 @@ fn cpu_total(c: &CpuTime) -> u64 {
     c.user
         + c.nice
         + c.system
-        + c.idle
-        + c.iowait.unwrap_or(0)
+        + cpu_idle(c)
         + c.irq.unwrap_or(0)
         + c.softirq.unwrap_or(0)
         + c.steal.unwrap_or(0)
