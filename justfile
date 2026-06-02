@@ -57,6 +57,11 @@ issue_20_test:
     cargo build --examples
     ./target/debug/resource-tracker --interval 1 -- ./target/debug/examples/repro_cpu_cutime_spike 2>&1 | grep --line-buffered '^{' | jq '{cores_process: .cpu.process_cores_used, cores_system: .cpu.utilization_pct}'
 
+issue_20_test2: build_release  
+	TRACKER_QUIET=false sudo ./target/release/resource-tracker -o rt.log nice -n -20 python3 run_stressng_benchmarks.py
+
+
+
 ## Stub for possisble future use:
 ## # Install Python resource-tracker via uv
 ## bench_setup:

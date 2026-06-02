@@ -264,6 +264,7 @@ mod tests {
     fn minimal_sample() -> Sample {
         Sample {
             timestamp_secs: 1_000_000,
+            actual_interval_ms: None,
             job_name: None,
             tracked_pid: None,
             cpu: CpuMetrics {
