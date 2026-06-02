@@ -1248,28 +1248,143 @@ mod tests {
         let pss_delta = pss_after.saturating_sub(pss_before);
         let rss_delta = rss_after.saturating_sub(rss_before);
 
+        // process_tree_memory_mib truncates bytes->KiB->MiB twice, so each
+        // reading can lose up to ~1 MiB. Allow 1 MiB of slack in deltas and
+        // 2 MiB in the pss/rss skew so that ARM runners (where actual deltas
+        // land just under the integer boundary) do not produce false failures.
+        const TRUNC_SLACK_MIB: u64 = 1;
+
         assert!(
-            rss_delta >= MAPPING_MIB as u64,
+            rss_delta + TRUNC_SLACK_MIB >= MAPPING_MIB as u64,
             "RSS must increase by >= {MAPPING_MIB} MiB after touching the mapping: \
              before={rss_before} MiB, after={rss_after} MiB (delta={rss_delta} MiB)"
         );
         assert!(
-            pss_delta >= MAPPING_MIB as u64,
+            pss_delta + TRUNC_SLACK_MIB >= MAPPING_MIB as u64,
             "PSS must increase by >= {MAPPING_MIB} MiB as sole mapper of the file: \
              before={pss_before} MiB, after={pss_after} MiB (delta={pss_delta} MiB)"
         );
         assert!(
-            pss_after <= rss_after,
+            pss_after <= rss_after + TRUNC_SLACK_MIB,
             "PSS ({pss_after} MiB) must not exceed RSS ({rss_after} MiB)"
         );
-        // For the sole mapper the PSS delta and RSS delta must agree within 1 MiB.
+        // For the sole mapper the PSS delta and RSS delta must agree within 2 MiB.
         // A regression that breaks smaps_rollup reading (e.g. returning 0 for PSS)
         // would leave pss_delta == 0 while rss_delta >= MAPPING_MIB.
         let skew = pss_delta.abs_diff(rss_delta);
         assert!(
-            skew <= 1,
+            skew <= 1 + TRUNC_SLACK_MIB,
             "PSS delta ({pss_delta} MiB) and RSS delta ({rss_delta} MiB) must agree within \
-             1 MiB for a sole mapper -- larger skew indicates smaps_rollup is not being read"
+             2 MiB for a sole mapper -- larger skew indicates smaps_rollup is not being read"
+        );
+    }
+
+    // T-CPU-18a: documents the arithmetic behind TRUNC_SLACK_MIB.
+    //
+    // process_tree_memory_mib divides bytes -> KiB -> MiB with truncating
+    // integer division twice.  Each truncation discards up to 1023 KiB, so
+    // the delta of two truncated readings can appear ~1 MiB smaller than
+    // the real increase.  This is what caused test_pss_tracks_file_backed_mapping
+    // to fail on ARM runners: actual PSS delta ~3.998 MiB was reported as 3 MiB.
+    #[test]
+    fn test_mib_truncation_can_underreport_pss_delta() {
+        // Scenario: PSS goes from 8.001 MiB to 11.999 MiB (real delta ~3.998 MiB).
+        let pss_before_bytes: u64 = (8 * 1024 + 1) * 1024; // 8.001 MiB
+        let pss_after_bytes: u64 = (12 * 1024 - 1) * 1024; // 11.999 MiB
+
+        let before_mib = (pss_before_bytes / 1024) / 1024; // 8
+        let after_mib = (pss_after_bytes / 1024) / 1024; // 11
+        let delta_mib = after_mib.saturating_sub(before_mib); // 3
+
+        assert_eq!(before_mib, 8);
+        assert_eq!(after_mib, 11);
+        assert_eq!(
+            delta_mib, 3,
+            "truncation makes ~4 MiB delta appear as 3 MiB"
+        );
+
+        // Without slack the T-CPU-18 assertion `delta >= 4` would fail on ARM.
+        assert!(delta_mib < 4);
+
+        // With TRUNC_SLACK_MIB = 1 the assertion recovers.
+        const TRUNC_SLACK_MIB: u64 = 1;
+        assert!(delta_mib + TRUNC_SLACK_MIB >= 4);
+    }
+
+    // Reads PSS for one process in KiB directly from smaps_rollup (bytes / 1024),
+    // bypassing the second /1024 truncation that process_tree_memory_mib applies.
+    fn read_pss_kib(pid: i32) -> u64 {
+        let proc_ = procfs::process::Process::new(pid).expect("process not found");
+        proc_
+            .smaps_rollup()
+            .expect("smaps_rollup unavailable")
+            .memory_map_rollup
+            .iter()
+            .find_map(|m| m.extension.map.get("Pss").copied())
+            .unwrap_or(0)
+            / 1024
+    }
+
+    // T-CPU-18b: same file-backed mapping scenario as T-CPU-18 but measured in
+    // KiB via read_pss_kib, which avoids the MiB truncation entirely.  The
+    // assertion can therefore be tight (64 KiB slack covers page-size quantization
+    // on kernels with page sizes larger than 4 KiB, e.g. 16 KiB or 64 KiB ARM).
+    #[test]
+    fn test_pss_tracks_file_backed_mapping_kib_resolution() {
+        use std::fs;
+        use std::io::Write as _;
+        use std::os::unix::io::AsRawFd;
+
+        const MAPPING_MIB: usize = 4;
+        const MAPPING_SIZE: usize = MAPPING_MIB * 1024 * 1024;
+        const EXPECTED_DELTA_KIB: u64 = (MAPPING_MIB * 1024) as u64;
+        const SLACK_KIB: u64 = 64;
+
+        let pid = i32::try_from(std::process::id()).expect("PID too large");
+        let path = format!("/tmp/rt_test_pss_kib_{}", std::process::id());
+
+        let pss_before_kib = read_pss_kib(pid);
+
+        {
+            let mut f = fs::File::create(&path).expect("cannot create temp file for T-CPU-18b");
+            let chunk = vec![0xCDu8; 64 * 1024];
+            for _ in 0..(MAPPING_SIZE / chunk.len()) {
+                f.write_all(&chunk).expect("write failed");
+            }
+        }
+
+        let file = fs::File::open(&path).expect("cannot open temp file for T-CPU-18b");
+        let ptr = unsafe {
+            libc::mmap(
+                std::ptr::null_mut(),
+                MAPPING_SIZE,
+                libc::PROT_READ,
+                libc::MAP_PRIVATE,
+                file.as_raw_fd(),
+                0,
+            )
+        };
+        assert_ne!(ptr, libc::MAP_FAILED, "mmap failed in T-CPU-18b");
+
+        let slice = unsafe { std::slice::from_raw_parts(ptr as *const u8, MAPPING_SIZE) };
+        let mut checksum = 0u64;
+        for offset in (0..MAPPING_SIZE).step_by(4096) {
+            checksum = checksum.wrapping_add(u64::from(slice[offset]));
+        }
+        let _ = checksum;
+
+        let pss_after_kib = read_pss_kib(pid);
+
+        unsafe { libc::munmap(ptr, MAPPING_SIZE) };
+        fs::remove_file(&path).ok();
+
+        let pss_delta_kib = pss_after_kib.saturating_sub(pss_before_kib);
+
+        assert!(
+            pss_delta_kib + SLACK_KIB >= EXPECTED_DELTA_KIB,
+            "PSS must increase by >= {EXPECTED_DELTA_KIB} KiB (±{SLACK_KIB} KiB) as sole \
+             mapper: before={pss_before_kib} KiB, after={pss_after_kib} KiB \
+             (delta={pss_delta_kib} KiB)"
         );
     }
 
