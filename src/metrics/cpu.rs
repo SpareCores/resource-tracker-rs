@@ -8,6 +8,14 @@ pub struct CpuMetrics {
     /// Not clamped; values very slightly above N_cores are valid under kernel rounding.
     /// N_cores is available via host discovery (host_vcpus).
     pub utilization_pct: f64,
+    /// Cgroup/container utilization expressed as fractional cores in use
+    /// (Δcgroup_usage_secs / Δwall_secs), when cgroup accounting is available.
+    /// None when no cgroup CPU counter can be read.
+    pub cgroup_utilization_pct: Option<f64>,
+    /// Cgroup/container CPU time consumed during this interval (seconds),
+    /// derived from cumulative cgroup CPU usage counters.
+    /// None when no cgroup CPU counter can be read.
+    pub cgroup_usage_secs: Option<f64>,
     /// Per-core utilization indexed by logical CPU number (0.0–100.0 each).
     pub per_core_pct: Vec<f64>,
     /// User+nice mode CPU time consumed across all cores in this interval (seconds).

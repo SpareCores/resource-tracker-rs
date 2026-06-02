@@ -1,5 +1,117 @@
 # Changelog
 
+## [0.1.8] - 2026-05-28
+
+### CPU metric accuracy and robustness improvements
+
+#### Skip cutime correction on transient `/proc` scan failures (`src/collector/cpu.rs`)
+
+When a child process's `/proc/PID/stat` read transiently fails (TOCTOU race
+under system load), the child appeared "exited" and its full cumulative ticks
+were subtracted from the current interval's delta via `saturating_sub`.  Because
+cumulative ticks are orders of magnitude larger than any single interval's delta,
+this floored `process_utime_secs`, `process_stime_secs`, and
+`process_cores_used` to zero for the affected interval.
+
+Fix: the cutime correction is now skipped when the exited ticks exceed the raw
+delta.  In genuine exits, the parent's cutime increase ensures raw >= exited, so
+the correction still applies normally.  When exited > raw, the "exits" are
+almost certainly transient scan failures (the parent's cutime didn't actually
+change), and the raw delta is reported as-is rather than being floored to zero.
+
+#### Carry forward prev entries for missing PIDs
+
+When a PID's `/proc` read fails, its previous tick values are now preserved in
+the stored snapshot.  If the PID reappears in the next scan, its delta is
+computed spanning the gap (using the carried-forward baseline) instead of being
+treated as a "new" PID with delta = 0.  This eliminates the second-interval
+under-report that previously followed a transient scan failure.
+
+Carry-forward is limited to one hop: a PID carried forward in interval N is not
+carried again in N+1, preventing dead PIDs from accumulating indefinitely and
+inflating the exited correction.
+
+#### Regression tests for process CPU gap fixes
+
+- **T-CPU-19**: verifies the cutime correction is skipped when exited ticks
+  exceed the raw delta (the core bug fix).
+- **T-CPU-20**: verifies carry-forward preserves prev entries so that a
+  reappearing PID computes a correct delta spanning the gap.
+- **T-CPU-21**: verifies carry-forward is limited to one hop.
+
+### Container-aware utilization and impossible-value guards
+
+#### Keep `utilization_pct` host-scoped; add explicit cgroup CPU metrics (`src/collector/cpu.rs`)
+
+`utilization_pct` now keeps its original pre-0.1.8 meaning: host CPU usage from
+`/proc/stat` (fractional host cores in use). This preserves stable semantics for
+existing consumers.
+
+In addition, the collector detects cgroup CPU accounting in priority order:
+
+1. **cgroupv2** -- reads `usage_usec` from `/sys/fs/cgroup/cpu.stat`
+2. **cgroupv1** -- reads `cpuacct.usage` (nanoseconds) from
+   `/sys/fs/cgroup/cpuacct/cpuacct.usage` (tries multiple mount paths)
+3. **`/proc/stat` fallback** -- original tick-ratio formula (bare metal)
+
+When a cgroup source is available, it now populates separate fields:
+
+- `cgroup_usage_secs`: interval CPU seconds consumed by the current cgroup
+- `cgroup_utilization_pct`: `Δusage_secs / wall_elapsed`, clamped to
+  `effective_cores`
+
+This makes host and container scopes explicit without overloading
+`utilization_pct`.
+
+#### CFS quota detection for effective core count
+
+The collector now reads the CFS bandwidth limit at startup:
+
+- cgroupv2: `cpu.max` (e.g. `"100000 100000"` → 1.0 core)
+- cgroupv1: `cpu.cfs_quota_us` / `cpu.cfs_period_us`
+
+`effective_cores = min(physical_cores, quota_cores)`.  When no quota is set
+(bare metal or unlimited container), `effective_cores = physical_cores`.
+
+#### `process_cores_used` capped to prevent impossible values
+
+Previously, cutime spikes from exiting children could push `process_cores_used`
+above the physical core count (e.g. 1.6 on a 1-CPU container, or 8+ on a 2-CPU
+machine).  Two caps are now applied after the raw tick calculation:
+
+1. **Tick-ratio cap**: process busy seconds cannot exceed system busy seconds
+   for the same interval (`Δsys_busy_ticks / tps / elapsed`).  Both use the
+   same kernel tick accounting, making this a mathematical guarantee.
+2. **CFS quota cap**: hard limit from the container runtime.  Defaults to
+   `n_cores` when no quota is set.
+
+The tightest constraint wins.  This eliminates the >N_cores spikes while
+preserving accuracy for normal operation.
+
+#### Fixed `/proc` read order (process ⊆ system guarantee)
+
+The collection order within `collect()` was:
+
+- **Before**: process tree → `/proc/stat` → `Instant::now()`
+- **After**: `/proc/stat` → cgroup → process tree → `Instant::now()`
+
+Reading system stats **first** ensures that any ticks accumulated by the tracked
+process between the system read and the process read appear in **both** deltas.
+This eliminates the TOCTOU window that allowed `process_cores_used` to slightly
+exceed `utilization_pct` due to read ordering.
+
+#### Environment detection stored on `CpuCollector`
+
+`CpuCollector::new()` now probes the environment once at startup and stores:
+
+- `cpu_source: CpuSource` -- which accounting backend to use
+- `cfs_quota: CfsQuota` -- the hard CPU limit (if any)
+- `effective_cores: f64` -- the true ceiling for this environment
+
+These are used on every `collect()` call without re-probing the filesystem.
+
+---
+
 ## [0.1.7] - 2026-05-26
 
 ### Test reliability and tooling fixes (issue #20 follow-up)
