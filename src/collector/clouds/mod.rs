@@ -57,16 +57,30 @@ const PROBES: &[fn() -> Option<CloudInfo>] = &[
     ovh::probe,
 ];
 
-/// Run all vendor probes in parallel (one OS thread per vendor).
+/// Run vendor probes; parallel when threads are available, serial fallback otherwise.
 ///
 /// Join order follows the `PROBES` precedence list: the first successful probe
-/// wins and the remaining [`JoinHandle`]s are dropped without joining, so those
-/// threads keep running until their own timeouts (avoids waiting for every
-/// vendor on, e.g., a confirmed AWS host). Each HTTP call uses [`IMDS_TIMEOUT`].
-fn probe_cloud() -> CloudInfo {
-    let handles: Vec<_> = PROBES.iter().map(|&p| std::thread::spawn(p)).collect();
+/// wins. Each HTTP call uses [`IMDS_TIMEOUT`]. Per-vendor threads are only used
+/// when [`crate::thread_util::spawn_named`] succeeds so EAGAIN under tight PID
+/// limits falls back to sequential probes on the caller thread.
+pub fn probe_cloud() -> CloudInfo {
+    let mut handles = Vec::new();
+    let mut deferred = Vec::new();
+
+    for &p in PROBES {
+        match crate::thread_util::spawn_named("cloud-probe", p) {
+            Some(h) => handles.push(h),
+            None => deferred.push(p),
+        }
+    }
+
     for handle in handles {
         if let Ok(Some(info)) = handle.join() {
+            return info;
+        }
+    }
+    for p in deferred {
+        if let Some(info) = p() {
             return info;
         }
     }
@@ -79,8 +93,11 @@ fn probe_cloud() -> CloudInfo {
 /// main thread's warm-up (stateful collector priming + one `interval` sleep).
 /// Join the handle **after** warm-up to read results; if probes finished during
 /// sleep, `join` returns immediately.
-pub fn spawn_cloud_discovery() -> std::thread::JoinHandle<CloudInfo> {
-    std::thread::spawn(probe_cloud)
+///
+/// Returns `None` when no thread could be created; the caller should invoke
+/// [`probe_cloud`] on the main thread after warm-up instead.
+pub fn spawn_cloud_discovery() -> Option<std::thread::JoinHandle<CloudInfo>> {
+    crate::thread_util::spawn_named("cloud-discovery", probe_cloud)
 }
 
 // ---------------------------------------------------------------------------
@@ -95,8 +112,11 @@ mod tests {
     // Each vendor's HTTP calls use IMDS_TIMEOUT; all vendor probes run in parallel.
     #[test]
     fn test_spawn_cloud_discovery_joins_without_panic() {
-        let handle = spawn_cloud_discovery();
-        let _cloud = handle.join().expect("cloud discovery thread panicked");
+        let cloud = match spawn_cloud_discovery() {
+            Some(handle) => handle.join().expect("cloud discovery thread panicked"),
+            None => probe_cloud(),
+        };
+        let _cloud = cloud;
         // Result may be default (no cloud) or populated (running on a cloud VM).
         // Either outcome is valid; the test only checks for no panic.
     }

@@ -5,12 +5,13 @@ mod config;
 mod metrics;
 mod output;
 mod sentinel;
+mod thread_util;
 
 extern crate libc;
 
 use collector::{
     CpuCollector, DiskCollector, GpuCollector, MemoryCollector, NetworkCollector,
-    collect_host_info, spawn_cloud_discovery,
+    collect_host_info, probe_cloud,
 };
 use config::{Config, OutputFormat};
 use metrics::Sample;
@@ -137,26 +138,11 @@ fn main() {
         }
     }
 
-    // -----------------------------------------------------------------------
-    // Shell-wrapper mode: spawn the command and track its PID automatically.
-    // -----------------------------------------------------------------------
-    let mut child = if !config.command.is_empty() {
-        let (program, args) = config.command.split_first().expect("command is non-empty");
-        match std::process::Command::new(program).args(args).spawn() {
-            Ok(c) => {
-                config.pid = Some(i32::try_from(c.id()).unwrap_or(i32::MAX));
-                Some(c)
-            }
-            Err(e) => {
-                eprintln!("error: failed to spawn {:?}: {e}", program);
-                std::process::exit(1);
-            }
-        }
-    } else {
-        None
-    };
-
     let interval = Duration::from_secs(config.interval_secs);
+
+    // Shell-wrapper child is spawned after warm-up so cloud IMDS probes (ureq may
+    // use helper threads) do not race with fork-heavy stressors under PID limits.
+    let mut child: Option<std::process::Child> = None;
 
     let mut cpu = CpuCollector::new(config.pid);
     let memory = MemoryCollector::new();
@@ -170,18 +156,32 @@ fn main() {
     // Host discovery: fast, local, no I/O.
     let host_info = collect_host_info(&initial_gpus);
 
-    // Cloud discovery: spawn before warm-up so probes run concurrently.
-    let cloud_handle = spawn_cloud_discovery();
-
-    // Warm-up: prime delta state in stateful collectors, then sleep one full
-    // interval so the first real sample has meaningful rates.
+    // Warm-up: prime delta state in stateful collectors, probe cloud metadata on
+    // the main thread (no extra threads — avoids EAGAIN under tight PID limits),
+    // then sleep for the remainder of one interval.
     let _ = cpu.collect();
     let _ = network.collect();
     let _ = disk.collect();
+    let cloud_info = probe_cloud();
     std::thread::sleep(interval);
 
-    // Cloud probes are bounded by 2s each; they are done by now.
-    let cloud_info = cloud_handle.join().unwrap_or_default();
+    // -----------------------------------------------------------------------
+    // Shell-wrapper mode: spawn the tracked command after warm-up / cloud probe.
+    // -----------------------------------------------------------------------
+    if !config.command.is_empty() {
+        let (program, args) = config.command.split_first().expect("command is non-empty");
+        match std::process::Command::new(program).args(args).spawn() {
+            Ok(c) => {
+                config.pid = Some(i32::try_from(c.id()).unwrap_or(i32::MAX));
+                cpu.set_tracked_pid(config.pid);
+                child = Some(c);
+            }
+            Err(e) => {
+                eprintln!("error: failed to spawn {:?}: {e}", program);
+                std::process::exit(1);
+            }
+        }
+    }
 
     // -----------------------------------------------------------------------
     // Sentinel API setup (gated on SENTINEL_API_TOKEN being set).
@@ -212,13 +212,18 @@ fn main() {
                         .unwrap_or(60u64);
                     let (uploader, buf) = BatchUploader::new(upload_interval, config.interval_secs);
                     let flag = uploader.shutdown_flag();
-                    let handle = uploader.spawn(
+                    let upload_handle = uploader.spawn(
                         Arc::clone(&ctx_arc),
                         client.agent.clone(),
                         client.api_base.clone(),
                         client.token.clone(),
                     );
-                    (Some(ctx_arc), Some(buf), Some(flag), Some(handle))
+                    if upload_handle.is_none() {
+                        eprintln!(
+                            "warn: sentinel background upload disabled; samples will be flushed inline on exit"
+                        );
+                    }
+                    (Some(ctx_arc), Some(buf), Some(flag), upload_handle)
                 }
             }
         }
