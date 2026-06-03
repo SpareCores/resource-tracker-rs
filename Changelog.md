@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.1.12] - 2026-06-03
+
+### Vultr cloud metadata support
+
+#### `src/collector/clouds/vultr.rs` -- Vultr (new)
+
+- GET `http://169.254.169.254/v1.json`; identified by Vultr-specific fields
+  (`instanceid` or `instance-v2-id` in the JSON tree).
+- `cloud_vendor_id` = `vultr`; `cloud_region_id` from `region.regioncode`
+  (e.g. `EWR`); filters empty and `"unknown"` values.
+- Instance type and account ID are not exposed by the Vultr metadata API
+  (`cloud_instance_type` and `cloud_account_id` stay `None`, same as UpCloud).
+- Reference: [Vultr Metadata API](https://www.vultr.com/metadata/).
+
+#### `src/collector/clouds/mod.rs`
+
+- Register `vultr::probe` in `PROBES` (after UpCloud, before AliCloud); update
+  precedence comment.
+
 ## [0.1.11] - 2026-06-03
 
 ### Sentinel upload thread: avoid ureq DNS helper threads under PID limits

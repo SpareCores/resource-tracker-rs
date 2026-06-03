@@ -43,7 +43,8 @@ pub struct CloudInfo {
     /// Cloud account ID (usually not available from metadata service).
     pub cloud_account_id: Option<String>,
     /// Cloud region or location string for the active provider (e.g. AWS region, GCP
-    /// region derived from zone, Azure `location`, Hetzner `region`, UpCloud `region`).
+    /// region derived from zone, Azure `location`, Hetzner `region`, UpCloud `region`,
+    /// Vultr `regioncode`).
     pub cloud_region_id: Option<String>,
     /// Cloud availability zone.
     pub cloud_zone_id: Option<String>,
