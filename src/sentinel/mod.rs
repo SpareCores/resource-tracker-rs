@@ -59,6 +59,16 @@ impl SentinelClient {
             agent,
         })
     }
+
+    /// HTTP agent for the background S3 upload loop.
+    ///
+    /// Unlike [`Self::from_env`]'s agent, this has no global timeout so ureq's DNS
+    /// resolver uses the synchronous path and does not spawn a helper thread per
+    /// request (see ureq `DefaultResolver`: thread spawn only when a timeout is set).
+    /// That avoids EAGAIN panics when the cgroup PID budget is already full.
+    pub fn new_upload_agent() -> ureq::Agent {
+        UreqConfig::builder().build().new_agent()
+    }
 }
 
 // ---------------------------------------------------------------------------

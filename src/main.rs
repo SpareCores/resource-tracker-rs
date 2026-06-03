@@ -213,7 +213,7 @@ fn main() {
                     let flag = uploader.shutdown_flag();
                     let upload_handle = uploader.spawn(
                         Arc::clone(&ctx_arc),
-                        client.agent.clone(),
+                        SentinelClient::new_upload_agent(),
                         client.api_base.clone(),
                         client.token.clone(),
                     );

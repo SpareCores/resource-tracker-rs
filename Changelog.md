@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.11] - 2026-06-03
+
+### Sentinel upload thread: avoid ureq DNS helper threads under PID limits
+
+#### Root cause
+
+0.1.10 still crashed (exit 139) when `SENTINEL_API_TOKEN` was set: the
+`sentinel-upload` thread was created successfully, but periodic S3 uploads used the
+same `ureq::Agent` as the Sentinel API with `timeout_global(30s)`. ureq's resolver
+spawns a helper thread per lookup when a timeout is configured, which still panicked
+with `EAGAIN` once stress-ng had filled the cgroup PID budget.
+
+#### Fix
+
+- **`SentinelClient::new_upload_agent()`**: background upload loop uses an agent
+  without a global timeout so DNS resolution stays on the upload thread synchronously.
+- API `start_run` / `close_run` on the main thread keep the 30 s timeout agent.
+
 ## [0.1.10] - 2026-06-03
 
 ### Graceful degradation when thread/PID limits are exhausted
