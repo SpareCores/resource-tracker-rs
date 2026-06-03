@@ -156,8 +156,7 @@ fn main() {
     // Host discovery: fast, local, no I/O.
     let host_info = collect_host_info(&initial_gpus);
 
-    // Warm-up: prime delta state in stateful collectors, probe cloud metadata on
-    // the main thread (no extra threads — avoids EAGAIN under tight PID limits),
+    // Warm-up: prime delta state in stateful collectors, probe cloud metadata,
     // then sleep for the remainder of one interval.
     let _ = cpu.collect();
     let _ = network.collect();

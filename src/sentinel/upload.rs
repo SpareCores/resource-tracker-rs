@@ -443,13 +443,14 @@ mod tests {
         // Signal shutdown before spawning so the thread skips the sleep phase.
         flag.store(true, Ordering::Relaxed);
 
-        let handle = uploader.spawn(
-            ctx,
-            agent,
-            "http://127.0.0.1:1".to_string(),
-            "token".to_string(),
-        )
-        .expect("upload thread must spawn in test");
+        let handle = uploader
+            .spawn(
+                ctx,
+                agent,
+                "http://127.0.0.1:1".to_string(),
+                "token".to_string(),
+            )
+            .expect("upload thread must spawn in test");
 
         let t0 = Instant::now();
         handle.join().expect("upload thread panicked");
@@ -514,13 +515,14 @@ mod tests {
         // Signal shutdown before spawning: the thread processes one batch then exits.
         flag.store(true, Ordering::Relaxed);
 
-        let handle = uploader.spawn(
-            Arc::clone(&ctx_arc),
-            agent.clone(),
-            api_base.clone(),
-            token.clone(),
-        )
-        .expect("upload thread must spawn in test");
+        let handle = uploader
+            .spawn(
+                Arc::clone(&ctx_arc),
+                agent.clone(),
+                api_base.clone(),
+                token.clone(),
+            )
+            .expect("upload thread must spawn in test");
         let uris = handle.join().expect("upload thread panicked");
         eprintln!("T-UPL-INT-01: uris={uris:?}");
 
@@ -601,13 +603,14 @@ mod tests {
 
         flag.store(true, Ordering::Relaxed);
 
-        let handle = uploader.spawn(
-            Arc::clone(&ctx_arc),
-            agent.clone(),
-            api_base.clone(),
-            token.clone(),
-        )
-        .expect("upload thread must spawn in test");
+        let handle = uploader
+            .spawn(
+                Arc::clone(&ctx_arc),
+                agent.clone(),
+                api_base.clone(),
+                token.clone(),
+            )
+            .expect("upload thread must spawn in test");
         let uris = handle.join().expect("upload thread panicked");
         eprintln!("T-UPL-INT-02: uris={uris:?}");
 
@@ -669,13 +672,14 @@ mod tests {
         // then exit on the shutdown check.
         flag.store(true, Ordering::Relaxed);
 
-        let handle = uploader.spawn(
-            ctx,
-            agent,
-            "http://127.0.0.1:1".to_string(),
-            "token".to_string(),
-        )
-        .expect("upload thread must spawn in test");
+        let handle = uploader
+            .spawn(
+                ctx,
+                agent,
+                "http://127.0.0.1:1".to_string(),
+                "token".to_string(),
+            )
+            .expect("upload thread must spawn in test");
 
         let t0 = Instant::now();
         handle.join().expect("upload thread panicked");

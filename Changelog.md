@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.1.10] - 2026-06-03
+
+### Graceful degradation when thread/PID limits are exhausted
+
+#### Root cause
+
+Under tight cgroup `pids.max` (e.g. `stressng_benchmarks` wrapping stress-ng
+fork/clone stressors on small instances), `std::thread::spawn` returned `EAGAIN`.
+The binary panicked (`panic = "abort"` in release → exit 139 / SIGSEGV). stderr
+showed `failed to spawn thread: Resource temporarily unavailable`.
+
+A contributing race: the shell-wrapper child started before cloud IMDS probes
+finished, so stress-ng filled the PID budget while `ureq` still tried to spawn
+helper threads for HTTP.
+
+#### Fix
+
+- **`src/thread_util.rs`**: `spawn_named` uses `thread::Builder::spawn`, logs a
+  warning on failure, returns `None` instead of panicking.
+- **Cloud probes** (`src/collector/clouds/mod.rs`): per-vendor threads via
+  `spawn_named`; probes that cannot get a thread run serially on the caller.
+- **`src/main.rs`**: warm-up and `probe_cloud` run before spawning the tracked
+  command; `CpuCollector::set_tracked_pid` after child spawn.
+- **ZFS** (`src/collector/disk.rs`): skip `zpool` helper when thread spawn fails;
+  warn once.
+- **Sentinel upload** (`src/sentinel/upload.rs`): `spawn` returns
+  `Option<JoinHandle>`; inline flush on exit when the upload thread is unavailable.
+
 ## [0.1.9] - 2026-05-28
 
 ### Timing correctness: deadline-based sleep and `actual_interval_ms`
