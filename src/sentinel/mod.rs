@@ -78,6 +78,10 @@ impl SentinelClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    /// Process env is global; these tests mutate it and must not run concurrently.
+    static ENV_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     // T-STR-01: Without SENTINEL_API_TOKEN, no HTTP connection is made.
     //
@@ -86,6 +90,7 @@ mod tests {
     // so None here provably prevents all HTTP connections.
     #[test]
     fn test_no_token_returns_none() {
+        let _lock = ENV_TEST_LOCK.lock().unwrap();
         // SAFETY: single-threaded test; no concurrent env access.
         unsafe {
             std::env::remove_var("SENTINEL_API_TOKEN");
@@ -98,6 +103,7 @@ mod tests {
 
     #[test]
     fn test_empty_token_returns_none() {
+        let _lock = ENV_TEST_LOCK.lock().unwrap();
         // SAFETY: single-threaded test; no concurrent env access.
         unsafe {
             std::env::set_var("SENTINEL_API_TOKEN", "");
@@ -115,6 +121,7 @@ mod tests {
     // T-STR-07: a non-empty token returns Some with the correct token and default URL.
     #[test]
     fn test_valid_token_returns_some_with_defaults() {
+        let _lock = ENV_TEST_LOCK.lock().unwrap();
         // SAFETY: single-threaded test; no concurrent env access.
         unsafe {
             std::env::set_var("SENTINEL_API_TOKEN", "my-test-token");
@@ -134,6 +141,7 @@ mod tests {
     // T-STR-08: SENTINEL_API_URL overrides the default API base URL.
     #[test]
     fn test_api_url_env_override() {
+        let _lock = ENV_TEST_LOCK.lock().unwrap();
         // SAFETY: single-threaded test; no concurrent env access.
         unsafe {
             std::env::set_var("SENTINEL_API_TOKEN", "tok");

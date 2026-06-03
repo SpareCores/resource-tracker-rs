@@ -19,6 +19,21 @@
 - Register `vultr::probe` in `PROBES` (after UpCloud, before AliCloud); update
   precedence comment.
 
+### Sentinel env-var unit tests: serialize under parallel `cargo test`
+
+#### Root cause
+
+`sentinel::tests::test_api_url_env_override` and
+`test_valid_token_returns_some_with_defaults` could fail intermittently when
+`cargo test` ran with default parallel threads: all four `SentinelClient::from_env`
+tests mutate process-global `SENTINEL_API_TOKEN` / `SENTINEL_API_URL`, so one test
+could remove the token while another still expected it.
+
+#### Fix
+
+- **`src/sentinel/mod.rs`**: guard env-mutating tests with a module-level
+  `ENV_TEST_LOCK` mutex so they never run concurrently.
+
 ## [0.1.11] - 2026-06-03
 
 ### Sentinel upload thread: avoid ureq DNS helper threads under PID limits
