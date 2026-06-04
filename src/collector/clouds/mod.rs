@@ -96,7 +96,6 @@ pub fn probe_cloud() -> CloudInfo {
 ///
 /// Returns `None` when no thread could be created; the caller should invoke
 /// [`probe_cloud`] on the main thread after warm-up instead.
-#[allow(dead_code)]
 pub fn spawn_cloud_discovery() -> Option<std::thread::JoinHandle<CloudInfo>> {
     crate::thread_util::spawn_named("cloud-discovery", probe_cloud)
 }

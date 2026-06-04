@@ -6,7 +6,7 @@ pub mod host;
 pub mod memory;
 pub mod network;
 
-pub use clouds::probe_cloud;
+pub use clouds::{probe_cloud, spawn_cloud_discovery};
 pub use cpu::CpuCollector;
 pub use disk::DiskCollector;
 pub use gpu::GpuCollector;

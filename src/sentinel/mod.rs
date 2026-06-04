@@ -20,6 +20,10 @@ const DEFAULT_API_BASE: &str = "https://api.sentinel.sparecores.net";
 /// HTTP timeout for Sentinel API calls (not S3 uploads, which are separate).
 const API_TIMEOUT_SECS: u64 = 30;
 
+/// Per-phase timeouts for the background S3 upload agent (no global timeout).
+const UPLOAD_CONNECT_TIMEOUT_SECS: u64 = 10;
+const UPLOAD_RECV_RESPONSE_TIMEOUT_SECS: u64 = 30;
+
 // ---------------------------------------------------------------------------
 // SentinelClient
 // ---------------------------------------------------------------------------
@@ -62,12 +66,17 @@ impl SentinelClient {
 
     /// HTTP agent for the background S3 upload loop.
     ///
-    /// Unlike [`Self::from_env`]'s agent, this has no global timeout so ureq's DNS
-    /// resolver uses the synchronous path and does not spawn a helper thread per
-    /// request (see ureq `DefaultResolver`: thread spawn only when a timeout is set).
-    /// That avoids EAGAIN panics when the cgroup PID budget is already full.
+    /// Unlike [`Self::from_env`]'s agent, this has no [`UreqConfig::timeout_global`]
+    /// so ureq's DNS resolver uses the synchronous path and does not spawn a helper
+    /// thread per lookup (ureq only spawns for resolve when Global/PerCall/Resolve
+    /// timeouts apply; connect/recv timeouts do not). Per-phase timeouts still bound
+    /// stalled connects and response headers without unbounded hangs.
     pub fn new_upload_agent() -> ureq::Agent {
-        UreqConfig::builder().build().new_agent()
+        UreqConfig::builder()
+            .timeout_connect(Some(Duration::from_secs(UPLOAD_CONNECT_TIMEOUT_SECS)))
+            .timeout_recv_response(Some(Duration::from_secs(UPLOAD_RECV_RESPONSE_TIMEOUT_SECS)))
+            .build()
+            .new_agent()
     }
 }
 

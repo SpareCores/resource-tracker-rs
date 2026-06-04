@@ -11,7 +11,7 @@ extern crate libc;
 
 use collector::{
     CpuCollector, DiskCollector, GpuCollector, MemoryCollector, NetworkCollector,
-    collect_host_info, probe_cloud,
+    collect_host_info, probe_cloud, spawn_cloud_discovery,
 };
 use config::{Config, OutputFormat};
 use metrics::Sample;
@@ -156,13 +156,17 @@ fn main() {
     // Host discovery: fast, local, no I/O.
     let host_info = collect_host_info(&initial_gpus);
 
-    // Warm-up: prime delta state in stateful collectors, probe cloud metadata,
-    // then sleep for the remainder of one interval.
+    // Warm-up: prime delta state in stateful collectors while cloud probes (if a
+    // background thread was spawned) run in parallel with the interval sleep.
+    let cloud_handle = spawn_cloud_discovery();
     let _ = cpu.collect();
     let _ = network.collect();
     let _ = disk.collect();
-    let cloud_info = probe_cloud();
     std::thread::sleep(interval);
+    let cloud_info = match cloud_handle {
+        Some(h) => h.join().unwrap_or_default(),
+        None => probe_cloud(),
+    };
 
     // -----------------------------------------------------------------------
     // Shell-wrapper mode: spawn the tracked command after warm-up / cloud probe.

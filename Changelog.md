@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.12] - 2026-06-04
+
+### PR review follow-ups (PID limits and Sentinel upload)
+
+- **`src/main.rs`**: restore `spawn_cloud_discovery` overlapping the warm-up sleep;
+  run serial `probe_cloud` only when the discovery thread could not be spawned,
+  and only after the sleep (avoids up to 7 s extra startup latency on non-cloud
+  hosts under tight PID limits).
+- **`SentinelClient::new_upload_agent()`**: keep DNS on the upload thread (no
+  `timeout_global`); add `timeout_connect` (10 s) and `timeout_recv_response`
+  (30 s) so stalled S3 uploads are bounded without ureq's per-lookup resolver
+  helper thread.
+- **`spawn_cloud_discovery`**: re-exported from `collector`; removed
+  `#[allow(dead_code)]`.
+
 ## [0.1.11] - 2026-06-03
 
 ### Sentinel upload thread: avoid ureq DNS helper threads under PID limits
