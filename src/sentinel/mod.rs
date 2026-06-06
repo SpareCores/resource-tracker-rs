@@ -17,7 +17,9 @@ use ureq::config::Config as UreqConfig;
 /// Default Sentinel API base URL.  Override with `SENTINEL_API_URL`.
 const DEFAULT_API_BASE: &str = "https://api.sentinel.sparecores.net";
 
-/// HTTP timeout for Sentinel API calls (not S3 uploads, which are separate).
+/// Per-phase timeouts for Sentinel API calls (no global timeout to avoid ureq DNS helper threads).
+const API_CONNECT_TIMEOUT_SECS: u64 = 10;
+/// Receive-response timeout for Sentinel API calls.
 const API_TIMEOUT_SECS: u64 = 30;
 
 /// Per-phase timeouts for the background S3 upload agent (no global timeout).
@@ -53,7 +55,8 @@ impl SentinelClient {
             std::env::var("SENTINEL_API_URL").unwrap_or_else(|_| DEFAULT_API_BASE.to_string());
 
         let agent = UreqConfig::builder()
-            .timeout_global(Some(Duration::from_secs(API_TIMEOUT_SECS)))
+            .timeout_connect(Some(Duration::from_secs(API_CONNECT_TIMEOUT_SECS)))
+            .timeout_recv_response(Some(Duration::from_secs(API_TIMEOUT_SECS)))
             .build()
             .new_agent();
 
@@ -66,11 +69,10 @@ impl SentinelClient {
 
     /// HTTP agent for the background S3 upload loop.
     ///
-    /// Unlike [`Self::from_env`]'s agent, this has no [`UreqConfig::timeout_global`]
-    /// so ureq's DNS resolver uses the synchronous path and does not spawn a helper
-    /// thread per lookup (ureq only spawns for resolve when Global/PerCall/Resolve
-    /// timeouts apply; connect/recv timeouts do not). Per-phase timeouts still bound
-    /// stalled connects and response headers without unbounded hangs.
+    /// Like [`Self::from_env`]'s agent, this uses per-phase timeouts only (no
+    /// `timeout_global`) so ureq's DNS resolver stays synchronous and does not
+    /// spawn a helper thread per lookup. Upload-specific bounds differ from the
+    /// API agent's because S3 PUTs can transfer larger payloads.
     pub fn new_upload_agent() -> ureq::Agent {
         UreqConfig::builder()
             .timeout_connect(Some(Duration::from_secs(UPLOAD_CONNECT_TIMEOUT_SECS)))
@@ -138,6 +140,53 @@ mod tests {
         let client = result.expect("expected Some when SENTINEL_API_TOKEN is non-empty");
         assert_eq!(client.token, "my-test-token");
         assert_eq!(client.api_base, DEFAULT_API_BASE);
+    }
+
+    // T-NPROC-04: new_upload_agent() must not trigger a DNS resolver helper thread.
+    // S3 upload URLs require DNS resolution.  A timeout_global would cause ureq to
+    // spawn a helper thread per lookup, which panics under tight cgroup pids.max.
+    // The request fails immediately (NXDOMAIN); we only check for absence of panic.
+    #[test]
+    fn test_upload_agent_does_not_panic_under_nproc_limit() {
+        let threads: libc::rlim_t = match std::fs::read_to_string("/proc/self/status")
+            .ok()
+            .and_then(|s| {
+                s.lines()
+                    .find(|l| l.starts_with("Threads:"))
+                    .and_then(|l| l.split_whitespace().nth(1).and_then(|v| v.parse().ok()))
+            }) {
+            Some(n) => n,
+            None => return,
+        };
+        let mut old = libc::rlimit {
+            rlim_cur: 0,
+            rlim_max: 0,
+        };
+        if unsafe { libc::prlimit(0, libc::RLIMIT_NPROC, std::ptr::null(), &mut old) } != 0 {
+            return;
+        }
+        let tight = libc::rlimit {
+            rlim_cur: threads,
+            rlim_max: old.rlim_max,
+        };
+        if unsafe { libc::prlimit(0, libc::RLIMIT_NPROC, &tight, std::ptr::null_mut()) } != 0 {
+            return;
+        }
+
+        // Use an S3-style hostname that requires DNS resolution.  The request
+        // will fail (NXDOMAIN); we only verify no thread spawn panic occurs.
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let agent = SentinelClient::new_upload_agent();
+            let _ = agent.get("http://s3.amazonaws.com.invalid/").call();
+        }));
+
+        unsafe { libc::prlimit(0, libc::RLIMIT_NPROC, &old, std::ptr::null_mut()) };
+
+        assert!(
+            result.is_ok(),
+            "new_upload_agent() triggered a thread spawn under tight RLIMIT_NPROC; \
+             check that timeout_global is not set"
+        );
     }
 
     // T-STR-08: SENTINEL_API_URL overrides the default API base URL.
