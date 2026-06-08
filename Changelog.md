@@ -1,5 +1,65 @@
 # Changelog
 
+## [0.1.13] - 2026-06-08
+
+### Non-blocking cloud discovery, thread-count regression guard, and Linux gate
+
+#### Non-blocking cloud discovery (`src/collector/clouds/mod.rs`, `src/main.rs`)
+
+`spawn_cloud_discovery` now returns `Option<std::sync::mpsc::Receiver<CloudInfo>>`
+instead of `Option<JoinHandle<CloudInfo>>`. The background thread sends its result
+via channel; the caller uses non-blocking `try_recv()` rather than blocking
+`join()`. The first metric sample emits after `warm-up + interval` with no wait on
+cloud probe completion.
+
+- **Pure metric runs** (no `SENTINEL_API_TOKEN`): zero startup delay from cloud
+  probes in all cases.
+- **Sentinel runs**: a `recv_timeout(3 s)` bounded wait is inserted immediately
+  before `start_run` so the run record carries cloud metadata. IMDS probes run in
+  parallel and complete within `IMDS_TIMEOUT` (1 s); the 3 s ceiling is a safety
+  margin for unusual network paths only.
+- **PID-limited runs** (thread spawn fails): `spawn_cloud_discovery` returns `None`;
+  cloud info stays `CloudInfo::default()` for the entire run with no blocking serial
+  fallback on the startup path.
+- **Per-tick poll**: the collection loop calls `try_recv()` each iteration to drain
+  the channel and update `cloud_info` once the background probe completes.
+- `probe_cloud` removed from the `collector` module re-export (`src/collector/mod.rs`)
+  as it is no longer called from outside the `clouds` submodule.
+- T-CLD-01 (`test_first_sample_arrives_within_3s`) bound tightened from `< 5 s` to
+  `< 3 s` to reflect the non-blocking guarantee.
+
+#### Thread-count regression guard (T-UREQ-01) (`src/collector/clouds/mod.rs`)
+
+Added `test_per_phase_timeout_no_helper_thread` (Linux-only, `#[cfg(target_os =
+"linux")]`). The test verifies that HTTP requests made with `new_imds_agent()`
+(per-phase timeouts) do not spawn extra threads beyond the request thread itself.
+
+Implementation notes:
+- A slow mock server (200 ms response delay) holds the connection open so any
+  short-lived helper thread is still alive when the thread count is sampled
+  mid-request. A post-request sleep would miss threads that exit before it fires.
+- Thread count is read from `/proc/self/status` (`Threads:` field).
+- Assertion: `during <= baseline + 1` (the request thread is the only allowed
+  addition).
+- A planned T-UREQ-02 negative control (asserting `timeout_global` spawns an extra
+  thread) was implemented and run; it produced `during = baseline + 1` in both
+  cases. ureq 3.x does not spawn additional threads for `timeout_global` on HTTP
+  connections -- the DNS helper thread hypothesis was incorrect. T-UREQ-02 was not
+  added. The per-phase approach is retained because it provides explicit phase-level
+  bounds without relying on undocumented ureq internals. The comment in
+  `new_imds_agent` was corrected accordingly.
+
+#### Linux-only compile gate (`src/main.rs`)
+
+Added at the crate root:
+```rust
+#[cfg(not(target_os = "linux"))]
+compile_error!("resource-tracker only supports Linux; /proc and cgroup interfaces are Linux-specific.");
+```
+Attempting to build for a non-Linux target now produces one clear error at compile
+time rather than cascading failures from the `/proc` and `/sys/fs/cgroup` reads
+throughout the codebase.
+
 ## [0.1.12] - 2026-06-04
 
 ### PR review follow-ups (PID limits and Sentinel upload)

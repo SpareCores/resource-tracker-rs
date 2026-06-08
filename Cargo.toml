@@ -1,6 +1,6 @@
 [package]
 name = "resource-tracker"
-version = "0.1.12"
+version = "0.1.13"
 edition = "2024"
 description = "Lightweight Linux resource and GPU tracker for system and process monitoring."
 license = "MPL-2.0"
@@ -58,5 +58,3 @@ lto = true           # link-time optimization
 codegen-units = 1    # better dead-code elimination
 strip = true         # strip symbols
 panic = "abort"      # smaller panic handler
-
-
