@@ -137,25 +137,36 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // T-UREQ-01: ureq thread-count regression guard (architecture-specific)
+    // T-UREQ-01: ureq thread-count regression guard
     // -----------------------------------------------------------------------
     //
     // Verifies that requests made with new_imds_agent() (per-phase timeouts)
-    // do not spawn threads beyond the architecture-expected ceiling. Guards
-    // against ureq version bumps that could increase per-request thread
-    // creation, consuming PID budget under tight pids.max limits.
+    // do not spawn extra threads beyond the request thread itself. Guards
+    // against ureq version bumps that increase per-request thread creation,
+    // consuming PID budget under tight pids.max limits.
     //
     // Linux-only: thread count is read from /proc/self/status.
-    // A slow mock server (200 ms response delay) holds the connection open so
-    // any short-lived helper thread is still alive when we sample mid-request.
+    // A slow mock server (200 ms delay) holds the connection open so any
+    // short-lived helper thread is alive when we sample mid-request.
     //
-    // x86_64: during = baseline + 1 (request thread only; localhost resolves
-    //         from /etc/hosts without any additional system thread).
-    // aarch64: during = baseline + 2 (request thread + one glibc NSS resolver
-    //          thread; OS/libc behavior, not a ureq internal).
+    // The URL uses 127.0.0.1 (numeric IP), NOT "localhost". Rust's
+    // ToSocketAddrs resolves numeric IPs via IpAddr::from_str without calling
+    // getaddrinfo -- no NSS stack, no systemd-resolved IPC, no resolver
+    // plugin on any platform. Using "localhost" caused GitHub Actions CI
+    // runners (both x86_64 and aarch64) to spawn a systemd-resolved NSS
+    // worker thread (Ubuntu 24.04 default: hosts: files resolve dns), inflating
+    // the count to baseline+2 and producing false CI failures. Local machines
+    // with hosts: files dns (no resolve plugin) did not reproduce this.
+    // Using 127.0.0.1 also matches production: all IMDS endpoints are
+    // link-local IPs (169.254.169.254), never hostnames.
+    //
+    // Expected on all Linux configurations: during = baseline + 1.
+    //
+    // The panic message includes /proc/self/task/*/comm thread names so any
+    // future CI failure is self-diagnosing without a second investigation round.
     //
     // NOTE: A timeout_global negative control is not practical: ureq 3.x does
-    // not spawn extra threads for timeout_global on HTTP connections to localhost.
+    // not spawn extra threads for timeout_global on HTTP connections to IPs.
 
     /// Read the `Threads:` field from /proc/self/status.
     #[cfg(target_os = "linux")]
@@ -187,15 +198,12 @@ mod tests {
         port
     }
 
-    // x86_64: only the request thread itself; localhost resolves from /etc/hosts
-    // without any additional system thread. If this fails after a ureq version
-    // bump, review the agent configuration and consider pinning ureq.
-    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    #[cfg(target_os = "linux")]
     #[test]
     fn test_per_phase_timeout_no_helper_thread() {
         use std::sync::mpsc;
         let port = slow_mock_server(Duration::from_millis(200));
-        let url = format!("http://localhost:{port}");
+        let url = format!("http://127.0.0.1:{port}");
         let baseline = thread_count();
         let (done_tx, done_rx) = mpsc::channel::<()>();
         std::thread::spawn(move || {
@@ -206,36 +214,19 @@ mod tests {
         std::thread::sleep(Duration::from_millis(50));
         let during = thread_count();
         done_rx.recv().unwrap();
+        let pid = std::process::id();
+        let thread_names: Vec<String> =
+            std::fs::read_dir(format!("/proc/{pid}/task"))
+                .into_iter()
+                .flatten()
+                .filter_map(|e| e.ok())
+                .filter_map(|e| std::fs::read_to_string(e.path().join("comm")).ok())
+                .map(|s| s.trim().to_string())
+                .collect();
         assert!(
             during <= baseline + 1,
-            "ureq spawned extra thread(s) under per-phase timeout (x86_64): \
-             baseline={baseline} during={during}"
-        );
-    }
-
-    // aarch64: request thread + one glibc NSS resolver thread (OS/libc behavior,
-    // not a ureq internal). Ceiling is baseline + 2; baseline + 3 or more would
-    // indicate a ureq regression.
-    #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
-    #[test]
-    fn test_per_phase_timeout_no_helper_thread() {
-        use std::sync::mpsc;
-        let port = slow_mock_server(Duration::from_millis(200));
-        let url = format!("http://localhost:{port}");
-        let baseline = thread_count();
-        let (done_tx, done_rx) = mpsc::channel::<()>();
-        std::thread::spawn(move || {
-            let agent = new_imds_agent();
-            let _ = agent.get(&url).call();
-            let _ = done_tx.send(());
-        });
-        std::thread::sleep(Duration::from_millis(50));
-        let during = thread_count();
-        done_rx.recv().unwrap();
-        assert!(
-            during <= baseline + 2,
-            "ureq spawned extra thread(s) under per-phase timeout (aarch64): \
-             baseline={baseline} during={during}"
+            "ureq spawned extra thread(s) under per-phase timeout: \
+             baseline={baseline} during={during} threads={thread_names:?}"
         );
     }
 }
