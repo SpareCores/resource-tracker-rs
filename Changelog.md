@@ -1,30 +1,5 @@
 # Changelog
 
-## [Unreleased]
-
-### Fix two panics on GPU / unusual-disk hosts
-
-#### `src/collector/disk.rs` -- zero-sector capacity filter
-
-- Added `.filter(|&sectors| sectors > 0)` in `read_device_info` before
-  multiplying sector count by `SECTOR_BYTES`. Devices that report 0 sectors in
-  `/sys/block/<dev>/size` (e.g. virtual or removable block devices with no
-  media) now emit `capacity_bytes: null` instead of `capacity_bytes: 0`,
-  satisfying the invariant tested by `T-DSK-03`.
-
-#### `tests/smoke.rs` -- `test_csv_process_gpu_columns_parse` (T-GPU-P4)
-
-- Replaced the stale "always empty" assertion for `process_gpu_usage` with a
-  two-branch check keyed off the `process_gpu_vram_mib` column (the reliable
-  GPU-presence sentinel in this CSV test path):
-  - CPU-only host: `process_gpu_usage` and `process_gpu_utilized` must both be
-    empty.
-  - GPU host: `process_gpu_usage` must be present and parse as a non-negative
-    `f64`; `process_gpu_utilized` must parse as a `u32` when non-empty.
-- The old comment "NVML per-process util unavailable" was stale; the collector
-  has reported per-process SM utilization via `nvmlDeviceGetProcessUtilization`
-  (NVIDIA) and DRM fdinfo (AMD) since the GPU support was added.
-
 ## [0.1.14] - 2026-06-09
 
 ### Vultr cloud metadata support
@@ -58,6 +33,29 @@ could remove the token while another still expected it.
 
 - **`src/sentinel/mod.rs`**: guard env-mutating tests with a module-level
   `ENV_TEST_LOCK` mutex so they never run concurrently.
+
+### Fix two panics on GPU / unusual-disk hosts
+
+#### `src/collector/disk.rs` -- zero-sector capacity filter
+
+- Added `.filter(|&sectors| sectors > 0)` in `read_device_info` before
+  multiplying sector count by `SECTOR_BYTES`. Devices that report 0 sectors in
+  `/sys/block/<dev>/size` (e.g. virtual or removable block devices with no
+  media) now emit `capacity_bytes: null` instead of `capacity_bytes: 0`,
+  satisfying the invariant tested by `T-DSK-03`.
+
+#### `tests/smoke.rs` -- `test_csv_process_gpu_columns_parse` (T-GPU-P4)
+
+- Replaced the stale "always empty" assertion for `process_gpu_usage` with a
+  two-branch check keyed off the `process_gpu_vram_mib` column (the reliable
+  GPU-presence sentinel in this CSV test path):
+  - CPU-only host: `process_gpu_usage` and `process_gpu_utilized` must both be
+    empty.
+  - GPU host: `process_gpu_usage` must be present and parse as a non-negative
+    `f64`; `process_gpu_utilized` must parse as a `u32` when non-empty.
+- The old comment "NVML per-process util unavailable" was stale; the collector
+  has reported per-process SM utilization via `nvmlDeviceGetProcessUtilization`
+  (NVIDIA) and DRM fdinfo (AMD) since the GPU support was added.
 
 ## [0.1.13] - 2026-06-08
 
