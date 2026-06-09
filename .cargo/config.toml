@@ -1,4 +1,6 @@
-[test]
-# Mock TCP server tests bind ephemeral ports; running them in parallel
-# causes port/resource races. Enforce single-threaded test execution.
-threads = 1
+[env]
+# Mock TCP server tests bind ephemeral ports and T-UREQ-01 counts live
+# threads mid-request; both require serial test execution. [test] threads
+# is not a valid Cargo config key -- it is silently ignored. The correct
+# mechanism is RUST_TEST_THREADS, which the compiled test binary reads.
+RUST_TEST_THREADS = { value = "1", force = true }
