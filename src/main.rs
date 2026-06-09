@@ -1,5 +1,10 @@
 #![doc = include_str!("../README.md")]
 
+#[cfg(not(target_os = "linux"))]
+compile_error!(
+    "resource-tracker only supports Linux; /proc and cgroup interfaces are Linux-specific."
+);
+
 mod collector;
 mod config;
 mod metrics;
@@ -11,9 +16,10 @@ extern crate libc;
 
 use collector::{
     CpuCollector, DiskCollector, GpuCollector, MemoryCollector, NetworkCollector,
-    collect_host_info, probe_cloud,
+    collect_host_info, spawn_cloud_discovery,
 };
 use config::{Config, OutputFormat};
+use metrics::CloudInfo;
 use metrics::Sample;
 use sentinel::{BatchUploader, RunContext, SentinelClient, close_run, samples_to_csv, start_run};
 use std::io::Write;
@@ -156,13 +162,21 @@ fn main() {
     // Host discovery: fast, local, no I/O.
     let host_info = collect_host_info(&initial_gpus);
 
-    // Warm-up: prime delta state in stateful collectors, probe cloud metadata,
-    // then sleep for the remainder of one interval.
+    // Warm-up: prime delta state in stateful collectors while cloud probes run
+    // in the background. spawn_cloud_discovery returns a channel Receiver so
+    // the caller never blocks on probe completion -- try_recv() picks up the
+    // result if probes finished during the sleep, or leaves cloud_info as None
+    // to be resolved later (per-tick poll in the main loop, or recv_timeout
+    // before start_run for Sentinel runs).
+    let cloud_rx = spawn_cloud_discovery();
     let _ = cpu.collect();
     let _ = network.collect();
     let _ = disk.collect();
-    let cloud_info = probe_cloud();
     std::thread::sleep(interval);
+    // Non-blocking: on most non-cloud machines all probes fail fast
+    // (EHOSTUNREACH); on cloud machines the matching probe returns in < 100 ms.
+    // Either way the result is typically waiting by the time we reach here.
+    let mut cloud_info: Option<CloudInfo> = cloud_rx.as_ref().and_then(|rx| rx.try_recv().ok());
 
     // -----------------------------------------------------------------------
     // Shell-wrapper mode: spawn the tracked command after warm-up / cloud probe.
@@ -190,6 +204,17 @@ fn main() {
     let (run_ctx_arc, sample_buffer, upload_shutdown_flag, upload_handle) = match &sentinel {
         None => (None, None, None, None),
         Some(client) => {
+            // Bounded wait: give cloud discovery a chance to complete before
+            // start_run so the run record carries cloud metadata. IMDS probes
+            // run in parallel and finish within IMDS_TIMEOUT (1 s); 3 s is a
+            // generous ceiling for unusual network paths. Pure metric runs
+            // (no Sentinel token) skip this entirely.
+            if cloud_info.is_none() {
+                if let Some(ref rx) = cloud_rx {
+                    cloud_info = rx.recv_timeout(Duration::from_secs(3)).ok();
+                }
+            }
+            let default_cloud = CloudInfo::default();
             match start_run(
                 &client.agent,
                 &client.api_base,
@@ -197,7 +222,7 @@ fn main() {
                 &config.metadata,
                 config.pid,
                 &host_info,
-                &cloud_info,
+                cloud_info.as_ref().unwrap_or(&default_cloud),
             ) {
                 Err(e) => {
                     eprintln!("warn: sentinel start_run failed: {e}; streaming disabled");
@@ -245,6 +270,18 @@ fn main() {
     // Main sampling loop
     // -----------------------------------------------------------------------
     loop {
+        // Poll for cloud discovery result if not yet received. Typically a
+        // no-op because probes complete within IMDS_TIMEOUT and the warm-up
+        // sleep covers that window. Ensures the channel is drained and
+        // cloud_info is populated for any future use.
+        if cloud_info.is_none() {
+            if let Some(ref rx) = cloud_rx {
+                if let Ok(info) = rx.try_recv() {
+                    cloud_info = Some(info);
+                }
+            }
+        }
+
         let loop_start = Instant::now();
 
         // Actual elapsed since the previous iteration started.  None on the
