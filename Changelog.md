@@ -48,6 +48,14 @@ Implementation notes:
   added. The per-phase approach is retained because it provides explicit phase-level
   bounds without relying on undocumented ureq internals. The comment in
   `new_imds_agent` was corrected accordingly.
+- **ARM CI fix**: CI on `ubuntu-24.04-arm` revealed that on aarch64, glibc's NSS
+  resolver briefly involves one additional thread even for `localhost` lookups,
+  regardless of ureq's timeout configuration (`during = baseline + 2` on ARM vs
+  `baseline + 1` on x86_64). The test is now split into two architecture-gated
+  variants: `#[cfg(all(target_os = "linux", target_arch = "x86_64"))]` asserts
+  `<= baseline + 1`; `#[cfg(all(target_os = "linux", target_arch = "aarch64"))]`
+  asserts `<= baseline + 2`. Each variant preserves the tightest possible regression
+  guard for its architecture.
 
 #### Linux-only compile gate (`src/main.rs`)
 
