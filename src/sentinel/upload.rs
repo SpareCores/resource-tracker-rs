@@ -105,8 +105,8 @@ impl BatchUploader {
         agent: ureq::Agent,
         api_base: String,
         token: String,
-    ) -> std::thread::JoinHandle<Vec<String>> {
-        std::thread::spawn(move || {
+    ) -> Option<std::thread::JoinHandle<Vec<String>>> {
+        crate::thread_util::spawn_named("sentinel-upload", move || {
             let mut region_cache = RegionCache::new();
             let mut seq: u32 = 0;
             let mut consecutive_failures: u32 = 0;
@@ -321,12 +321,14 @@ mod tests {
             .new_agent();
 
         // Buffer is empty so the thread will never attempt an upload.
-        let handle = uploader.spawn(
-            ctx,
-            agent,
-            "http://127.0.0.1:1".to_string(),
-            "token".to_string(),
-        );
+        let handle = uploader
+            .spawn(
+                ctx,
+                agent,
+                "http://127.0.0.1:1".to_string(),
+                "token".to_string(),
+            )
+            .expect("upload thread must spawn in test");
 
         // Signal shutdown immediately and measure how long join takes.
         let t0 = Instant::now();
@@ -441,12 +443,14 @@ mod tests {
         // Signal shutdown before spawning so the thread skips the sleep phase.
         flag.store(true, Ordering::Relaxed);
 
-        let handle = uploader.spawn(
-            ctx,
-            agent,
-            "http://127.0.0.1:1".to_string(),
-            "token".to_string(),
-        );
+        let handle = uploader
+            .spawn(
+                ctx,
+                agent,
+                "http://127.0.0.1:1".to_string(),
+                "token".to_string(),
+            )
+            .expect("upload thread must spawn in test");
 
         let t0 = Instant::now();
         handle.join().expect("upload thread panicked");
@@ -511,12 +515,14 @@ mod tests {
         // Signal shutdown before spawning: the thread processes one batch then exits.
         flag.store(true, Ordering::Relaxed);
 
-        let handle = uploader.spawn(
-            Arc::clone(&ctx_arc),
-            agent.clone(),
-            api_base.clone(),
-            token.clone(),
-        );
+        let handle = uploader
+            .spawn(
+                Arc::clone(&ctx_arc),
+                agent.clone(),
+                api_base.clone(),
+                token.clone(),
+            )
+            .expect("upload thread must spawn in test");
         let uris = handle.join().expect("upload thread panicked");
         eprintln!("T-UPL-INT-01: uris={uris:?}");
 
@@ -597,12 +603,14 @@ mod tests {
 
         flag.store(true, Ordering::Relaxed);
 
-        let handle = uploader.spawn(
-            Arc::clone(&ctx_arc),
-            agent.clone(),
-            api_base.clone(),
-            token.clone(),
-        );
+        let handle = uploader
+            .spawn(
+                Arc::clone(&ctx_arc),
+                agent.clone(),
+                api_base.clone(),
+                token.clone(),
+            )
+            .expect("upload thread must spawn in test");
         let uris = handle.join().expect("upload thread panicked");
         eprintln!("T-UPL-INT-02: uris={uris:?}");
 
@@ -664,12 +672,14 @@ mod tests {
         // then exit on the shutdown check.
         flag.store(true, Ordering::Relaxed);
 
-        let handle = uploader.spawn(
-            ctx,
-            agent,
-            "http://127.0.0.1:1".to_string(),
-            "token".to_string(),
-        );
+        let handle = uploader
+            .spawn(
+                ctx,
+                agent,
+                "http://127.0.0.1:1".to_string(),
+                "token".to_string(),
+            )
+            .expect("upload thread must spawn in test");
 
         let t0 = Instant::now();
         handle.join().expect("upload thread panicked");
@@ -733,12 +743,14 @@ mod tests {
             .build()
             .new_agent();
 
-        let handle = uploader.spawn(
-            ctx,
-            agent,
-            "http://127.0.0.1:1".to_string(),
-            "token".to_string(),
-        );
+        let handle = uploader
+            .spawn(
+                ctx,
+                agent,
+                "http://127.0.0.1:1".to_string(),
+                "token".to_string(),
+            )
+            .expect("upload thread must spawn in test");
 
         // Let the thread execute at least two empty-buffer iterations (2 × 250 ms).
         std::thread::sleep(Duration::from_millis(700));
@@ -797,12 +809,14 @@ mod tests {
         let (uploader, buf) = BatchUploader::new(0, 1);
         let flag = uploader.shutdown_flag();
 
-        let handle = uploader.spawn(
-            Arc::clone(&ctx),
-            agent,
-            "http://127.0.0.1:1".to_string(),
-            "token".to_string(),
-        );
+        let handle = uploader
+            .spawn(
+                Arc::clone(&ctx),
+                agent,
+                "http://127.0.0.1:1".to_string(),
+                "token".to_string(),
+            )
+            .expect("upload thread must spawn in test");
 
         // Each batch takes ≤10 s: region detection (~2 s first time) +
         // 3 × 50 ms agent timeout + 2 s + 4 s retry back-off.

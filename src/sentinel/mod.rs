@@ -17,8 +17,14 @@ use ureq::config::Config as UreqConfig;
 /// Default Sentinel API base URL.  Override with `SENTINEL_API_URL`.
 const DEFAULT_API_BASE: &str = "https://api.sentinel.sparecores.net";
 
-/// HTTP timeout for Sentinel API calls (not S3 uploads, which are separate).
+/// Per-phase timeouts for Sentinel API calls (no global timeout to avoid ureq DNS helper threads).
+const API_CONNECT_TIMEOUT_SECS: u64 = 10;
+/// Receive-response timeout for Sentinel API calls.
 const API_TIMEOUT_SECS: u64 = 30;
+
+/// Per-phase timeouts for the background S3 upload agent (no global timeout).
+const UPLOAD_CONNECT_TIMEOUT_SECS: u64 = 10;
+const UPLOAD_RECV_RESPONSE_TIMEOUT_SECS: u64 = 30;
 
 // ---------------------------------------------------------------------------
 // SentinelClient
@@ -49,7 +55,8 @@ impl SentinelClient {
             std::env::var("SENTINEL_API_URL").unwrap_or_else(|_| DEFAULT_API_BASE.to_string());
 
         let agent = UreqConfig::builder()
-            .timeout_global(Some(Duration::from_secs(API_TIMEOUT_SECS)))
+            .timeout_connect(Some(Duration::from_secs(API_CONNECT_TIMEOUT_SECS)))
+            .timeout_recv_response(Some(Duration::from_secs(API_TIMEOUT_SECS)))
             .build()
             .new_agent();
 
@@ -58,6 +65,20 @@ impl SentinelClient {
             api_base,
             agent,
         })
+    }
+
+    /// HTTP agent for the background S3 upload loop.
+    ///
+    /// Like [`Self::from_env`]'s agent, this uses per-phase timeouts only (no
+    /// `timeout_global`) so ureq's DNS resolver stays synchronous and does not
+    /// spawn a helper thread per lookup. Upload-specific bounds differ from the
+    /// API agent's because S3 PUTs can transfer larger payloads.
+    pub fn new_upload_agent() -> ureq::Agent {
+        UreqConfig::builder()
+            .timeout_connect(Some(Duration::from_secs(UPLOAD_CONNECT_TIMEOUT_SECS)))
+            .timeout_recv_response(Some(Duration::from_secs(UPLOAD_RECV_RESPONSE_TIMEOUT_SECS)))
+            .build()
+            .new_agent()
     }
 }
 

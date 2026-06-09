@@ -18,8 +18,15 @@ mod upcloud;
 const IMDS_TIMEOUT: Duration = Duration::from_secs(1);
 
 fn new_imds_agent() -> ureq::Agent {
+    // Per-phase timeouts instead of timeout_global: timeout_global's thread-
+    // creation behavior is an undocumented ureq internal that could change
+    // across versions. Per-phase timeouts are a safer, more explicit contract:
+    // each phase (connect, recv_response) is bounded independently with no
+    // reliance on ureq internals. T-UREQ-01 verifies no extra threads are
+    // spawned per request (a regression guard against ureq version bumps).
     UreqConfig::builder()
-        .timeout_global(Some(IMDS_TIMEOUT))
+        .timeout_connect(Some(IMDS_TIMEOUT))
+        .timeout_recv_response(Some(IMDS_TIMEOUT))
         .build()
         .new_agent()
 }
@@ -57,16 +64,30 @@ const PROBES: &[fn() -> Option<CloudInfo>] = &[
     ovh::probe,
 ];
 
-/// Run all vendor probes in parallel (one OS thread per vendor).
+/// Run vendor probes; parallel when threads are available, serial fallback otherwise.
 ///
 /// Join order follows the `PROBES` precedence list: the first successful probe
-/// wins and the remaining [`JoinHandle`]s are dropped without joining, so those
-/// threads keep running until their own timeouts (avoids waiting for every
-/// vendor on, e.g., a confirmed AWS host). Each HTTP call uses [`IMDS_TIMEOUT`].
-fn probe_cloud() -> CloudInfo {
-    let handles: Vec<_> = PROBES.iter().map(|&p| std::thread::spawn(p)).collect();
+/// wins. Each HTTP call uses [`IMDS_TIMEOUT`]. Per-vendor threads are only used
+/// when [`crate::thread_util::spawn_named`] succeeds so EAGAIN under tight PID
+/// limits falls back to sequential probes on the caller thread.
+pub fn probe_cloud() -> CloudInfo {
+    let mut handles = Vec::new();
+    let mut deferred = Vec::new();
+
+    for &p in PROBES {
+        match crate::thread_util::spawn_named("cloud-probe", p) {
+            Some(h) => handles.push(h),
+            None => deferred.push(p),
+        }
+    }
+
     for handle in handles {
         if let Ok(Some(info)) = handle.join() {
+            return info;
+        }
+    }
+    for p in deferred {
+        if let Some(info) = p() {
             return info;
         }
     }
@@ -77,10 +98,21 @@ fn probe_cloud() -> CloudInfo {
 ///
 /// Call this **before** the warm-up sleep so probes run **in parallel** with the
 /// main thread's warm-up (stateful collector priming + one `interval` sleep).
-/// Join the handle **after** warm-up to read results; if probes finished during
-/// sleep, `join` returns immediately.
-pub fn spawn_cloud_discovery() -> std::thread::JoinHandle<CloudInfo> {
-    std::thread::spawn(probe_cloud)
+/// Poll the returned [`Receiver`] with `try_recv()` after warm-up; if probes
+/// finished during the sleep the result is waiting immediately.
+///
+/// Returns `None` when no thread could be created (EAGAIN under PID limits); the
+/// caller should treat cloud info as permanently unavailable in that case.
+///
+/// [`Receiver`]: std::sync::mpsc::Receiver
+pub fn spawn_cloud_discovery() -> Option<std::sync::mpsc::Receiver<CloudInfo>> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    // Drop the JoinHandle: the thread detaches and sends its result via tx.
+    // If spawn fails (EAGAIN under PID limits), `?` returns None to the caller.
+    crate::thread_util::spawn_named("cloud-discovery", move || {
+        let _ = tx.send(probe_cloud());
+    })?;
+    Some(rx)
 }
 
 // ---------------------------------------------------------------------------
@@ -95,9 +127,105 @@ mod tests {
     // Each vendor's HTTP calls use IMDS_TIMEOUT; all vendor probes run in parallel.
     #[test]
     fn test_spawn_cloud_discovery_joins_without_panic() {
-        let handle = spawn_cloud_discovery();
-        let _cloud = handle.join().expect("cloud discovery thread panicked");
+        let cloud = match spawn_cloud_discovery() {
+            Some(rx) => rx.recv().unwrap_or_default(),
+            None => probe_cloud(),
+        };
+        let _cloud = cloud;
         // Result may be default (no cloud) or populated (running on a cloud VM).
         // Either outcome is valid; the test only checks for no panic.
+    }
+
+    // -----------------------------------------------------------------------
+    // T-UREQ-01: ureq thread-count regression guard
+    // -----------------------------------------------------------------------
+    //
+    // Verifies that requests made with new_imds_agent() (per-phase timeouts)
+    // do not spawn extra threads beyond the request thread itself. Guards
+    // against ureq version bumps that increase per-request thread creation,
+    // consuming PID budget under tight pids.max limits.
+    //
+    // Linux-only: thread count is read from /proc/self/status.
+    // A slow mock server (200 ms delay) holds the connection open so any
+    // short-lived helper thread is alive when we sample mid-request.
+    //
+    // The URL uses 127.0.0.1 (numeric IP), NOT "localhost". Rust's
+    // ToSocketAddrs resolves numeric IPs via IpAddr::from_str without calling
+    // getaddrinfo -- no NSS stack, no systemd-resolved IPC, no resolver
+    // plugin on any platform. Using "localhost" caused GitHub Actions CI
+    // runners (both x86_64 and aarch64) to spawn a systemd-resolved NSS
+    // worker thread (Ubuntu 24.04 default: hosts: files resolve dns), inflating
+    // the count to baseline+2 and producing false CI failures. Local machines
+    // with hosts: files dns (no resolve plugin) did not reproduce this.
+    // Using 127.0.0.1 also matches production: all IMDS endpoints are
+    // link-local IPs (169.254.169.254), never hostnames.
+    //
+    // Expected on all Linux configurations: during = baseline + 1.
+    //
+    // The panic message includes /proc/self/task/*/comm thread names so any
+    // future CI failure is self-diagnosing without a second investigation round.
+    //
+    // NOTE: A timeout_global negative control is not practical: ureq 3.x does
+    // not spawn extra threads for timeout_global on HTTP connections to IPs.
+
+    /// Read the `Threads:` field from /proc/self/status.
+    #[cfg(target_os = "linux")]
+    fn thread_count() -> usize {
+        std::fs::read_to_string("/proc/self/status")
+            .unwrap_or_default()
+            .lines()
+            .find(|l| l.starts_with("Threads:"))
+            .and_then(|l| l.split_whitespace().nth(1))
+            .and_then(|n| n.parse().ok())
+            .unwrap_or(0)
+    }
+
+    /// Bind a TCP listener on 127.0.0.1:0, spawn a thread that accepts one
+    /// connection, sleeps `delay`, then sends a minimal HTTP 200 response.
+    /// Returns the port number.
+    #[cfg(target_os = "linux")]
+    fn slow_mock_server(delay: std::time::Duration) -> u16 {
+        use std::io::Write;
+        use std::net::TcpListener;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            if let Ok((mut s, _)) = listener.accept() {
+                std::thread::sleep(delay);
+                let _ = s.write_all(b"HTTP/1.0 200 OK\r\nContent-Length: 0\r\n\r\n");
+            }
+        });
+        port
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn test_per_phase_timeout_no_helper_thread() {
+        use std::sync::mpsc;
+        let port = slow_mock_server(Duration::from_millis(200));
+        let url = format!("http://127.0.0.1:{port}");
+        let baseline = thread_count();
+        let (done_tx, done_rx) = mpsc::channel::<()>();
+        std::thread::spawn(move || {
+            let agent = new_imds_agent();
+            let _ = agent.get(&url).call();
+            let _ = done_tx.send(());
+        });
+        std::thread::sleep(Duration::from_millis(50));
+        let during = thread_count();
+        done_rx.recv().unwrap();
+        let pid = std::process::id();
+        let thread_names: Vec<String> = std::fs::read_dir(format!("/proc/{pid}/task"))
+            .into_iter()
+            .flatten()
+            .filter_map(|e| e.ok())
+            .filter_map(|e| std::fs::read_to_string(e.path().join("comm")).ok())
+            .map(|s| s.trim().to_string())
+            .collect();
+        assert!(
+            during <= baseline + 1,
+            "ureq spawned extra thread(s) under per-phase timeout: \
+             baseline={baseline} during={during} threads={thread_names:?}"
+        );
     }
 }

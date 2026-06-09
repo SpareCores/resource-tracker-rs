@@ -350,6 +350,11 @@ impl CpuCollector {
         }
     }
 
+    /// Set the root PID for process-tree metrics (called after shell-wrapper spawn).
+    pub fn set_tracked_pid(&mut self, pid: Option<i32>) {
+        self.pid = pid;
+    }
+
     pub fn collect(&mut self) -> Result<CpuMetrics> {
         let tps = procfs::ticks_per_second() as f64;
 

@@ -1033,17 +1033,18 @@ fn test_json_gpu_empty_on_cpu_only_host() {
 // T-CLD-01: startup does not hang on non-cloud host
 // ---------------------------------------------------------------------------
 
-/// T-CLD-01: First sample arrives within 5 seconds even on a non-cloud host
-/// where all IMDS probes fail (each probe has a 2s timeout; they run in parallel).
+/// T-CLD-01: First sample arrives within 3 seconds on a non-cloud host.
+/// Cloud probes run fully in the background (non-blocking channel receiver);
+/// the first sample emits after warm-up + interval with no join on probe results.
 #[test]
-fn test_first_sample_arrives_within_5s() {
+fn test_first_sample_arrives_within_3s() {
     let start = std::time::Instant::now();
     let lines = collect_lines(&["--interval", "1"], 1);
     let elapsed = start.elapsed();
     assert!(!lines.is_empty(), "expected at least one sample");
     assert!(
-        elapsed < Duration::from_secs(5),
-        "first sample took {:?}, must arrive in < 5s (IMDS probes must not block startup)",
+        elapsed < Duration::from_secs(3),
+        "first sample took {:?}, must arrive in < 3s (cloud probes must not block startup)",
         elapsed
     );
 }

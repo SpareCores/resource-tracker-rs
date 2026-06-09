@@ -1,6 +1,7 @@
 use crate::metrics::{DiskMetrics, DiskMountMetrics, DiskType};
 use std::collections::HashMap;
 use std::ffi::CString;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -314,13 +315,24 @@ fn collect_zfs_spaces(timeout: std::time::Duration) -> Vec<(String, DiskMountMet
     // Run zpool in a background thread with a timeout: on a degraded or
     // slow pool the command can block for tens of seconds.
     let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
+    static ZFS_HELPER_WARNED: AtomicBool = AtomicBool::new(false);
+    if ZFS_HELPER_WARNED.load(Ordering::Relaxed) {
+        return vec![];
+    }
+    if crate::thread_util::spawn_named("zpool-list", move || {
         let _ = tx.send(
             std::process::Command::new("zpool")
                 .args(["list", "-Hp", "-o", "name,size,allocated,free"])
                 .output(),
         );
-    });
+    })
+    .is_none()
+    {
+        if !ZFS_HELPER_WARNED.swap(true, Ordering::Relaxed) {
+            eprintln!("warn: skipping zfs pool stats: cannot spawn helper thread");
+        }
+        return vec![];
+    }
     let out = match rx.recv_timeout(timeout) {
         Ok(Ok(o)) if o.status.success() => o,
         _ => return vec![],
