@@ -58,6 +58,7 @@ fn read_device_info(device: &str) -> DeviceInfo {
     // physical sector size, so capacity always uses SECTOR_BYTES (512).
     let capacity_bytes = block_attr(device, "size")
         .and_then(|s| s.parse::<u64>().ok())
+        .filter(|&sectors| sectors > 0)
         .map(|sectors| sectors * SECTOR_BYTES);
 
     // Physical sector size for I/O byte accounting.  On 4K-native NVMe drives

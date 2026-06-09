@@ -120,10 +120,10 @@ fn read_cgroupv1_usage_ns() -> Option<u64> {
         "/sys/fs/cgroup/cpu,cpuacct/cpuacct.usage",
         "/sys/fs/cgroup/cpu/cpuacct.usage",
     ] {
-        if let Ok(contents) = std::fs::read_to_string(path) {
-            if let Ok(val) = contents.trim().parse() {
-                return Some(val);
-            }
+        if let Ok(contents) = std::fs::read_to_string(path)
+            && let Ok(val) = contents.trim().parse()
+        {
+            return Some(val);
         }
     }
     None
@@ -256,19 +256,18 @@ fn process_tree_memory_mib(pids: &[i32]) -> (u64, u64) {
         let Some(proc_) = procfs::process::Process::new(pid).ok() else {
             continue;
         };
-        if let Ok(rollup) = proc_.smaps_rollup() {
-            if let Some(bytes) = rollup
+        if let Ok(rollup) = proc_.smaps_rollup()
+            && let Some(bytes) = rollup
                 .memory_map_rollup
                 .iter()
                 .find_map(|m| m.extension.map.get("Pss").copied())
-            {
-                pss_kib += bytes / 1024;
-            }
+        {
+            pss_kib += bytes / 1024;
         }
-        if let Ok(status) = proc_.status() {
-            if let Some(vmrss) = status.vmrss {
-                rss_kib += vmrss;
-            }
+        if let Ok(status) = proc_.status()
+            && let Some(vmrss) = status.vmrss
+        {
+            rss_kib += vmrss;
         }
     }
     (pss_kib / 1024, rss_kib / 1024)
