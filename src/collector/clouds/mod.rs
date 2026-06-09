@@ -215,14 +215,13 @@ mod tests {
         let during = thread_count();
         done_rx.recv().unwrap();
         let pid = std::process::id();
-        let thread_names: Vec<String> =
-            std::fs::read_dir(format!("/proc/{pid}/task"))
-                .into_iter()
-                .flatten()
-                .filter_map(|e| e.ok())
-                .filter_map(|e| std::fs::read_to_string(e.path().join("comm")).ok())
-                .map(|s| s.trim().to_string())
-                .collect();
+        let thread_names: Vec<String> = std::fs::read_dir(format!("/proc/{pid}/task"))
+            .into_iter()
+            .flatten()
+            .filter_map(|e| e.ok())
+            .filter_map(|e| std::fs::read_to_string(e.path().join("comm")).ok())
+            .map(|s| s.trim().to_string())
+            .collect();
         assert!(
             during <= baseline + 1,
             "ureq spawned extra thread(s) under per-phase timeout: \
