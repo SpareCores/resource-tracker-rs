@@ -28,6 +28,11 @@ document:
 test:
     env -u SENTINEL_API_TOKEN cargo test -- --test-threads=1
 
+test_nocapture:
+	env -u SENTINEL_API_TOKEN cargo test -- --test-threads=1 --nocapture
+
+
+
 real_test1: build_release
 	./target/release/resource-tracker  --format csv
 
@@ -57,7 +62,7 @@ issue_20_test:
     cargo build --examples
     ./target/debug/resource-tracker --interval 1 -- ./target/debug/examples/repro_cpu_cutime_spike 2>&1 | grep --line-buffered '^{' | jq '{cores_process: .cpu.process_cores_used, cores_system: .cpu.utilization_pct}'
 
-issue_20_test2: build_release  
+issue_20_test2: build_release
 	TRACKER_QUIET=false sudo ./target/release/resource-tracker -o rt.log nice -n -20 python3 run_stressng_benchmarks.py
 
 
@@ -66,19 +71,18 @@ issue_20_test2: build_release
 ## # Install Python resource-tracker via uv
 ## bench_setup:
 ##     cd benchmarks && uv sync
-## 
+##
 ## # Run both trackers simultaneously for 60 s, CSV output on both sides
 ## bench_run:
 ##     mkdir -p benchmarks/results
 ##     bash benchmarks/run_rust.sh &
 ##     cd benchmarks && uv run python run_python.py
 ##     wait
-## 
+##
 ## # Compare outputs and print diff table
 ## bench_compare:
 ##     cd benchmarks && uv run python compare.py
-## 
+##
 ## # Full pipeline
 ## benchmark: bench_setup bench_run bench_compare
-## 
-
+##

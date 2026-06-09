@@ -1,0 +1,4 @@
+[test]
+# Mock TCP server tests bind ephemeral ports; running them in parallel
+# causes port/resource races. Enforce single-threaded test execution.
+threads = 1
