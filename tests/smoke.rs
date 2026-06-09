@@ -532,9 +532,9 @@ fn test_csv_gpu_fields_nonneg() {
     let _ = utilized; // u32 is always >= 0
 }
 
-// T-GPU-P4: process_gpu_vram_mib and process_gpu_utilized are present in the
-// CSV header and, when a PID is tracked, their values are either empty (CPU-only
-// host) or non-negative numbers.  process_gpu_usage is always empty.
+// T-GPU-P4: process_gpu_vram_mib, process_gpu_usage, and process_gpu_utilized
+// are present in the CSV header.  When a PID is tracked, on CPU-only hosts all
+// three are empty; on GPU hosts all three are non-negative numbers.
 #[test]
 fn test_csv_process_gpu_columns_parse() {
     // Track the tracker's own PID so process columns are populated.
@@ -548,28 +548,44 @@ fn test_csv_process_gpu_columns_parse() {
     let row: Vec<&str> = lines[1].split(',').collect();
     let col = csv_row_col(&headers, &row);
 
-    // process_gpu_usage must always be empty (NVML per-process util unavailable).
-    assert_eq!(
-        col("process_gpu_usage"),
-        "",
-        "process_gpu_usage must always be empty"
-    );
-
-    // process_gpu_vram_mib: empty on CPU-only hosts, non-negative f64 on GPU hosts.
     let vram_str = col("process_gpu_vram_mib");
-    if !vram_str.is_empty() {
-        let v: f64 = vram_str
+    let usage_str = col("process_gpu_usage");
+    let utilized_str = col("process_gpu_utilized");
+
+    // process_gpu_vram_mib is the GPU-presence sentinel: "" on CPU-only hosts,
+    // "0.0000" or higher on GPU hosts (same process_gpu_info path as usage).
+    if vram_str.is_empty() {
+        // CPU-only: all three process GPU columns must be empty.
+        assert_eq!(
+            usage_str, "",
+            "process_gpu_usage must be empty on CPU-only host"
+        );
+        assert_eq!(
+            utilized_str, "",
+            "process_gpu_utilized must be empty on CPU-only host"
+        );
+    } else {
+        // GPU host: vram must parse as >= 0.
+        let vram: f64 = vram_str
             .parse()
             .unwrap_or_else(|_| panic!("process_gpu_vram_mib not a number: {vram_str:?}"));
-        assert!(v >= 0.0, "process_gpu_vram_mib must be >= 0, got {v}");
-    }
+        assert!(vram >= 0.0, "process_gpu_vram_mib must be >= 0, got {vram}");
 
-    // process_gpu_utilized: empty on CPU-only hosts, non-negative u32 on GPU hosts.
-    let utilized_str = col("process_gpu_utilized");
-    if !utilized_str.is_empty() {
-        let _u: u32 = utilized_str
-            .parse()
-            .unwrap_or_else(|_| panic!("process_gpu_utilized not a u32: {utilized_str:?}"));
+        // GPU host: usage must be reported (not silently empty) and >= 0.
+        let usage: f64 = usage_str.parse().unwrap_or_else(|_| {
+            panic!("process_gpu_usage not a number on GPU host: {usage_str:?}")
+        });
+        assert!(
+            usage >= 0.0,
+            "process_gpu_usage must be >= 0 on GPU host, got {usage}"
+        );
+
+        // GPU host: utilized must parse as u32 when present.
+        if !utilized_str.is_empty() {
+            let _u: u32 = utilized_str
+                .parse()
+                .unwrap_or_else(|_| panic!("process_gpu_utilized not a u32: {utilized_str:?}"));
+        }
     }
 }
 

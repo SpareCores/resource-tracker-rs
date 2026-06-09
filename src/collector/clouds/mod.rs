@@ -9,6 +9,7 @@ mod gcp;
 mod hetzner;
 mod ovh;
 mod upcloud;
+mod vultr;
 
 // ---------------------------------------------------------------------------
 // Shared IMDS helpers (available to all cloud submodules via `super::`)
@@ -51,7 +52,7 @@ fn imds_get_headers(agent: &ureq::Agent, url: &str, headers: &[(&str, &str)]) ->
 // Probe orchestration
 // ---------------------------------------------------------------------------
 
-/// Precedence order: AWS → GCP → Azure → Hetzner → UpCloud → AliCloud → OVH.
+/// Precedence order: AWS → GCP → Azure → Hetzner → UpCloud → Vultr → AliCloud → OVH.
 /// To add a new cloud: implement `pub fn probe() -> Option<CloudInfo>` in a new
 /// submodule, declare it above, and append it here.
 const PROBES: &[fn() -> Option<CloudInfo>] = &[
@@ -60,6 +61,7 @@ const PROBES: &[fn() -> Option<CloudInfo>] = &[
     azure::probe,
     hetzner::probe,
     upcloud::probe,
+    vultr::probe,
     alicloud::probe,
     ovh::probe,
 ];

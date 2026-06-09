@@ -274,12 +274,11 @@ fn main() {
         // no-op because probes complete within IMDS_TIMEOUT and the warm-up
         // sleep covers that window. Ensures the channel is drained and
         // cloud_info is populated for any future use.
-        if cloud_info.is_none() {
-            if let Some(ref rx) = cloud_rx {
-                if let Ok(info) = rx.try_recv() {
-                    cloud_info = Some(info);
-                }
-            }
+        if cloud_info.is_none()
+            && let Some(ref rx) = cloud_rx
+            && let Ok(info) = rx.try_recv()
+        {
+            cloud_info = Some(info);
         }
 
         let loop_start = Instant::now();
