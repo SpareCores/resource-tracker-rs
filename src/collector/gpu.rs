@@ -11,7 +11,7 @@ use nvml_wrapper::{
 };
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -80,6 +80,15 @@ impl GpuCollector {
             has_nvml = true;
             let pid_set: HashSet<u32> = pids.iter().copied().collect();
             let count = nvml.device_count().unwrap_or(0);
+            // Only fetch NVML process-utilization samples that fall within the current
+            // collection window. Passing 0 would return the full ring-buffer history,
+            // whose size grows with job duration and inflates CPU usage proportionally.
+            let now_us = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| u64::try_from(d.as_micros()).unwrap_or(u64::MAX))
+                .unwrap_or(0);
+            let last_seen_ts =
+                now_us.saturating_sub(u64::try_from(interval.as_micros()).unwrap_or(0));
 
             (0..count).for_each(|i| {
                 let Ok(device) = nvml.device_by_index(i) else {
@@ -111,7 +120,9 @@ impl GpuCollector {
 
                 // Per-process SM utilization: take the latest sample per PID
                 // (nvmlDeviceGetProcessUtilization; no accounting mode required).
-                let util_samples = device.process_utilization_stats(0u64).unwrap_or_default();
+                let util_samples = device
+                    .process_utilization_stats(last_seen_ts)
+                    .unwrap_or_default();
                 let mut latest_sm: HashMap<u32, (u64, u32)> = HashMap::new();
                 for s in &util_samples {
                     if pid_set.contains(&s.pid) {
@@ -264,6 +275,12 @@ impl GpuCollector {
             any_gpu = true;
             has_nvml = true;
             let count = nvml.device_count().unwrap_or(0);
+            let now_us = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| u64::try_from(d.as_micros()).unwrap_or(u64::MAX))
+                .unwrap_or(0);
+            let last_seen_ts =
+                now_us.saturating_sub(u64::try_from(interval.as_micros()).unwrap_or(0));
 
             (0..count).for_each(|i| {
                 let Ok(device) = nvml.device_by_index(i) else {
@@ -287,7 +304,9 @@ impl GpuCollector {
                 });
 
                 // System-wide SM utilization: latest sample per PID, all processes.
-                let util_samples = device.process_utilization_stats(0u64).unwrap_or_default();
+                let util_samples = device
+                    .process_utilization_stats(last_seen_ts)
+                    .unwrap_or_default();
                 let mut latest_sm: HashMap<u32, (u64, u32)> = HashMap::new();
                 for s in &util_samples {
                     let e = latest_sm.entry(s.pid).or_insert((0, 0));
