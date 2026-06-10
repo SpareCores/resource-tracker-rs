@@ -58,3 +58,7 @@ lto = true           # link-time optimization
 codegen-units = 1    # better dead-code elimination
 strip = true         # strip symbols
 panic = "abort"      # smaller panic handler
+
+[profile.profiling]
+inherits = "release"   # full release optimizations
+debug = true           # adds debug symbols on top

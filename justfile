@@ -9,7 +9,6 @@ format:
 
 build: format
     cargo build
-
 ## (cargo build --release) && upx target/release/resource-tracker
 build_release:  format
 	cargo build --release
@@ -64,6 +63,16 @@ issue_20_test:
 
 issue_20_test2: build_release
 	TRACKER_QUIET=false sudo ./target/release/resource-tracker -o rt.log nice -n -20 python3 run_stressng_benchmarks.py
+
+
+flamegraph_test_1:
+	cargo build --profile profiling && cargo flamegraph --profile profiling --bin resource-tracker -- --format csv Rscript stress.r
+
+perf_test1:
+	cargo build --profile profiling && perf record -o perf.data -e cpu-clock --call-graph dwarf -F 999 ./target/profiling/resource-tracker ./target/release/resource-tracker -o /dev/null sleep 300 2>&1 | grep --line-buffered '^{' | jq .cpu.process_cores_used
+
+perf_test2:
+	cargo build --profile profiling && perf record -e cpu-clock --call-graph dwarf -F 999 ./target/profiling/resource-tracker --format csv Rscript stress.r
 
 
 
