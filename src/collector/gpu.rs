@@ -11,9 +11,17 @@ use nvml_wrapper::{
 };
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
+/// Static NVML device metadata that does not change at runtime.
+/// Cached on first successful query to avoid repeated NVML calls.
+struct NvmlDeviceInfo {
+    name: String,
+    uuid: String,
+    pci_bus_id: String,
+}
 
 /// Collects per-GPU metrics from NVIDIA (via NVML) and AMD (via libamdgpu_top).
 ///
@@ -27,6 +35,9 @@ pub struct GpuCollector {
     /// Per-process fdinfo state for AMD GPU utilization delta tracking.
     /// Populated lazily on first AMD host detection.
     amd_fdinfo: Option<FdInfoStat>,
+    /// Static NVML device metadata keyed by device index.
+    /// Populated on first collection; avoids re-querying name, UUID, and PCI info every sample.
+    nvml_device_cache: HashMap<u32, NvmlDeviceInfo>,
 }
 
 impl GpuCollector {
@@ -34,10 +45,11 @@ impl GpuCollector {
         Self {
             nvml: Nvml::init().ok(),
             amd_fdinfo: None,
+            nvml_device_cache: HashMap::new(),
         }
     }
 
-    pub fn collect(&self) -> Result<Vec<GpuMetrics>> {
+    pub fn collect(&mut self) -> Result<Vec<GpuMetrics>> {
         let mut metrics = Vec::new();
         self.collect_nvidia(&mut metrics);
         self.collect_amd(&mut metrics);
@@ -80,6 +92,15 @@ impl GpuCollector {
             has_nvml = true;
             let pid_set: HashSet<u32> = pids.iter().copied().collect();
             let count = nvml.device_count().unwrap_or(0);
+            // Only fetch NVML process-utilization samples that fall within the current
+            // collection window. Passing 0 would return the full ring-buffer history,
+            // whose size grows with job duration and inflates CPU usage proportionally.
+            let now_us = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| u64::try_from(d.as_micros()).unwrap_or(u64::MAX))
+                .unwrap_or(0);
+            let last_seen_ts =
+                now_us.saturating_sub(u64::try_from(interval.as_micros()).unwrap_or(0));
 
             (0..count).for_each(|i| {
                 let Ok(device) = nvml.device_by_index(i) else {
@@ -111,7 +132,9 @@ impl GpuCollector {
 
                 // Per-process SM utilization: take the latest sample per PID
                 // (nvmlDeviceGetProcessUtilization; no accounting mode required).
-                let util_samples = device.process_utilization_stats(0u64).unwrap_or_default();
+                let util_samples = device
+                    .process_utilization_stats(last_seen_ts)
+                    .unwrap_or_default();
                 let mut latest_sm: HashMap<u32, (u64, u32)> = HashMap::new();
                 for s in &util_samples {
                     if pid_set.contains(&s.pid) {
@@ -264,6 +287,12 @@ impl GpuCollector {
             any_gpu = true;
             has_nvml = true;
             let count = nvml.device_count().unwrap_or(0);
+            let now_us = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| u64::try_from(d.as_micros()).unwrap_or(u64::MAX))
+                .unwrap_or(0);
+            let last_seen_ts =
+                now_us.saturating_sub(u64::try_from(interval.as_micros()).unwrap_or(0));
 
             (0..count).for_each(|i| {
                 let Ok(device) = nvml.device_by_index(i) else {
@@ -287,7 +316,9 @@ impl GpuCollector {
                 });
 
                 // System-wide SM utilization: latest sample per PID, all processes.
-                let util_samples = device.process_utilization_stats(0u64).unwrap_or_default();
+                let util_samples = device
+                    .process_utilization_stats(last_seen_ts)
+                    .unwrap_or_default();
                 let mut latest_sm: HashMap<u32, (u64, u32)> = HashMap::new();
                 for s in &util_samples {
                     let e = latest_sm.entry(s.pid).or_insert((0, 0));
@@ -357,68 +388,81 @@ impl GpuCollector {
     // NVIDIA — NVML runtime-loaded via libloading
     // -----------------------------------------------------------------------
 
-    fn collect_nvidia(&self, out: &mut Vec<GpuMetrics>) {
-        let Some(ref nvml) = self.nvml else { return };
+    fn collect_nvidia(&mut self, out: &mut Vec<GpuMetrics>) {
+        // Extract the cache before borrowing self.nvml so both fields can be
+        // used in the same scope without conflicting borrows.
+        let mut device_cache = std::mem::take(&mut self.nvml_device_cache);
 
-        let count = nvml.device_count().unwrap_or(0);
-        let driver_version = nvml.sys_driver_version().unwrap_or_default();
+        if let Some(ref nvml) = self.nvml {
+            let count = nvml.device_count().unwrap_or(0);
+            let driver_version = nvml.sys_driver_version().unwrap_or_default();
 
-        for i in 0..count {
-            let Ok(device) = nvml.device_by_index(i) else {
-                continue;
-            };
+            for i in 0..count {
+                let Ok(device) = nvml.device_by_index(i) else {
+                    continue;
+                };
 
-            let name = device.name().unwrap_or_default();
-            let uuid = device.uuid().unwrap_or_else(|_| format!("nvidia-{i}"));
+                // Populate static metadata on first encounter; reuse on every subsequent sample.
+                let info = device_cache.entry(i).or_insert_with(|| NvmlDeviceInfo {
+                    name: device.name().unwrap_or_default(),
+                    uuid: device.uuid().unwrap_or_else(|_| format!("nvidia-{i}")),
+                    pci_bus_id: device.pci_info().map(|p| p.bus_id).unwrap_or_default(),
+                });
+                let name = info.name.clone();
+                let uuid = info.uuid.clone();
+                let pci_bus_id = info.pci_bus_id.clone();
 
-            let utilization_pct = device
-                .utilization_rates()
-                .map(|u| u.gpu as f64)
-                .unwrap_or(0.0);
+                let utilization_pct = device
+                    .utilization_rates()
+                    .map(|u| u.gpu as f64)
+                    .unwrap_or(0.0);
 
-            let memory = device.memory_info().ok();
-            let vram_total_bytes = memory.as_ref().map(|m| m.total).unwrap_or(0);
-            let vram_used_bytes = memory.as_ref().map(|m| m.used).unwrap_or(0);
-            let vram_used_pct = if vram_total_bytes > 0 {
-                vram_used_bytes as f64 / vram_total_bytes as f64 * 100.0
-            } else {
-                0.0
-            };
+                let memory = device.memory_info().ok();
+                let vram_total_bytes = memory.as_ref().map(|m| m.total).unwrap_or(0);
+                let vram_used_bytes = memory.as_ref().map(|m| m.used).unwrap_or(0);
+                let vram_used_pct = if vram_total_bytes > 0 {
+                    vram_used_bytes as f64 / vram_total_bytes as f64 * 100.0
+                } else {
+                    0.0
+                };
 
-            let temperature_celsius = device.temperature(TemperatureSensor::Gpu).unwrap_or(0);
+                let temperature_celsius = device.temperature(TemperatureSensor::Gpu).unwrap_or(0);
 
-            // NVML reports power in milliwatts; convert to watts.
-            let power_watts = device
-                .power_usage()
-                .map(|mw| mw as f64 / 1000.0)
-                .unwrap_or(0.0);
+                // NVML reports power in milliwatts; convert to watts.
+                let power_watts = device
+                    .power_usage()
+                    .map(|mw| mw as f64 / 1000.0)
+                    .unwrap_or(0.0);
 
-            let frequency_mhz = device.clock_info(Clock::Graphics).unwrap_or(0);
+                let frequency_mhz = device.clock_info(Clock::Graphics).unwrap_or(0);
 
-            let mut detail: HashMap<String, String> = HashMap::new();
-            if !driver_version.is_empty() {
-                detail.insert("driver_version".to_string(), driver_version.clone());
+                let mut detail: HashMap<String, String> = HashMap::new();
+                if !driver_version.is_empty() {
+                    detail.insert("driver_version".to_string(), driver_version.clone());
+                }
+                if !pci_bus_id.is_empty() {
+                    detail.insert("pci_bus_id".to_string(), pci_bus_id);
+                }
+
+                out.push(GpuMetrics {
+                    uuid,
+                    name,
+                    device_type: "GPU".to_string(),
+                    host_id: i.to_string(),
+                    detail,
+                    utilization_pct,
+                    vram_total_bytes,
+                    vram_used_bytes,
+                    vram_used_pct,
+                    temperature_celsius,
+                    power_watts,
+                    frequency_mhz,
+                    core_count: None,
+                });
             }
-            if let Ok(pci) = device.pci_info() {
-                detail.insert("pci_bus_id".to_string(), pci.bus_id);
-            }
-
-            out.push(GpuMetrics {
-                uuid,
-                name,
-                device_type: "GPU".to_string(),
-                host_id: i.to_string(),
-                detail,
-                utilization_pct,
-                vram_total_bytes,
-                vram_used_bytes,
-                vram_used_pct,
-                temperature_celsius,
-                power_watts,
-                frequency_mhz,
-                core_count: None,
-            });
         }
+
+        self.nvml_device_cache = device_cache;
     }
 
     // -----------------------------------------------------------------------
@@ -655,7 +699,7 @@ mod tests {
     // T-GPU-C1: collect() does not panic and returns Ok on any host.
     #[test]
     fn test_gpu_collect_does_not_panic() {
-        let collector = GpuCollector::new();
+        let mut collector = GpuCollector::new();
         let result = collector.collect();
         assert!(
             result.is_ok(),
@@ -667,7 +711,7 @@ mod tests {
     // T-GPU-C2: all returned GpuMetrics entries have non-empty uuid, name, and device_type.
     #[test]
     fn test_gpu_collect_identity_fields_nonempty() {
-        let collector = GpuCollector::new();
+        let mut collector = GpuCollector::new();
         let gpus = collector.collect().expect("collect() failed");
         gpus.iter().for_each(|g| {
             assert!(!g.uuid.is_empty(), "uuid must not be empty");
@@ -687,7 +731,7 @@ mod tests {
     // T-GPU-C3: utilization_pct is in range 0.0..=100.0 for all reported GPUs.
     #[test]
     fn test_gpu_collect_utilization_in_range() {
-        let collector = GpuCollector::new();
+        let mut collector = GpuCollector::new();
         let gpus = collector.collect().expect("collect() failed");
         gpus.iter().for_each(|g| {
             assert!(
@@ -702,7 +746,7 @@ mod tests {
     // T-GPU-C4: vram_used_bytes does not exceed vram_total_bytes.
     #[test]
     fn test_gpu_collect_vram_used_le_total() {
-        let collector = GpuCollector::new();
+        let mut collector = GpuCollector::new();
         let gpus = collector.collect().expect("collect() failed");
         gpus.iter().for_each(|g| {
             assert!(
