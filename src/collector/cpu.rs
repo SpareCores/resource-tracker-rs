@@ -246,31 +246,40 @@ fn process_tree_ticks(root_pid: i32) -> HashMap<i32, (u64, u64)> {
     result
 }
 
-/// Sum of PSS and VmRSS across all given PIDs, each converted to MiB.
-/// One `Process::open` per PID reads both sources. PSS matches Python
-/// `memory_mib`; RSS is retained for consumers that need resident set size.
+/// Sum of PSS and RSS across all given PIDs, each converted to MiB.
 fn process_tree_memory_mib(pids: &[i32]) -> (u64, u64) {
-    let mut pss_kib = 0u64;
-    let mut rss_kib = 0u64;
+    const BYTES_PER_MIB: u64 = 1024 * 1024;
+
+    let mut total_pss_bytes = 0u64;
+    let mut total_rss_bytes = 0u64;
+
     for &pid in pids {
-        let Some(proc_) = procfs::process::Process::new(pid).ok() else {
+        let Some(process) = procfs::process::Process::new(pid).ok() else {
             continue;
         };
-        if let Ok(rollup) = proc_.smaps_rollup()
-            && let Some(bytes) = rollup
-                .memory_map_rollup
-                .iter()
-                .find_map(|m| m.extension.map.get("Pss").copied())
-        {
-            pss_kib += bytes / 1024;
+
+        let Ok(rollup) = process.smaps_rollup() else {
+            continue;
+        };
+
+        // smaps_rollup contains a single aggregated memory map entry.
+        let Some(memory_map) = rollup.memory_map_rollup.0.first() else {
+            continue;
+        };
+
+        if let Some(&pss_bytes) = memory_map.extension.map.get("Pss") {
+            total_pss_bytes += pss_bytes;
         }
-        if let Ok(status) = proc_.status()
-            && let Some(vmrss) = status.vmrss
-        {
-            rss_kib += vmrss;
+
+        if let Some(&rss_bytes) = memory_map.extension.map.get("Rss") {
+            total_rss_bytes += rss_bytes;
         }
     }
-    (pss_kib / 1024, rss_kib / 1024)
+
+    (
+        total_pss_bytes / BYTES_PER_MIB,
+        total_rss_bytes / BYTES_PER_MIB,
+    )
 }
 
 /// Per-process cumulative disk I/O bytes from /proc/pid/io.

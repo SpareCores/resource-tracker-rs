@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.18] - 2026-09-11
+
+### Fix: consistent Rss value reading
+
+A few tests were failing on ARM64 but passing on x86.
+Fixed by changing how the Rss value is read -
+from /proc/<PID>/status to /proc/<PID>/smaps_rollup.
+Also minor advantage of using a single procfs file is that
+it's slightly faster and more consistent.
+
 ## [0.1.17] - 2026-09-10
 
 ### Tracking of CPU steal time

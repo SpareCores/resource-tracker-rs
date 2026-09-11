@@ -74,8 +74,8 @@ pub struct CpuMetrics {
     /// None when no PID is tracked.
     pub process_pss_mib: Option<u64>,
 
-    /// Resident set size of the process tree (sum of VmRSS from
-    /// `/proc/pid/status`) in MiB, sampled each interval (not a delta).
+    /// Resident set size of the process tree (sum of RSS from
+    /// `/proc/pid/smaps_rollup`) in MiB, sampled each interval (not a delta).
     /// Retained for consumers that need RSS; may exceed physical RAM when shared
     /// mappings are summed across the tree. None when no PID is tracked.
     pub process_rss_mib: Option<u64>,
